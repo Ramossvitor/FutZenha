@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
+import { attendances, gamePlayers, games, goals, matchDays, players } from "@/db/schema";
 
 // Estatísticas contam apenas peladas encerradas (status = finished).
 
@@ -46,7 +46,9 @@ export type PlayerRecord = {
 };
 
 export async function getPlayerRecords(year?: number, minGames = 1): Promise<PlayerRecord[]> {
-  const isWin = sql`(${games.teamAId} = ${teams.id} and ${games.scoreA} > ${games.scoreB}) or (${games.teamBId} = ${teams.id} and ${games.scoreB} > ${games.scoreA})`;
+  // A escalação por jogo (game_players) é a fonte de verdade de quem jogou de
+  // qual lado — trocar alguém de colete depois não reescreve o passado.
+  const isWin = sql`(${gamePlayers.side} = 'A' and ${games.scoreA} > ${games.scoreB}) or (${gamePlayers.side} = 'B' and ${games.scoreB} > ${games.scoreA})`;
   const isDraw = sql`${games.scoreA} = ${games.scoreB}`;
 
   const rows = await db
@@ -58,14 +60,10 @@ export async function getPlayerRecords(year?: number, minGames = 1): Promise<Pla
       draws: sql<number>`sum(case when ${isDraw} then 1 else 0 end)::int`,
       gamesPlayed: sql<number>`count(*)::int`,
     })
-    .from(teamPlayers)
-    .innerJoin(teams, eq(teamPlayers.teamId, teams.id))
-    .innerJoin(
-      games,
-      sql`${games.teamAId} = ${teams.id} or ${games.teamBId} = ${teams.id}`,
-    )
+    .from(gamePlayers)
+    .innerJoin(games, eq(gamePlayers.gameId, games.id))
     .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
-    .innerJoin(players, eq(teamPlayers.playerId, players.id))
+    .innerJoin(players, eq(gamePlayers.playerId, players.id))
     .where(and(eq(matchDays.status, "finished"), yearFilter(year)))
     .groupBy(players.id, players.name, players.nickname);
 

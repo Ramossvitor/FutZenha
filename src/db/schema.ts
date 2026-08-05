@@ -1,6 +1,7 @@
 import {
   boolean,
   date,
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -19,6 +20,8 @@ export const matchDayStatusEnum = pgEnum("match_day_status", [
 ]);
 
 export const attendanceStatusEnum = pgEnum("attendance_status", ["in", "out"]);
+
+export const gameSideEnum = pgEnum("game_side", ["A", "B"]);
 
 export const players = pgTable("players", {
   id: serial("id").primaryKey(),
@@ -95,6 +98,28 @@ export const games = pgTable("games", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Escalação do jogo: quem entrou em campo por qual lado. É um snapshot tirado
+// dos times da pelada na criação do jogo, então trocar alguém de colete depois
+// não reescreve quem jogou os jogos anteriores. É daqui que saem os
+// "companheiros de equipe" da avaliação e o V/E/D de cada jogador.
+export const gamePlayers = pgTable(
+  "game_players",
+  {
+    gameId: integer("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    side: gameSideEnum("side").notNull(),
+  },
+  (t) => [
+    // A PK composta é o que impede o mesmo jogador nos dois lados do jogo.
+    primaryKey({ columns: [t.gameId, t.playerId] }),
+    index("game_players_player_idx").on(t.playerId),
+  ],
+);
+
 // O placar do jogo é digitado pelo admin e não precisa bater com a soma dos
 // gols individuais — isso cobre gol contra e gol de autor esquecido.
 export const goals = pgTable("goals", {
@@ -142,6 +167,7 @@ export type MatchDay = typeof matchDays.$inferSelect;
 export type Attendance = typeof attendances.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Game = typeof games.$inferSelect;
+export type GamePlayer = typeof gamePlayers.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;

@@ -2,7 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
+import {
+  attendances,
+  gamePlayers,
+  games,
+  goals,
+  matchDays,
+  players,
+  teamPlayers,
+  teams,
+} from "@/db/schema";
 import { formatDate, formatTime } from "@/lib/format";
 import { vestClass } from "@/lib/team-colors";
 import {
@@ -109,6 +118,27 @@ export default async function AdminPeladaPage({
               gameList.map((g) => g.id),
             ),
           )
+      : [];
+  // Escalação real de cada jogo — é ela, e não o colete da pelada, que diz
+  // quem entrou em campo por qual lado.
+  const lineupRows =
+    gameList.length > 0
+      ? await db
+          .select({
+            gameId: gamePlayers.gameId,
+            playerId: gamePlayers.playerId,
+            side: gamePlayers.side,
+            playerName: players.name,
+          })
+          .from(gamePlayers)
+          .innerJoin(players, eq(gamePlayers.playerId, players.id))
+          .where(
+            inArray(
+              gamePlayers.gameId,
+              gameList.map((g) => g.id),
+            ),
+          )
+          .orderBy(asc(players.name))
       : [];
   const teamNameById = new Map(teamList.map((t) => [t.id, t.name]));
 
@@ -326,9 +356,7 @@ export default async function AdminPeladaPage({
 
           {gameList.map((game, i) => {
             const gameGoals = goalRows.filter((g) => g.gameId === game.id);
-            const gamePlayers = teamMembers.filter(
-              (m) => m.teamId === game.teamAId || m.teamId === game.teamBId,
-            );
+            const lineup = lineupRows.filter((m) => m.gameId === game.id);
             return (
               <div
                 key={game.id}
@@ -399,10 +427,13 @@ export default async function AdminPeladaPage({
                       className="mt-1 flex flex-wrap items-center gap-2"
                     >
                       <select name="playerId" className={inputClass}>
-                        {[game.teamAId, game.teamBId].map((teamId) => (
-                          <optgroup key={teamId} label={teamNameById.get(teamId)}>
-                            {gamePlayers
-                              .filter((m) => m.teamId === teamId)
+                        {(["A", "B"] as const).map((side) => (
+                          <optgroup
+                            key={side}
+                            label={teamNameById.get(side === "A" ? game.teamAId : game.teamBId)}
+                          >
+                            {lineup
+                              .filter((m) => m.side === side)
                               .map((m) => (
                                 <option key={m.playerId} value={m.playerId}>
                                   {m.playerName}

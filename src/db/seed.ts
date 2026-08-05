@@ -122,6 +122,11 @@ async function seedPastMatchDay(
       })
       .returning();
 
+    await db.insert(schema.gamePlayers).values([
+      ...teamAPlayers.map((p) => ({ gameId: game.id, playerId: p.id, side: "A" as const })),
+      ...teamBPlayers.map((p) => ({ gameId: game.id, playerId: p.id, side: "B" as const })),
+    ]);
+
     // Autores: melhores da linha de cada time marcam (nem todo gol tem autor).
     const scorersA = teamAPlayers.slice(1, 1 + Math.min(scoreA, 2));
     const scorersB = teamBPlayers.slice(1, 1 + Math.min(scoreB, 2));
@@ -146,6 +151,7 @@ async function main() {
   await db.delete(schema.invites);
   await db.delete(schema.users);
   await db.delete(schema.goals);
+  await db.delete(schema.gamePlayers);
   await db.delete(schema.games);
   await db.delete(schema.teamPlayers);
   await db.delete(schema.teams);

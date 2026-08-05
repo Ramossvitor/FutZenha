@@ -5,7 +5,16 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
+import {
+  attendances,
+  gamePlayers,
+  games,
+  goals,
+  matchDays,
+  players,
+  teamPlayers,
+  teams,
+} from "@/db/schema";
 import { drawTeams } from "@/lib/draw";
 import { requireAdmin } from "@/lib/require-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
@@ -179,13 +188,28 @@ export async function createGame(matchDayId: number, formData: FormData) {
   }
 
   const existing = await db.select().from(games).where(eq(games.matchDayId, matchDayId));
-  await db.insert(games).values({
-    matchDayId,
-    teamAId,
-    teamBId,
-    scoreA,
-    scoreB,
-    sortOrder: existing.length,
+
+  // A escalação do jogo é um snapshot dos times da pelada tirado agora. Depois
+  // disso ela é editável por jogo e independente do colete.
+  const lineup = await db
+    .select({ playerId: teamPlayers.playerId, teamId: teamPlayers.teamId })
+    .from(teamPlayers)
+    .where(inArray(teamPlayers.teamId, [teamAId, teamBId]));
+
+  await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(games)
+      .values({ matchDayId, teamAId, teamBId, scoreA, scoreB, sortOrder: existing.length })
+      .returning();
+    if (lineup.length > 0) {
+      await tx.insert(gamePlayers).values(
+        lineup.map((row) => ({
+          gameId: created.id,
+          playerId: row.playerId,
+          side: row.teamId === teamAId ? ("A" as const) : ("B" as const),
+        })),
+      );
+    }
   });
   revalidateMatchDay(matchDayId);
 }
