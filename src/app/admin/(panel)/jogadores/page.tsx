@@ -1,7 +1,15 @@
-import { asc } from "drizzle-orm";
+import { asc, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { players, type Player } from "@/db/schema";
-import { createPlayer, setPlayerActive, updatePlayer } from "./actions";
+import { invites, players, users, type Invite, type Player, type User } from "@/db/schema";
+import {
+  createInvite,
+  createPlayer,
+  revokeInvite,
+  setPlayerActive,
+  setUserActive,
+  updatePlayer,
+} from "./actions";
+import { CopyButton } from "./copy-button";
 
 const inputClass =
   "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
@@ -53,9 +61,108 @@ function PlayerFields({ player }: { player?: Player }) {
   );
 }
 
+const badgeClass = "rounded-full px-2 py-0.5 text-xs font-medium";
+
+// Bloco "Acesso" de um jogador ativo: estado da conta + ciclo de vida do
+// convite. Um convite pendente para quem já tem conta é um reset de senha.
+// A expiração vem calculada do banco (now() do Postgres) — regra de pureza
+// do React proíbe Date.now() durante o render.
+function AccessSection({
+  player,
+  user,
+  pending,
+}: {
+  player: Player;
+  user?: User;
+  pending?: { invite: Invite; expired: boolean };
+}) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const invite = pending?.invite;
+  const inviteUrl = invite ? `${siteUrl}/convite/${invite.token}` : null;
+  const invitePending = pending != null && !pending.expired;
+  const inviteExpired = pending != null && pending.expired;
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t border-neutral-200 pt-3 text-sm dark:border-neutral-800">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">Acesso</span>
+        {!user && (
+          <span className={`${badgeClass} bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400`}>
+            sem conta
+          </span>
+        )}
+        {user && user.active && (
+          <span className={`${badgeClass} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`}>
+            @{user.username}
+          </span>
+        )}
+        {user && !user.active && (
+          <span className={`${badgeClass} bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300`}>
+            conta desativada (@{user.username})
+          </span>
+        )}
+        {inviteExpired && (
+          <span className={`${badgeClass} bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400`}>
+            convite expirado
+          </span>
+        )}
+      </div>
+
+      {invitePending && invite && inviteUrl && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`${badgeClass} bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200`}>
+            convite pendente
+          </span>
+          <code className="max-w-full break-all rounded bg-neutral-100 px-2 py-1 text-xs dark:bg-neutral-800">
+            {inviteUrl}
+          </code>
+          <CopyButton text={inviteUrl} />
+          <span className="text-xs text-neutral-500">
+            expira {invite.expiresAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+          </span>
+          <form action={revokeInvite.bind(null, player.id)}>
+            <button type="submit" className="text-sm text-red-600 hover:underline">
+              Revogar convite
+            </button>
+          </form>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-4">
+        {!invitePending && (
+          <form action={createInvite.bind(null, player.id)}>
+            <button type="submit" className="text-sm text-emerald-700 hover:underline">
+              {user ? "Resetar senha (novo convite)" : inviteExpired ? "Gerar novo convite" : "Gerar convite"}
+            </button>
+          </form>
+        )}
+        {user && (
+          <form action={setUserActive.bind(null, user.id, !user.active)}>
+            <button
+              type="submit"
+              className={`text-sm hover:underline ${user.active ? "text-red-600" : "text-emerald-700"}`}
+            >
+              {user.active ? "Desativar conta" : "Reativar conta"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default async function JogadoresPage({ searchParams }: PageProps<"/admin/jogadores">) {
   const { erro } = await searchParams;
-  const allPlayers = await db.select().from(players).orderBy(asc(players.name));
+  const [allPlayers, allUsers, pendingInvites] = await Promise.all([
+    db.select().from(players).orderBy(asc(players.name)),
+    db.select().from(users),
+    db
+      .select({ invite: invites, expired: sql<boolean>`${invites.expiresAt} <= now()` })
+      .from(invites)
+      .where(isNull(invites.usedAt)),
+  ]);
+  const userByPlayer = new Map(allUsers.map((u) => [u.playerId, u]));
+  const inviteByPlayer = new Map(pendingInvites.map((r) => [r.invite.playerId, r]));
   const active = allPlayers.filter((p) => p.active);
   const inactive = allPlayers.filter((p) => !p.active);
   const errorMessage = typeof erro === "string" ? errorMessages[erro] : undefined;
@@ -112,6 +219,11 @@ export default async function JogadoresPage({ searchParams }: PageProps<"/admin/
                   Desativar (sai das listas, mantém histórico)
                 </button>
               </form>
+              <AccessSection
+                player={player}
+                user={userByPlayer.get(player.id)}
+                pending={inviteByPlayer.get(player.id)}
+              />
             </div>
           </details>
         ))}

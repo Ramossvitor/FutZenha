@@ -1,11 +1,12 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { players } from "@/db/schema";
+import { invites, players, users } from "@/db/schema";
 import { requireAdmin } from "@/lib/require-admin";
 
 const playerSchema = z.object({
@@ -28,8 +29,14 @@ function parsePlayerForm(formData: FormData) {
   });
 }
 
+// O drizzle embrulha o erro do driver (DrizzleQueryError → cause) — percorre a
+// cadeia de cause atrás do código 23505 do Postgres.
 function isUniqueViolation(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
+  while (typeof error === "object" && error !== null) {
+    if ("code" in error && error.code === "23505") return true;
+    error = (error as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 export async function createPlayer(formData: FormData) {
@@ -65,5 +72,46 @@ export async function updatePlayer(playerId: number, formData: FormData) {
 export async function setPlayerActive(playerId: number, active: boolean) {
   await requireAdmin();
   await db.update(players).set({ active }).where(eq(players.id, playerId));
+  revalidatePath("/admin/jogadores");
+}
+
+const idSchema = z.number().int().positive();
+
+const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
+
+// Gera um convite novo e apaga os pendentes anteriores do jogador — fica no
+// máximo um pendente por jogador. Para quem já tem conta, resgatar o convite
+// funciona como reset de senha.
+export async function createInvite(playerId: number) {
+  await requireAdmin();
+  const id = idSchema.parse(playerId);
+  const [player] = await db.select().from(players).where(eq(players.id, id));
+  if (!player || !player.active) return;
+
+  const token = randomBytes(32).toString("base64url");
+  await db.transaction(async (tx) => {
+    await tx.delete(invites).where(and(eq(invites.playerId, id), isNull(invites.usedAt)));
+    await tx.insert(invites).values({
+      token,
+      playerId: id,
+      expiresAt: new Date(Date.now() + INVITE_DURATION_MS),
+    });
+  });
+  revalidatePath("/admin/jogadores");
+}
+
+export async function revokeInvite(playerId: number) {
+  await requireAdmin();
+  const id = idSchema.parse(playerId);
+  await db.delete(invites).where(and(eq(invites.playerId, id), isNull(invites.usedAt)));
+  revalidatePath("/admin/jogadores");
+}
+
+// Desativar a conta derruba a sessão no próximo request (o DAL re-checa
+// users.active a cada request) — não precisa mexer em token_version.
+export async function setUserActive(userId: number, active: boolean) {
+  await requireAdmin();
+  const id = idSchema.parse(userId);
+  await db.update(users).set({ active: z.boolean().parse(active) }).where(eq(users.id, id));
   revalidatePath("/admin/jogadores");
 }
