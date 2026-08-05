@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { logout } from "@/app/login/actions";
+import { getSession } from "@/lib/session";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,7 +35,10 @@ const navLinks = [
   { href: "/rankings", label: "Rankings" },
 ] as const;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Ler a sessão aqui torna todas as páginas dinâmicas por request — escolha
+// deliberada para mostrar quem está logado em qualquer página.
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const session = await getSession();
   return (
     <html
       lang="pt-BR"
@@ -41,16 +46,54 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
         <header className="bg-emerald-800 text-white">
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
             <Link href="/" className="text-lg font-black tracking-tight">
               ⚽ FutZenha
             </Link>
-            <nav className="flex gap-3 text-sm font-medium sm:gap-5">
+            <nav className="flex flex-wrap items-center gap-3 text-sm font-medium sm:gap-5">
               {navLinks.slice(1).map((link) => (
                 <Link key={link.href} href={link.href} className="hover:underline">
                   {link.label}
                 </Link>
               ))}
+              {session?.role === "player" && (
+                <>
+                  <Link
+                    href="/perfil"
+                    className="rounded-full bg-emerald-700 px-3 py-1 hover:bg-emerald-600"
+                  >
+                    Olá, {session.player.nickname ?? session.player.name.split(" ")[0]}
+                  </Link>
+                  <form action={logout}>
+                    <button type="submit" className="text-emerald-200 hover:underline">
+                      Sair
+                    </button>
+                  </form>
+                </>
+              )}
+              {session?.role === "admin" && (
+                <>
+                  <Link
+                    href="/admin"
+                    className="rounded-full bg-emerald-700 px-3 py-1 hover:bg-emerald-600"
+                  >
+                    Admin
+                  </Link>
+                  <form action={logout}>
+                    <button type="submit" className="text-emerald-200 hover:underline">
+                      Sair
+                    </button>
+                  </form>
+                </>
+              )}
+              {!session && (
+                <Link
+                  href="/login"
+                  className="rounded-full bg-emerald-700 px-3 py-1 hover:bg-emerald-600"
+                >
+                  Entrar
+                </Link>
+              )}
             </nav>
           </div>
         </header>
