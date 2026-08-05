@@ -108,9 +108,40 @@ export const goals = pgTable("goals", {
   quantity: integer("quantity").notNull().default(1),
 });
 
+// Conta de acesso de um jogador (1:1 com players). username é sempre salvo em
+// minúsculas (normalizado na aplicação). token_version invalida sessões antigas
+// ao trocar/resetar a senha; active=false derruba a sessão no próximo request.
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  playerId: integer("player_id")
+    .notNull()
+    .unique()
+    .references(() => players.id, { onDelete: "cascade" }),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  tokenVersion: integer("token_version").notNull().default(1),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Convite de cadastro enviado pelo admin via WhatsApp. Se o jogador já tem
+// conta, resgatar o convite = redefinir a senha. Um pendente por jogador.
+export const invites = pgTable("invites", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(), // 32 bytes aleatórios em base64url
+  playerId: integer("player_id")
+    .notNull()
+    .references(() => players.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type Player = typeof players.$inferSelect;
 export type MatchDay = typeof matchDays.$inferSelect;
 export type Attendance = typeof attendances.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type Invite = typeof invites.$inferSelect;
