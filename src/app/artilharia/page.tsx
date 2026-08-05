@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getAvailableYears, getTopScorers } from "@/lib/stats";
 
-export const metadata = { title: "Artilharia — FutZenha" };
+export const metadata = { title: "Artilharia" };
 export const dynamic = "force-dynamic";
 
 export default async function ArtilhariaPage({ searchParams }: PageProps<"/artilharia">) {

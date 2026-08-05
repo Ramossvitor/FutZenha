@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { games, matchDays, teams } from "@/db/schema";
 import { formatDate, formatDateShort, formatTime } from "@/lib/format";
 
-export const metadata = { title: "Peladas — FutZenha" };
+export const metadata = { title: "Peladas" };
 export const dynamic = "force-dynamic";
 
 export default async function PeladasPage() {

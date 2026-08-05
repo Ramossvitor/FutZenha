@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getAttendanceStats, getAvailableYears, getPlayerRecords } from "@/lib/stats";
 
-export const metadata = { title: "Rankings — FutZenha" };
+export const metadata = { title: "Rankings" };
 export const dynamic = "force-dynamic";
 
 const MIN_GAMES = 3;
