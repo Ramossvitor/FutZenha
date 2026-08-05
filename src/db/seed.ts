@@ -1,7 +1,9 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
+import { eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { companheirosPorJogador } from "../lib/lineup";
 import { hashPassword } from "../lib/password";
 import { siteUrl } from "../lib/site-url";
 import * as schema from "./schema";
@@ -145,10 +147,65 @@ async function seedPastMatchDay(
     ];
     if (goalRows.length > 0) await db.insert(schema.goals).values(goalRows);
   }
+
+  return matchDay;
+}
+
+// Abre a rodada de avaliação de uma pelada já encerrada. Repete os inserts do
+// abrirRodada() em vez de importá-lo porque src/lib/ratings-engine.ts é
+// "server-only" e não carrega num script tsx solto. A regra que importa —
+// quem é companheiro de quem — vem do módulo puro compartilhado.
+async function seedRatingRound(matchDayId: number) {
+  const escalacao = await db
+    .select({
+      gameId: schema.gamePlayers.gameId,
+      playerId: schema.gamePlayers.playerId,
+      side: schema.gamePlayers.side,
+    })
+    .from(schema.gamePlayers)
+    .innerJoin(schema.games, eq(schema.gamePlayers.gameId, schema.games.id))
+    .where(eq(schema.games.matchDayId, matchDayId));
+
+  const comCompanheiro = [...companheirosPorJogador(escalacao)]
+    .filter(([, conjunto]) => conjunto.size > 0)
+    .map(([playerId]) => playerId);
+  const contas = await db
+    .select({ playerId: schema.users.playerId, userId: schema.users.id })
+    .from(schema.users)
+    .where(inArray(schema.users.playerId, comCompanheiro));
+  if (contas.length === 0) return null;
+
+  const [round] = await db
+    .insert(schema.ratingRounds)
+    .values({
+      matchDayId,
+      deadlineAt: sql`now() + make_interval(days => 2)`,
+    })
+    .returning();
+  await db.insert(schema.ratingRoundRaters).values(
+    contas.map((c) => ({ roundId: round.id, playerId: c.playerId, userId: c.userId })),
+  );
+  await db.insert(schema.notifications).values(
+    contas.map((c) => ({
+      playerId: c.playerId,
+      type: "rating_round_open" as const,
+      title: "Avalie seus companheiros",
+      body: "Você tem 2 dias para avaliar quem jogou com você.",
+      href: `/avaliar/${round.id}`,
+      dedupeKey: `rodada:${round.id}:aberta`,
+    })),
+  );
+  return { round, raters: contas.length };
 }
 
 async function main() {
   console.log("Limpando tabelas...");
+  await db.delete(schema.notifications);
+  await db.delete(schema.skillHistory);
+  await db.delete(schema.ratingReports);
+  await db.delete(schema.ratings);
+  await db.delete(schema.ratingRoundRaters);
+  await db.delete(schema.ratingRounds);
   await db.delete(schema.invites);
   await db.delete(schema.users);
   await db.delete(schema.goals);
@@ -166,7 +223,7 @@ async function main() {
   console.log("Criando 3 peladas passadas encerradas...");
   await seedPastMatchDay(inserted, wednesdayShift(-3), 0);
   await seedPastMatchDay(inserted, wednesdayShift(-2), 5);
-  await seedPastMatchDay(inserted, wednesdayShift(-1), 9);
+  const ultimaPelada = await seedPastMatchDay(inserted, wednesdayShift(-1), 9);
 
   console.log("Criando a próxima pelada com algumas presenças...");
   const [next] = await db
@@ -199,6 +256,13 @@ async function main() {
       username: "ps",
       passwordHash: await hashPassword("senha123"),
     },
+    // Cadu joga a última pelada do mesmo lado que o PS, então a rodada de
+    // avaliação do seed nasce com dois avaliadores que se avaliam.
+    {
+      playerId: byName.get("Carlos Eduardo")!.id,
+      username: "cadu",
+      passwordHash: await hashPassword("senha123"),
+    },
   ]);
   const inviteToken = randomBytes(32).toString("base64url");
   await db.insert(schema.invites).values({
@@ -206,8 +270,16 @@ async function main() {
     playerId: byName.get("Rafael Torres")!.id,
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
   });
-  console.log("Logins demo: du / senha123 · ps / senha123");
+  console.log("Logins demo: du · ps · cadu — todos com senha123");
   console.log(`Convite de teste (Rafael Torres): ${siteUrl()}/convite/${inviteToken}`);
+
+  const rodada = await seedRatingRound(ultimaPelada.id);
+  if (rodada) {
+    console.log(
+      `Rodada de avaliação #${rodada.round.id} aberta na pelada de ${ultimaPelada.date} ` +
+        `(${rodada.raters} avaliadores): ${siteUrl()}/avaliar/${rodada.round.id}`,
+    );
+  }
 
   console.log("Seed concluído.");
   await conn.end();

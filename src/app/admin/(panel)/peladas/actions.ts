@@ -16,6 +16,7 @@ import {
   teams,
 } from "@/db/schema";
 import { drawTeams } from "@/lib/draw";
+import { abrirRodada, descartarRodadaAberta } from "@/lib/ratings-engine";
 import { requireAdmin } from "@/lib/require-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
 
@@ -260,6 +261,9 @@ export async function deleteGoal(matchDayId: number, goalId: number) {
 export async function finishMatchDay(matchDayId: number) {
   await requireAdmin();
   await db.update(matchDays).set({ status: "finished" }).where(eq(matchDays.id, matchDayId));
+  // Encerrar a pelada é o gatilho da avaliação. Pelada sem jogos lançados, ou
+  // sem ninguém com conta, encerra igual — só não abre rodada.
+  await abrirRodada(matchDayId);
   revalidateMatchDay(matchDayId);
   revalidatePath("/artilharia");
   revalidatePath("/rankings");
@@ -267,6 +271,10 @@ export async function finishMatchDay(matchDayId: number) {
 
 export async function reopenMatchDay(matchDayId: number) {
   await requireAdmin();
+  // Reabrir permite mexer nos jogos, e é a escalação deles que define quem
+  // avalia quem — uma rodada em andamento não sobrevive a isso. Encerrar de
+  // novo abre uma rodada nova, do zero.
+  await descartarRodadaAberta(matchDayId);
   await db.update(matchDays).set({ status: "teams_drawn" }).where(eq(matchDays.id, matchDayId));
   revalidateMatchDay(matchDayId);
   revalidatePath("/artilharia");

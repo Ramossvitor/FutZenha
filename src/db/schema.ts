@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -165,6 +167,191 @@ export const invites = pgTable("invites", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// ---------------------------------------------------------------------------
+// Avaliação entre companheiros
+//
+// Encerrar uma pelada abre uma rodada. Cada jogador com conta avalia, de 1 a 5
+// estrelas, os companheiros com quem dividiu o lado em algum jogo daquele dia.
+// A rodada fecha quando todos avaliam ou quando o prazo vence, e a nota de
+// todo mundo é recalculada do zero (ver src/lib/skill.ts).
+// ---------------------------------------------------------------------------
+
+export const ratingRoundStatusEnum = pgEnum("rating_round_status", [
+  "open",
+  "closed",
+  "cancelled",
+]);
+
+export const ratingRoundCloseReasonEnum = pgEnum("rating_round_close_reason", [
+  "todos_avaliaram",
+  "prazo",
+  "admin",
+]);
+
+export const ratingReportStatusEnum = pgEnum("rating_report_status", [
+  "open",
+  "accepted",
+  "rejected",
+]);
+
+// "auto" = o admin deixou o prazo vencer, e o silêncio vale como aceite.
+export const reportResolverEnum = pgEnum("report_resolver", ["admin", "auto"]);
+
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "rating_round_open",
+  "rating_round_closed",
+  "skill_changed",
+  "skill_recalculated",
+  "rating_report_resolved",
+]);
+
+// Uma rodada por pelada — a unique em match_day_id é o que garante isso e o que
+// torna a abertura idempotente. Os prazos são congelados na criação: nada de
+// recalcular "agora + 2 dias" a cada leitura.
+export const ratingRounds = pgTable(
+  "rating_rounds",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .unique()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    status: ratingRoundStatusEnum("status").notNull().default("open"),
+    openedAt: timestamp("opened_at").notNull().defaultNow(),
+    deadlineAt: timestamp("deadline_at").notNull(),
+    closedAt: timestamp("closed_at"),
+    reportDeadlineAt: timestamp("report_deadline_at"),
+    closeReason: ratingRoundCloseReasonEnum("close_reason"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("rating_rounds_pendentes_idx").on(t.status, t.deadlineAt)],
+);
+
+// Denominador congelado do "todos já avaliaram": quem tinha conta ativa e
+// companheiros para avaliar no momento em que a rodada abriu. Sem esta tabela o
+// denominador mudaria embaixo do processo a cada conta criada ou desativada.
+export const ratingRoundRaters = pgTable(
+  "rating_round_raters",
+  {
+    roundId: integer("round_id")
+      .notNull()
+      .references(() => ratingRounds.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    submittedAt: timestamp("submitted_at"), // null = ainda não enviou
+  },
+  (t) => [primaryKey({ columns: [t.roundId, t.playerId] })],
+);
+
+// discarded_at null = avaliação válida. É assim que uma denúncia aceita tira a
+// nota da conta sem apagar o registro.
+export const ratings = pgTable(
+  "ratings",
+  {
+    id: serial("id").primaryKey(),
+    roundId: integer("round_id")
+      .notNull()
+      .references(() => ratingRounds.id, { onDelete: "cascade" }),
+    raterPlayerId: integer("rater_player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    ratedPlayerId: integer("rated_player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    stars: integer("stars").notNull(),
+    discardedAt: timestamp("discarded_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // Um voto por par por rodada — permite reenviar (upsert) antes do prazo.
+    unique().on(t.roundId, t.raterPlayerId, t.ratedPlayerId),
+    check("ratings_stars_check", sql`${t.stars} between 1 and 5`),
+    check("ratings_no_self_check", sql`${t.raterPlayerId} <> ${t.ratedPlayerId}`),
+    index("ratings_round_rated_idx").on(t.roundId, t.ratedPlayerId),
+    index("ratings_rated_idx").on(t.ratedPlayerId),
+  ],
+);
+
+// Uma denúncia por avaliação. O prazo do admin é congelado na abertura; vencido
+// sem resposta, o varredor aceita sozinho (resolved_by = 'auto').
+export const ratingReports = pgTable(
+  "rating_reports",
+  {
+    id: serial("id").primaryKey(),
+    ratingId: integer("rating_id")
+      .notNull()
+      .unique()
+      .references(() => ratings.id, { onDelete: "cascade" }),
+    reporterPlayerId: integer("reporter_player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    reason: text("reason"),
+    status: ratingReportStatusEnum("status").notNull().default("open"),
+    openedAt: timestamp("opened_at").notNull().defaultNow(),
+    adminDeadlineAt: timestamp("admin_deadline_at").notNull(),
+    resolvedAt: timestamp("resolved_at"),
+    resolvedBy: reportResolverEnum("resolved_by"),
+    adminNote: text("admin_note"),
+  },
+  (t) => [index("rating_reports_pendentes_idx").on(t.status, t.adminDeadlineAt)],
+);
+
+// Regravada inteira a cada replay — é projeção, não fonte de verdade. A nota
+// inicial 5,0 é constante do motor e não vira linha aqui.
+// average_received tem duas casas de propósito: a média das estrelas cai em
+// valores como 6,63 e 9,55, que numeric(3,1) arredondaria.
+export const skillHistory = pgTable(
+  "skill_history",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    roundId: integer("round_id")
+      .notNull()
+      .references(() => ratingRounds.id, { onDelete: "cascade" }),
+    skillBefore: numeric("skill_before", { precision: 3, scale: 1, mode: "number" }).notNull(),
+    skillAfter: numeric("skill_after", { precision: 3, scale: 1, mode: "number" }).notNull(),
+    ratingsCount: integer("ratings_count").notNull(),
+    averageReceived: numeric("average_received", {
+      precision: 4,
+      scale: 2,
+      mode: "number",
+    }).notNull(),
+    computedAt: timestamp("computed_at").notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.playerId, t.roundId)],
+);
+
+// Caixa de entrada in-app. Aponta para player_id (e não user_id) para
+// sobreviver a desativar/reativar a conta — e porque é o id que a sessão já
+// tem em mãos. dedupe_key + unique é o que torna todo insert idempotente.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    type: notificationTypeEnum("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    href: text("href"),
+    dedupeKey: text("dedupe_key").notNull(),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.playerId, t.dedupeKey),
+    index("notifications_inbox_idx").on(t.playerId, t.readAt),
+  ],
+);
+
 export type Player = typeof players.$inferSelect;
 export type MatchDay = typeof matchDays.$inferSelect;
 export type Attendance = typeof attendances.$inferSelect;
@@ -174,3 +361,10 @@ export type GamePlayer = typeof gamePlayers.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
+export type RatingRound = typeof ratingRounds.$inferSelect;
+export type RatingRoundRater = typeof ratingRoundRaters.$inferSelect;
+export type Rating = typeof ratings.$inferSelect;
+export type RatingReport = typeof ratingReports.$inferSelect;
+export type SkillHistoryEntry = typeof skillHistory.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
+export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
