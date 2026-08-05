@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { logout } from "../login/actions";
+import { logout } from "@/app/login/actions";
 
 const adminLinks = [
   { href: "/admin", label: "Dashboard" },

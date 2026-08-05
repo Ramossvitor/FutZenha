@@ -1,9 +1,18 @@
-// Sessão do admin: token "exp.assinatura" com HMAC-SHA256 (Web Crypto,
-// funciona tanto no runtime Node quanto no Edge/proxy).
+// Sessão em cookie: token "base64url(payload JSON).assinatura" com HMAC-SHA256
+// (Web Crypto, funciona tanto no runtime Node quanto no Edge/proxy). O payload
+// diz quem está logado; a validação autoritativa (conta ativa, token_version)
+// fica no DAL (src/lib/session.ts), que consulta o banco a cada request.
 
 export const SESSION_COOKIE = "futzenha_session";
 
-const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 dias
+export const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 dias
+
+export type SessionPayload = {
+  sub: number | null; // users.id (null para o admin, que não tem linha em users)
+  role: "admin" | "player";
+  v: number; // users.token_version na hora do login (0 para o admin)
+  exp: number; // epoch ms
+};
 
 async function hmac(data: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -19,19 +28,65 @@ async function hmac(data: string, secret: string): Promise<string> {
     .join("");
 }
 
-export async function createSessionToken(): Promise<string> {
-  const exp = String(Date.now() + SESSION_DURATION_MS);
-  return `${exp}.${await hmac(exp, process.env.SESSION_SECRET!)}`;
+// base64url via btoa/atob (sem Buffer) para rodar igual em Node e Edge.
+// O payload é JSON ASCII, então não há problema de codificação.
+function base64urlEncode(data: string): string {
+  return btoa(data).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-export async function verifySessionToken(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
-  const [exp, sig] = token.split(".");
-  if (!exp || !sig) return false;
-  if (Number(exp) < Date.now()) return false;
-  const expected = await hmac(exp, process.env.SESSION_SECRET!);
-  if (sig.length !== expected.length) return false;
+function base64urlDecode(data: string): string {
+  const base64 = data.replaceAll("-", "+").replaceAll("_", "/");
+  return atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4));
+}
+
+function isSessionPayload(value: unknown): value is SessionPayload {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    (v.sub === null || typeof v.sub === "number") &&
+    (v.role === "admin" || v.role === "player") &&
+    typeof v.v === "number" &&
+    typeof v.exp === "number"
+  );
+}
+
+// Exportado separado de createSessionToken para os testes forjarem exp no passado.
+export async function signSessionPayload(payload: SessionPayload): Promise<string> {
+  const encoded = base64urlEncode(JSON.stringify(payload));
+  return `${encoded}.${await hmac(encoded, process.env.SESSION_SECRET!)}`;
+}
+
+export async function createSessionToken(
+  data: { role: "admin" } | { role: "player"; sub: number; v: number },
+): Promise<string> {
+  const exp = Date.now() + SESSION_DURATION_MS;
+  const payload: SessionPayload =
+    data.role === "admin"
+      ? { sub: null, role: "admin", v: 0, exp }
+      : { sub: data.sub, role: "player", v: data.v, exp };
+  return signSessionPayload(payload);
+}
+
+export async function verifySessionToken(token: string | undefined): Promise<SessionPayload | null> {
+  if (!token) return null;
+  const dot = token.indexOf(".");
+  if (dot < 0) return null;
+  const encoded = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+
+  const expected = await hmac(encoded, process.env.SESSION_SECRET!);
+  if (sig.length !== expected.length) return null;
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0;
+  if (diff !== 0) return null;
+
+  // Tokens no formato antigo ("exp.assinatura") reprovam aqui no parse.
+  let payload: unknown;
+  try {
+    payload = JSON.parse(base64urlDecode(encoded));
+  } catch {
+    return null;
+  }
+  if (!isSessionPayload(payload) || payload.exp < Date.now()) return null;
+  return payload;
 }
