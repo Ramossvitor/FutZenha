@@ -21,13 +21,10 @@ export const ESTRELAS_MAX = 5;
 
 // Peso da rodada sobre a nota: nova = (2 × atual + recebida) / 3.
 // Mudar a inércia da nota é mudar estes dois números e rodar o replay.
-//
-// Efeito colateral que vale conhecer: arredondando para uma casa, a recorrência
-// tem ponto fixo em 9,9 (todo mundo dando 5★) e em 1,1 (todo mundo dando 1★),
-// alcançados em ~9 rodadas unânimes. Ou seja, 10,0 e 1,0 existem na escala mas
-// são inalcançáveis pela fórmula — o clamp abaixo é só defesa contra dado ruim.
 export const PESO_RODADA_NUM = 1;
 export const PESO_RODADA_DEN = 3;
+
+const UM_DECIMO_EM_CENT = 10;
 
 /**
  * Divisão inteira com arredondamento meio-para-cima. Todos os valores aqui são
@@ -43,6 +40,33 @@ function arredondar(dividendo: number, divisor: number): number {
 
 function clamp(cent: number): number {
   return Math.min(SKILL_MAX_CENT, Math.max(SKILL_MIN_CENT, cent));
+}
+
+/**
+ * Destrava os extremos da escala.
+ *
+ * Arredondando para uma casa, a média ponderada trava antes do extremo: com 5★
+ * unânime a nota empaca em 9,9, porque (2 × 9,9 + 10,0) / 3 = 9,93 arredonda de
+ * volta para 9,9. Espelhado, 1★ unânime empaca em 1,1. Sem isto, 10,0 e 1,0
+ * existiriam na escala mas seriam inalcançáveis.
+ *
+ * A regra é genérica de propósito — "o resultado empatou e a média recebida está
+ * no extremo" — em vez de um caso especial de 9,9. As duas formas são
+ * equivalentes com o peso atual (9,9 é a única nota que trava com média 10,0),
+ * mas a genérica continua valendo se PESO_RODADA mudar.
+ *
+ * O extremo não gruda: a partir de 10,0, um único 4★ no meio dos 5★ (média 9,55)
+ * já devolve a nota para 9,9 na rodada seguinte.
+ */
+function destravarExtremo(novaCent: number, atualCent: number, mediaCent: number): number {
+  if (novaCent !== atualCent) return novaCent;
+  if (mediaCent === SKILL_MAX_CENT && atualCent < SKILL_MAX_CENT) {
+    return atualCent + UM_DECIMO_EM_CENT;
+  }
+  if (mediaCent === SKILL_MIN_CENT && atualCent > SKILL_MIN_CENT) {
+    return atualCent - UM_DECIMO_EM_CENT;
+  }
+  return novaCent;
 }
 
 export function centParaNota(cent: number): number {
@@ -152,9 +176,11 @@ export function replaySkills(rounds: RoundInput[]): ReplayResult {
       // um arredondamento só, na casa que a nota realmente tem.
       const decimos = arredondar(
         (PESO_RODADA_DEN - PESO_RODADA_NUM) * atualCent + PESO_RODADA_NUM * mediaCent,
-        PESO_RODADA_DEN * 10,
+        PESO_RODADA_DEN * UM_DECIMO_EM_CENT,
       );
-      const novaCent = clamp(decimos * 10);
+      const novaCent = clamp(
+        destravarExtremo(decimos * UM_DECIMO_EM_CENT, atualCent, mediaCent),
+      );
 
       notaCent.set(playerId, novaCent);
       history.push({

@@ -132,25 +132,56 @@ describe("replaySkills", () => {
     expect([...b.skillByPlayer]).toEqual([...a.skillByPlayer]);
   });
 
-  // Arredondando para uma casa, a recorrência trava antes dos extremos: 9,9 com
-  // 5★ unânime e 1,1 com 1★ unânime. 10,0 e 1,0 são inalcançáveis pela fórmula.
-  it("converge para 9,9 com 5★ unânime e estabiliza sem oscilar", () => {
+  // Sem a destrava, o arredondamento travaria a nota em 9,9 e em 1,1 — os
+  // extremos existiriam na escala mas seriam inalcançáveis.
+  it("converge para 10,0 com 5★ unânime e estabiliza sem oscilar", () => {
     const rodadas = Array.from({ length: 40 }, (_, i) =>
       rodada(i + 1, recebe(1, [5, 5, 5], 1000 + i * 10)),
     );
     const r = replaySkills(rodadas);
-    expect(notaDe(r, 1)).toBe(9.9);
+    expect(notaDe(r, 1)).toBe(10);
 
-    const estaveis = r.history.filter((h) => h.before === 9.9);
-    expect(estaveis.length).toBeGreaterThan(20);
-    expect(estaveis.every((h) => h.after === 9.9)).toBe(true);
+    // A subida é monótona e passa por 9,9 antes de destravar em 10,0.
+    expect(r.history.slice(0, 10).map((h) => h.after)).toEqual([
+      6.7, 7.8, 8.5, 9, 9.3, 9.5, 9.7, 9.8, 9.9, 10,
+    ]);
+    const noTeto = r.history.filter((h) => h.before === 10);
+    expect(noTeto.length).toBeGreaterThan(20);
+    expect(noTeto.every((h) => h.after === 10)).toBe(true);
   });
 
-  it("converge para 1,1 com 1★ unânime", () => {
+  it("converge para 1,0 com 1★ unânime e estabiliza", () => {
     const r = replaySkills(
       Array.from({ length: 40 }, (_, i) => rodada(i + 1, recebe(1, [1, 1, 1], 1000 + i * 10))),
     );
-    expect(notaDe(r, 1)).toBe(1.1);
+    expect(notaDe(r, 1)).toBe(1);
+    const noPiso = r.history.filter((h) => h.before === 1);
+    expect(noPiso.length).toBeGreaterThan(20);
+    expect(noPiso.every((h) => h.after === 1)).toBe(true);
+  });
+
+  // O extremo não gruda: basta uma rodada não-unânime para cair.
+  it("um único 4★ derruba a nota de 10,0 para 9,9", () => {
+    const subida = Array.from({ length: 12 }, (_, i) =>
+      rodada(i + 1, recebe(1, [5, 5, 5, 5, 5], 1000 + i * 10), `2026-03-${String(i + 1).padStart(2, "0")}`),
+    );
+    const queda = rodada(13, recebe(1, [5, 5, 5, 5, 4], 5000), "2026-03-13");
+    const r = replaySkills([...subida, queda]);
+
+    const ultima = r.history.at(-1)!;
+    expect(ultima.before).toBe(10);
+    expect(ultima.averageReceived).toBe(9.55);
+    expect(ultima.after).toBe(9.9);
+  });
+
+  // A destrava só age no extremo exato da escala — 4★ unânime (7,75) tem que
+  // convergir pela fórmula normal, sem nenhum empurrão.
+  it("não destrava quando a média recebida não está no extremo", () => {
+    const r = replaySkills(
+      Array.from({ length: 40 }, (_, i) => rodada(i + 1, recebe(1, [4, 4, 4], 1000 + i * 10))),
+    );
+    expect(notaDe(r, 1)).toBeLessThan(7.8);
+    expect(notaDe(r, 1)).toBeGreaterThan(7.6);
   });
 
   it("a nota nunca sai da faixa [1,0; 10,0]", () => {
