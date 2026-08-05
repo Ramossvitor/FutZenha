@@ -2,13 +2,13 @@
 
 Site para organizar a pelada semanal do grupo: confirmação de presença, sorteio de times balanceado, resultados, artilharia e rankings.
 
-**Modelo de uso:** sem login para os jogadores. Um ou dois admins gerenciam tudo pelo painel `/admin`; o resto do grupo acessa o link público para ver a agenda e confirmar presença (na base da confiança — é um grupo fechado de amigos).
+**Modelo de uso:** cada jogador tem uma conta (criada via link de convite que o admin manda no WhatsApp) e marca **apenas a própria presença**. As páginas continuam públicas para consulta; quem ainda não tem conta é marcado pelo admin no painel `/admin`. Sem e-mail, sem serviço externo — o convite é o único canal de cadastro e também serve de reset de senha.
 
 ## Stack
 
 - [Next.js 16](https://nextjs.org) (App Router) + TypeScript + Tailwind CSS v4
 - Postgres com [Drizzle ORM](https://orm.drizzle.team) (local via Docker; produção no [Neon](https://neon.tech) free tier)
-- Auth do admin: senha única em env var + cookie assinado (HMAC) — sem provider externo
+- Auth sem provider externo: cookie assinado (HMAC) com papel admin/jogador; admin entra com senha única em env var, jogadores com usuário + senha (hash scrypt do `node:crypto`)
 - Deploy: [Vercel](https://vercel.com) (plano Hobby)
 
 ## Rodando local
@@ -48,19 +48,30 @@ Acesse http://localhost:3000 — o painel fica em `/admin` (senha = `ADMIN_PASSW
 ## Fluxo de uma pelada
 
 1. Admin cria a pelada em `/admin/peladas` (data, hora, local).
-2. O link público (`/pelada/[id]`) vai no grupo do WhatsApp; cada um marca **Vou / Fora**.
+2. O link público (`/pelada/[id]`) vai no grupo do WhatsApp; cada um entra na conta e marca **Vou / Fora** (só a própria presença — quem não tem conta pede convite ao admin ou é marcado por ele no painel).
 3. No dia, o admin sorteia os times (balanceado por nota, goleiros separados) e ajusta manualmente se quiser.
 4. Durante/depois, o admin lança os jogos, placares e gols.
 5. **Encerrar pelada** trava tudo e faz os números contarem na artilharia, nos rankings e na presença.
 
-Notas dos jogadores (1–10) só aparecem no admin — nunca nas páginas públicas.
+Notas dos jogadores (1–10) só aparecem no admin — nunca nas páginas públicas nem no perfil.
+
+## Contas de jogador
+
+- **Criar conta**: em `/admin/jogadores`, o admin clica em **Gerar convite** e manda o link no WhatsApp do jogador. O link (`/convite/[token]`) vale 7 dias e é de uso único; o jogador escolhe usuário e senha e já sai logado. Nada é consumido ao abrir o link — só ao enviar o formulário (bots de preview do WhatsApp não estragam o convite).
+- **Esqueceu a senha**: o admin clica em **Resetar senha (novo convite)** no mesmo lugar — o link redefine a senha, derruba as sessões antigas e reativa a conta se estava desativada.
+- **Desativar conta**: derruba a sessão do jogador no próximo acesso (a conta some sem apagar histórico; desativar o *jogador* é outra coisa — tira das listas mas a conta continua entrando).
+- **Meu perfil** (`/perfil`): estatísticas próprias (só peladas encerradas) e troca de senha.
+- Logins de exemplo do seed: `du` / `senha123` e `ps` / `senha123` (+ um convite pendente impresso no console do seed).
+- Limitação conhecida: um cookie = um papel por vez. O admin que também joga usa o override de presenças do painel, ou sai e entra com a conta de jogador.
+- Sem rate limiting no login, de propósito (grupo fechado; o custo do scrypt já freia força bruta; mais que isso exigiria serviço de estado compartilhado, quebrando o R$ 0).
 
 ## Deploy (R$ 0)
 
-1. Crie um banco no [Neon](https://neon.tech) e copie a connection string.
-2. Importe o repo na [Vercel](https://vercel.com) e configure as env vars: `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET` (string longa aleatória) e `NEXT_PUBLIC_SITE_URL` (URL final do site).
-3. Rode as migrations no banco de produção: `DATABASE_URL=<neon> npm run db:migrate` (localmente, apontando para o Neon).
-4. Deploy. Não rode o seed em produção — cadastre os jogadores reais no `/admin/jogadores`.
+1. Crie um banco no [Neon](https://neon.tech). Copie **duas** connection strings: a *pooled* (host com `-pooler`) e a direta.
+2. Importe o repo na [Vercel](https://vercel.com) e configure as env vars: `DATABASE_URL` (**a string pooled**), `ADMIN_PASSWORD`, `SESSION_SECRET` (string longa aleatória) e `NEXT_PUBLIC_SITE_URL` (URL final do site — os links de convite usam ela).
+3. Como a string pooled passa por PgBouncer em modo transação, adicione `{ prepare: false }` na chamada `postgres(...)` de `src/db/index.ts` na hora do deploy.
+4. Rode as migrations no banco de produção usando a string **direta** (sem `-pooler`): `DATABASE_URL=<neon-direta> npm run db:migrate` (localmente, apontando para o Neon).
+5. Deploy. Não rode o seed em produção — cadastre os jogadores reais no `/admin/jogadores` e mande os convites.
 
 ## Modelo de dados (resumo)
 
