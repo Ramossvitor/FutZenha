@@ -1,10 +1,12 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
 import { formatDate, formatTime } from "@/lib/format";
+import { getSession } from "@/lib/session";
 import { vestClass } from "@/lib/team-colors";
-import { setAttendancePublic } from "./actions";
+import { setMyAttendance } from "./actions";
 
 const statusLabels = {
   scheduled: "Marcada",
@@ -17,6 +19,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
 
+  const session = await getSession();
   const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, id));
   if (!matchDay) notFound();
 
@@ -81,6 +84,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
   const teamNameById = new Map(teamList.map((t) => [t.id, t.name]));
 
   const canToggle = matchDay.status === "scheduled";
+  const myPlayerId = session?.role === "player" ? session.player.id : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -172,13 +176,38 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
               : "Pelada encerrada."}
           </p>
         )}
+        {canToggle && !session && (
+          <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-950">
+            <Link
+              href={`/login?next=/pelada/${matchDay.id}`}
+              className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+            >
+              Entre na sua conta
+            </Link>{" "}
+            para marcar presença.
+          </p>
+        )}
+        {canToggle && session?.role === "admin" && (
+          <p className="text-sm text-neutral-500">
+            Você está como admin — gerencie presenças no{" "}
+            <Link href={`/admin/peladas/${matchDay.id}`} className="underline">
+              painel
+            </Link>
+            .
+          </p>
+        )}
         <ul className="flex flex-col gap-1">
           {activePlayers.map((player) => {
             const status = statusByPlayer.get(player.id);
+            const isMe = myPlayerId === player.id;
             return (
               <li
                 key={player.id}
-                className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900"
+                className={`flex items-center gap-2 rounded-lg border bg-white px-3 py-2 dark:bg-neutral-900 ${
+                  isMe
+                    ? "border-emerald-400 dark:border-emerald-700"
+                    : "border-neutral-200 dark:border-neutral-800"
+                }`}
               >
                 <span
                   className={
@@ -192,11 +221,16 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
                   {player.name}
                   {player.nickname ? ` (${player.nickname})` : ""}
                 </span>
+                {isMe && (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                    você
+                  </span>
+                )}
                 {status === "in" && <span className="text-sm text-emerald-600">✓</span>}
-                {canToggle && (
+                {canToggle && isMe && (
                   <span className="ml-auto flex gap-1">
                     {status !== "in" && (
-                      <form action={setAttendancePublic.bind(null, matchDay.id, player.id, "in")}>
+                      <form action={setMyAttendance.bind(null, matchDay.id, "in")}>
                         <button
                           type="submit"
                           className="rounded-lg bg-emerald-700 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-800"
@@ -206,7 +240,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
                       </form>
                     )}
                     {status !== "out" && (
-                      <form action={setAttendancePublic.bind(null, matchDay.id, player.id, "out")}>
+                      <form action={setMyAttendance.bind(null, matchDay.id, "out")}>
                         <button
                           type="submit"
                           className="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
@@ -222,7 +256,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
           })}
         </ul>
         <p className="text-xs text-neutral-400">
-          Não está na lista? Fala com o admin para te cadastrar.
+          Não está na lista ou não tem conta? Fala com o admin para te cadastrar.
         </p>
       </section>
     </div>
