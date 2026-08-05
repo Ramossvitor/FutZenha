@@ -1,10 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { attendances, matchDays, players } from "@/db/schema";
+import { attendances, games, matchDays, players, teamPlayers, teams } from "@/db/schema";
 import { formatDate, formatTime } from "@/lib/format";
-import { deleteMatchDay, setAttendanceAdmin, updateMatchDay } from "../actions";
+import { vestClass } from "@/lib/team-colors";
+import {
+  deleteMatchDay,
+  drawTeamsAction,
+  setAttendanceAdmin,
+  swapPlayersAction,
+  updateMatchDay,
+} from "../actions";
 
 const inputClass =
   "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
@@ -15,13 +22,25 @@ const statusLabels = {
   finished: "Encerrada",
 } as const;
 
-export default async function AdminPeladaPage({ params }: PageProps<"/admin/peladas/[id]">) {
+const errorMessages: Record<string, string> = {
+  "dados-invalidos": "Dados inválidos — confira os campos.",
+  "pelada-encerrada": "A pelada já foi encerrada.",
+  "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
+  "jogos-lancados": "Já existem jogos lançados — apague os jogos antes de re-sortear.",
+};
+
+export default async function AdminPeladaPage({
+  params,
+  searchParams,
+}: PageProps<"/admin/peladas/[id]">) {
   const { id: idParam } = await params;
+  const { erro } = await searchParams;
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
 
   const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, id));
   if (!matchDay) notFound();
+  const errorMessage = typeof erro === "string" ? errorMessages[erro] : undefined;
 
   const activePlayers = await db
     .select()
@@ -34,6 +53,33 @@ export default async function AdminPeladaPage({ params }: PageProps<"/admin/pela
     .where(eq(attendances.matchDayId, id));
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
   const confirmed = activePlayers.filter((p) => statusByPlayer.get(p.id) === "in");
+
+  const teamList = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.matchDayId, id))
+    .orderBy(asc(teams.sortOrder));
+  const teamMembers =
+    teamList.length > 0
+      ? await db
+          .select({
+            teamId: teamPlayers.teamId,
+            playerId: players.id,
+            playerName: players.name,
+            skill: players.skill,
+            isGoalkeeper: players.isGoalkeeper,
+          })
+          .from(teamPlayers)
+          .innerJoin(players, eq(teamPlayers.playerId, players.id))
+          .where(
+            inArray(
+              teamPlayers.teamId,
+              teamList.map((t) => t.id),
+            ),
+          )
+          .orderBy(asc(players.name))
+      : [];
+  const gameCount = (await db.select().from(games).where(eq(games.matchDayId, id))).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -49,6 +95,12 @@ export default async function AdminPeladaPage({ params }: PageProps<"/admin/pela
           Ver página pública →
         </Link>
       </header>
+
+      {errorMessage && (
+        <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+          {errorMessage}
+        </p>
+      )}
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="mb-3 font-bold">Dados da pelada</h2>
@@ -133,6 +185,108 @@ export default async function AdminPeladaPage({ params }: PageProps<"/admin/pela
             );
           })}
         </ul>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="mb-3 font-bold">Times</h2>
+        {matchDay.status !== "finished" && (
+          <form
+            action={drawTeamsAction.bind(null, matchDay.id)}
+            className="mb-4 flex flex-wrap items-end gap-3"
+          >
+            <label className="flex flex-col gap-1 text-sm">
+              Nº de times
+              <select name="teamCount" defaultValue={confirmed.length >= 15 ? 3 : 2} className={inputClass}>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+              </select>
+            </label>
+            <button
+              type="submit"
+              className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+            >
+              {teamList.length > 0 ? "Re-sortear" : "Sortear times"}
+            </button>
+            <span className="text-xs text-neutral-500">
+              {confirmed.length} confirmados
+              {teamList.length > 0 && gameCount > 0 && " · apague os jogos antes de re-sortear"}
+            </span>
+          </form>
+        )}
+
+        {teamList.length === 0 && (
+          <p className="text-sm text-neutral-500">Times ainda não sorteados.</p>
+        )}
+
+        {teamList.length > 0 && (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {teamList.map((team) => {
+                const members = teamMembers.filter((m) => m.teamId === team.id);
+                const skillSum = members.reduce((acc, m) => acc + m.skill, 0);
+                return (
+                  <div
+                    key={team.id}
+                    className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-800"
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      <span
+                        className={`inline-block rounded-full px-3 py-1 text-sm font-bold ${vestClass(team.name)}`}
+                      >
+                        {team.name}
+                      </span>
+                      <span className="text-xs text-neutral-500">
+                        Σ {skillSum} · média {(skillSum / Math.max(members.length, 1)).toFixed(1)}
+                      </span>
+                    </div>
+                    <ul className="flex flex-col gap-1 text-sm">
+                      {members.map((m) => (
+                        <li key={m.playerId} className="flex gap-2">
+                          <span>
+                            {m.isGoalkeeper ? "🧤 " : ""}
+                            {m.playerName}
+                          </span>
+                          <span className="ml-auto text-neutral-400">{m.skill}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+
+            {matchDay.status !== "finished" && (
+              <form
+                action={swapPlayersAction.bind(null, matchDay.id)}
+                className="mt-4 flex flex-wrap items-end gap-3 border-t border-neutral-200 pt-4 dark:border-neutral-800"
+              >
+                <span className="w-full text-sm font-medium">Trocar jogadores de time</span>
+                {(["playerA", "playerB"] as const).map((field) => (
+                  <select key={field} name={field} className={inputClass}>
+                    {teamList.map((team) => (
+                      <optgroup key={team.id} label={team.name}>
+                        {teamMembers
+                          .filter((m) => m.teamId === team.id)
+                          .map((m) => (
+                            <option key={m.playerId} value={m.playerId}>
+                              {m.playerName}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                ))}
+                <button
+                  type="submit"
+                  className="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-neutral-800"
+                >
+                  Trocar
+                </button>
+              </form>
+            )}
+          </>
+        )}
       </section>
 
       <section className="rounded-xl border border-red-200 bg-white p-4 dark:border-red-900 dark:bg-neutral-900">
