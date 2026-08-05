@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: futzenha-db
+    environment:
+      POSTGRES_USER: futzenha
+      POSTGRES_PASSWORD: futzenha
+      POSTGRES_DB: futzenha
+    ports:
+      - "5433:5432"
+    volumes:
+      - futzenha-pgdata:/var/lib/postgresql/data
+
+volumes:
+  futzenha-pgdata:
