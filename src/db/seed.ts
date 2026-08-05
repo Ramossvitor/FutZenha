@@ -1,6 +1,8 @@
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { hashPassword } from "../lib/password";
 import * as schema from "./schema";
 
 const conn = postgres(process.env.DATABASE_URL!, { max: 1 });
@@ -127,6 +129,8 @@ async function seedPastMatchDay(
 
 async function main() {
   console.log("Limpando tabelas...");
+  await db.delete(schema.invites);
+  await db.delete(schema.users);
   await db.delete(schema.goals);
   await db.delete(schema.games);
   await db.delete(schema.teamPlayers);
@@ -160,6 +164,30 @@ async function main() {
       status: "in" as const,
     })),
   );
+
+  console.log("Criando contas demo e um convite pendente...");
+  const byName = new Map(inserted.map((p) => [p.name, p]));
+  await db.insert(schema.users).values([
+    {
+      playerId: byName.get("Eduardo Ramos")!.id,
+      username: "du",
+      passwordHash: await hashPassword("senha123"),
+    },
+    {
+      playerId: byName.get("Paulo Sérgio")!.id,
+      username: "ps",
+      passwordHash: await hashPassword("senha123"),
+    },
+  ]);
+  const inviteToken = randomBytes(32).toString("base64url");
+  await db.insert(schema.invites).values({
+    token: inviteToken,
+    playerId: byName.get("Rafael Torres")!.id,
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
+  });
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  console.log("Logins demo: du / senha123 · ps / senha123");
+  console.log(`Convite de teste (Rafael Torres): ${siteUrl}/convite/${inviteToken}`);
 
   console.log("Seed concluído.");
   await conn.end();
