@@ -12,7 +12,7 @@ import {
   teamPlayers,
   teams,
 } from "@/db/schema";
-import { formatDate, formatTime } from "@/lib/format";
+import { formatDate, formatSkill, formatTime } from "@/lib/format";
 import { vestClass } from "@/lib/team-colors";
 import {
   addGoal,
@@ -285,7 +285,10 @@ export default async function AdminPeladaPage({
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {teamList.map((team) => {
                 const members = teamMembers.filter((m) => m.teamId === team.id);
-                const skillSum = members.reduce((acc, m) => acc + m.skill, 0);
+                // Soma em centésimos: acumular a nota decimal em ponto
+                // flutuante mostraria "Σ 34,400000000000006".
+                const skillSum =
+                  members.reduce((acc, m) => acc + Math.round(m.skill * 100), 0) / 100;
                 return (
                   <div
                     key={team.id}
@@ -298,7 +301,8 @@ export default async function AdminPeladaPage({
                         {team.name}
                       </span>
                       <span className="text-xs text-neutral-500">
-                        Σ {skillSum} · média {(skillSum / Math.max(members.length, 1)).toFixed(1)}
+                        Σ {formatSkill(skillSum)} · média{" "}
+                        {formatSkill(skillSum / Math.max(members.length, 1))}
                       </span>
                     </div>
                     <ul className="flex flex-col gap-1 text-sm">
@@ -308,7 +312,7 @@ export default async function AdminPeladaPage({
                             {m.isGoalkeeper ? "🧤 " : ""}
                             {m.playerName}
                           </span>
-                          <span className="ml-auto text-neutral-400">{m.skill}</span>
+                          <span className="ml-auto text-neutral-400">{formatSkill(m.skill)}</span>
                         </li>
                       ))}
                     </ul>

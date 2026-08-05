@@ -10,6 +10,11 @@ export type DrawnTeam = {
   skillSum: number;
 };
 
+// A nota tem uma casa decimal, então somar em ponto flutuante faria
+// `skillSum === minSum` quase nunca bater e o desempate por tamanho de time
+// nunca dispararia. Internamente somamos centésimos inteiros.
+const toCent = (skill: number) => Math.round(skill * 100);
+
 function shuffle<T>(items: T[], rng: () => number): T[] {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -36,9 +41,9 @@ export function drawTeams(
   const n = playersIn.length;
   const base = Math.floor(n / teamCount);
   const remainder = n % teamCount;
-  const teams: DrawnTeam[] = Array.from({ length: teamCount }, () => ({
-    players: [],
-    skillSum: 0,
+  const teams = Array.from({ length: teamCount }, () => ({
+    players: [] as DrawPlayer[],
+    sumCent: 0,
   }));
   // Os primeiros `remainder` times comportam um jogador a mais.
   const capacity = (i: number) => base + (i < remainder ? 1 : 0);
@@ -51,7 +56,7 @@ export function drawTeams(
   // 1 goleiro por time; goleiros excedentes jogam na linha.
   goalkeepers.slice(0, teamCount).forEach((gk, i) => {
     teams[i].players.push(gk);
-    teams[i].skillSum += gk.skill;
+    teams[i].sumCent += toCent(gk.skill);
   });
   const line = [...linePool, ...goalkeepers.slice(teamCount)];
 
@@ -60,14 +65,14 @@ export function drawTeams(
     const candidates = teams
       .map((team, i) => ({ team, i }))
       .filter(({ team, i }) => team.players.length < capacity(i));
-    const minSum = Math.min(...candidates.map((c) => c.team.skillSum));
-    let best = candidates.filter((c) => c.team.skillSum === minSum);
+    const minSum = Math.min(...candidates.map((c) => c.team.sumCent));
+    let best = candidates.filter((c) => c.team.sumCent === minSum);
     const minLen = Math.min(...best.map((c) => c.team.players.length));
     best = best.filter((c) => c.team.players.length === minLen);
     const chosen = best[Math.floor(rng() * best.length)];
     chosen.team.players.push(player);
-    chosen.team.skillSum += player.skill;
+    chosen.team.sumCent += toCent(player.skill);
   }
 
-  return teams;
+  return teams.map((t) => ({ players: t.players, skillSum: t.sumCent / 100 }));
 }

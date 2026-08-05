@@ -93,4 +93,26 @@ describe("drawTeams", () => {
       expect(team.skillSum).toBe(team.players.reduce((acc, p) => acc + p.skill, 0));
     }
   });
+
+  // A nota tem uma casa decimal e 0,1 não é exato em ponto flutuante. Estas
+  // notas somam 3,4 por time, mas acumuladas como float dão 3.4000000000000004
+  // — o que fazia `skillSum === minSum` nunca bater e matava o desempate.
+  const decimais = [1, 1.1, 1.3, 1, 1.2, 1.2];
+
+  it("soma notas decimais sem erro de ponto flutuante", () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const teams = drawTeams(makePlayers(decimais), 2, seededRng(seed));
+      for (const team of teams) {
+        const exato = Math.round(team.players.reduce((acc, p) => acc + p.skill * 10, 0)) / 10;
+        expect(team.skillSum).toBe(exato);
+      }
+    }
+  });
+
+  it("equilibra times com notas decimais que empatam", () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const teams = drawTeams(makePlayers(decimais), 2, seededRng(seed));
+      expect(teams.map((t) => t.skillSum)).toEqual([3.4, 3.4]);
+    }
+  });
 });

@@ -3,6 +3,7 @@ import {
   date,
   index,
   integer,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -27,7 +28,9 @@ export const players = pgTable("players", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   nickname: text("nickname"),
-  skill: integer("skill").notNull().default(5),
+  // A nota é calculada pelas avaliações dos companheiros (ver src/lib/skill.ts)
+  // — o admin não digita mais. Todo jogador começa em 5,0.
+  skill: numeric("skill", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
   isGoalkeeper: boolean("is_goalkeeper").notNull().default(false),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

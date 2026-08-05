@@ -1,6 +1,7 @@
 import { asc, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, players, users, type Invite, type Player, type User } from "@/db/schema";
+import { formatSkill } from "@/lib/format";
 import { siteUrl } from "@/lib/site-url";
 import {
   createInvite,
@@ -17,7 +18,7 @@ const inputClass =
 
 const errorMessages: Record<string, string> = {
   "nome-duplicado": "Já existe um jogador com esse nome.",
-  "dados-invalidos": "Dados inválidos — confira o nome e a nota (1 a 10).",
+  "dados-invalidos": "Dados inválidos — confira o nome.",
 };
 
 function PlayerFields({ player }: { player?: Player }) {
@@ -30,18 +31,6 @@ function PlayerFields({ player }: { player?: Player }) {
       <label className="flex flex-col gap-1 text-sm">
         Apelido
         <input name="nickname" defaultValue={player?.nickname ?? ""} className={inputClass} />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Nota (1–10)
-        <input
-          name="skill"
-          type="number"
-          min={1}
-          max={10}
-          required
-          defaultValue={player?.skill ?? 5}
-          className={`${inputClass} w-24`}
-        />
       </label>
       <label className="flex items-center gap-2 py-2 text-sm">
         <input
@@ -207,7 +196,7 @@ export default async function JogadoresPage({ searchParams }: PageProps<"/admin/
                 </span>
               )}
               <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
-                nota {player.skill}
+                nota {formatSkill(player.skill)}
               </span>
             </summary>
             <div className="border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">

@@ -22,6 +22,12 @@ export function formatTime(timeStr: string | null): string | null {
   return timeStr.slice(0, 5);
 }
 
+// A nota é numeric(3,1) e chega como number — renderizar cru mostraria
+// "34.400000000000006" em somas. Sempre uma casa, com vírgula.
+export function formatSkill(skill: number): string {
+  return skill.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 export function todayISO(): string {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;

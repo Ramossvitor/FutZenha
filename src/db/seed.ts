@@ -22,30 +22,31 @@ if (process.env.VERCEL || !/@(localhost|127\.0\.0\.1)[:/]/.test(databaseUrl)) {
 const conn = postgres(databaseUrl, { max: 1, prepare: false });
 const db = drizzle(conn, { schema });
 
+// Sem nota: todo jogador nasce com 5,0 (default da coluna) e a nota só se
+// move pelas avaliações dos companheiros.
 const seedPlayers: Array<{
   name: string;
   nickname?: string;
-  skill: number;
   isGoalkeeper?: boolean;
 }> = [
-  { name: "André Souza", nickname: "Deco", skill: 8 },
-  { name: "Bruno Lima", skill: 6 },
-  { name: "Carlos Eduardo", nickname: "Cadu", skill: 7 },
-  { name: "Diego Ferreira", skill: 5 },
-  { name: "Eduardo Ramos", nickname: "Du", skill: 9 },
-  { name: "Felipe Costa", skill: 4 },
-  { name: "Gabriel Martins", nickname: "Biel", skill: 7 },
-  { name: "Henrique Alves", skill: 3, isGoalkeeper: true },
-  { name: "Igor Santana", skill: 6 },
-  { name: "João Pedro", nickname: "JP", skill: 8 },
-  { name: "Kleber Nunes", skill: 5, isGoalkeeper: true },
-  { name: "Lucas Oliveira", skill: 6 },
-  { name: "Marcos Vinícius", nickname: "Marquinhos", skill: 7 },
-  { name: "Nando Ribeiro", skill: 4 },
-  { name: "Otávio Mendes", skill: 5 },
-  { name: "Paulo Sérgio", nickname: "PS", skill: 6, isGoalkeeper: true },
-  { name: "Rafael Torres", nickname: "Rafa", skill: 8 },
-  { name: "Thiago Barbosa", skill: 5 },
+  { name: "André Souza", nickname: "Deco" },
+  { name: "Bruno Lima" },
+  { name: "Carlos Eduardo", nickname: "Cadu" },
+  { name: "Diego Ferreira" },
+  { name: "Eduardo Ramos", nickname: "Du" },
+  { name: "Felipe Costa" },
+  { name: "Gabriel Martins", nickname: "Biel" },
+  { name: "Henrique Alves", isGoalkeeper: true },
+  { name: "Igor Santana" },
+  { name: "João Pedro", nickname: "JP" },
+  { name: "Kleber Nunes", isGoalkeeper: true },
+  { name: "Lucas Oliveira" },
+  { name: "Marcos Vinícius", nickname: "Marquinhos" },
+  { name: "Nando Ribeiro" },
+  { name: "Otávio Mendes" },
+  { name: "Paulo Sérgio", nickname: "PS", isGoalkeeper: true },
+  { name: "Rafael Torres", nickname: "Rafa" },
+  { name: "Thiago Barbosa" },
 ];
 
 function isoDate(d: Date): string {
@@ -86,10 +87,10 @@ async function seedPastMatchDay(
     out.map((p) => ({ matchDayId: matchDay.id, playerId: p.id, status: "out" as const })),
   );
 
-  // Dois times: goleiro + linha alternada (equilíbrio aproximado basta no seed).
-  const sortedLine = [...line].sort((a, b) => b.skill - a.skill);
-  const teamAPlayers = [goalkeepers[0], ...sortedLine.filter((_, i) => i % 2 === 0)];
-  const teamBPlayers = [goalkeepers[1], ...sortedLine.filter((_, i) => i % 2 === 1)];
+  // Dois times: goleiro + linha alternada. Com todo mundo em 5,0 não há o que
+  // balancear no seed — alternar já distribui os jogadores.
+  const teamAPlayers = [goalkeepers[0], ...line.filter((_, i) => i % 2 === 0)];
+  const teamBPlayers = [goalkeepers[1], ...line.filter((_, i) => i % 2 === 1)];
 
   const [teamA] = await db
     .insert(schema.teams)

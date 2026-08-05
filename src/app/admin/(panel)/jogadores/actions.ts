@@ -16,7 +16,6 @@ const playerSchema = z.object({
     .trim()
     .max(60)
     .transform((v) => (v === "" ? null : v)),
-  skill: z.coerce.number().int().min(1).max(10),
   isGoalkeeper: z.coerce.boolean(),
 });
 
@@ -24,7 +23,6 @@ function parsePlayerForm(formData: FormData) {
   return playerSchema.safeParse({
     name: formData.get("name") ?? "",
     nickname: formData.get("nickname") ?? "",
-    skill: formData.get("skill") ?? 5,
     isGoalkeeper: formData.get("isGoalkeeper") === "on",
   });
 }
