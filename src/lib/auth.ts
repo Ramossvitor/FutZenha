@@ -14,6 +14,17 @@ export type SessionPayload = {
   exp: number; // epoch ms
 };
 
+// Lazy de propósito: os testes definem a env var depois de importar o módulo.
+// Sem esta checagem, um SESSION_SECRET ausente assinaria com a string
+// "undefined" — cookie de admin forjável, e silenciosamente.
+function sessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error("SESSION_SECRET não definida — impossível assinar ou validar sessões.");
+  }
+  return secret;
+}
+
 async function hmac(data: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -53,7 +64,7 @@ function isSessionPayload(value: unknown): value is SessionPayload {
 // Exportado separado de createSessionToken para os testes forjarem exp no passado.
 export async function signSessionPayload(payload: SessionPayload): Promise<string> {
   const encoded = base64urlEncode(JSON.stringify(payload));
-  return `${encoded}.${await hmac(encoded, process.env.SESSION_SECRET!)}`;
+  return `${encoded}.${await hmac(encoded, sessionSecret())}`;
 }
 
 export async function createSessionToken(
@@ -74,7 +85,7 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
   const encoded = token.slice(0, dot);
   const sig = token.slice(dot + 1);
 
-  const expected = await hmac(encoded, process.env.SESSION_SECRET!);
+  const expected = await hmac(encoded, sessionSecret());
   if (sig.length !== expected.length) return null;
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);

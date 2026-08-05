@@ -2,14 +2,18 @@
   "name": "futzenha",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "tsx src/db/migrate.ts && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:prod": "tsx src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx src/db/seed.ts"
   },

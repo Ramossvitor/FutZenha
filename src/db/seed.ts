@@ -3,9 +3,23 @@ import { randomBytes } from "node:crypto";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { hashPassword } from "../lib/password";
+import { siteUrl } from "../lib/site-url";
 import * as schema from "./schema";
 
-const conn = postgres(process.env.DATABASE_URL!, { max: 1 });
+// Este script APAGA todas as tabelas antes de popular. A trava evita destruir a
+// pelada real por uma DATABASE_URL de produção esquecida no terminal.
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL não definida — o seed só roda contra o banco local.");
+}
+if (process.env.VERCEL || !/@(localhost|127\.0\.0\.1)[:/]/.test(databaseUrl)) {
+  throw new Error(
+    "O seed apaga todas as tabelas e só pode rodar contra o Postgres local " +
+      "(docker compose). DATABASE_URL aponta para outro host — abortando.",
+  );
+}
+
+const conn = postgres(databaseUrl, { max: 1, prepare: false });
 const db = drizzle(conn, { schema });
 
 const seedPlayers: Array<{
@@ -185,9 +199,8 @@ async function main() {
     playerId: byName.get("Rafael Torres")!.id,
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
   });
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
   console.log("Logins demo: du / senha123 · ps / senha123");
-  console.log(`Convite de teste (Rafael Torres): ${siteUrl}/convite/${inviteToken}`);
+  console.log(`Convite de teste (Rafael Torres): ${siteUrl()}/convite/${inviteToken}`);
 
   console.log("Seed concluído.");
   await conn.end();

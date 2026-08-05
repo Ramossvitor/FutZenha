@@ -1,6 +1,7 @@
 import { asc, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, players, users, type Invite, type Player, type User } from "@/db/schema";
+import { siteUrl } from "@/lib/site-url";
 import {
   createInvite,
   createPlayer,
@@ -76,9 +77,8 @@ function AccessSection({
   user?: User;
   pending?: { invite: Invite; expired: boolean };
 }) {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
   const invite = pending?.invite;
-  const inviteUrl = invite ? `${siteUrl}/convite/${invite.token}` : null;
+  const inviteUrl = invite ? `${siteUrl()}/convite/${invite.token}` : null;
   const invitePending = pending != null && !pending.expired;
   const inviteExpired = pending != null && pending.expired;
 

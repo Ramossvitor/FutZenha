@@ -13,7 +13,7 @@ Site para organizar a pelada semanal do grupo: confirmação de presença, sorte
 
 ## Rodando local
 
-Pré-requisitos: Node 20+, Docker.
+Pré-requisitos: Node 22 (ver `.nvmrc`), Docker.
 
 ```bash
 # 1. Banco local (Postgres na porta 5433)
@@ -38,12 +38,13 @@ Acesse http://localhost:3000 — o painel fica em `/admin` (senha = `ADMIN_PASSW
 | Script | O que faz |
 |---|---|
 | `npm run dev` | Dev server |
-| `npm run build` | Build de produção (roda type-check) |
-| `npm test` | Testes (algoritmo de sorteio) |
+| `npm run build` | Aplica migrations pendentes e faz o build (com type-check) |
+| `npm test` | Testes (sorteio, sessão, senha) |
 | `npm run db:generate` | Gera migration a partir de `src/db/schema.ts` |
 | `npm run db:migrate` | Aplica migrations no banco do `DATABASE_URL` |
+| `npm run db:migrate:prod` | Aplica migrations usando a connection string direta (conserto manual) |
 | `npm run db:studio` | UI para inspecionar o banco |
-| `npm run seed` | **Apaga tudo** e repopula com dados de exemplo |
+| `npm run seed` | **Apaga tudo** e repopula com dados de exemplo (só banco local) |
 
 ## Fluxo de uma pelada
 
@@ -67,11 +68,30 @@ Notas dos jogadores (1–10) só aparecem no admin — nunca nas páginas públi
 
 ## Deploy (R$ 0)
 
-1. Crie um banco no [Neon](https://neon.tech). Copie **duas** connection strings: a *pooled* (host com `-pooler`) e a direta.
-2. Importe o repo na [Vercel](https://vercel.com) e configure as env vars: `DATABASE_URL` (**a string pooled**), `ADMIN_PASSWORD`, `SESSION_SECRET` (string longa aleatória) e `NEXT_PUBLIC_SITE_URL` (URL final do site — os links de convite usam ela).
-3. Como a string pooled passa por PgBouncer em modo transação, adicione `{ prepare: false }` na chamada `postgres(...)` de `src/db/index.ts` na hora do deploy.
-4. Rode as migrations no banco de produção usando a string **direta** (sem `-pooler`): `DATABASE_URL=<neon-direta> npm run db:migrate` (localmente, apontando para o Neon).
-5. Deploy. Não rode o seed em produção — cadastre os jogadores reais no `/admin/jogadores` e mande os convites.
+Vercel Hobby + Neon free, com deploy contínuo: **`git push` na `main` aplica as migrations e publica**.
+
+### Primeira vez
+
+> Não crie a env var `DATABASE_URL` à mão — a integração do Neon precisa desse nome livre para injetar.
+
+1. **Banco**: vercel.com → **Storage** → **Create Database** → **Neon** → plano Free → nome `futzenha-db`. Deixe o branching de preview desligado.
+2. **Projeto**: **Add New… → Project** → importe este repo (framework Next.js detectado). Antes de dar Deploy, adicione em Environment Variables:
+   - `SESSION_SECRET` — gere com `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
+   - `ADMIN_PASSWORD` — a senha do painel
+3. **O primeiro build falha de propósito** (`[migrate] Nenhuma connection string encontrada`): a Vercel só deixa conectar o banco depois que o projeto existe.
+4. **Conectar o banco**: Project → **Storage** → **Connect Database** → `futzenha-db`, marcando Production, Preview e Development. Isso injeta `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` e as `PG*`.
+5. **Redeploy** pelo painel. O log deve mostrar `[migrate] Migrations aplicadas.`
+6. Entre em `/admin`, cadastre os jogadores reais e mande os convites. **Nunca rode o seed em produção** (ele apaga tudo — e há uma trava que impede isso).
+
+`NEXT_PUBLIC_SITE_URL` não precisa ser configurada: `src/lib/site-url.ts` deriva o domínio das env vars da própria Vercel. Só defina se quiser forçar um domínio próprio.
+
+### Lançando atualizações
+
+- **Só código**: commit e `git push origin main`. A Vercel builda e publica.
+- **Mudança de schema**: edite `src/db/schema.ts` → `npm run db:generate` → **leia o SQL gerado** → `npm run db:migrate` no banco local e teste → commit incluindo `schema.ts` **e** a pasta `drizzle/` inteira → `git push`. Nunca edite uma migration já enviada; gere uma nova.
+- **Previews de branch** buildam mas **não migram**, e apontam para o mesmo banco de produção: dado criado num preview é dado real, e um preview com schema novo quebra em runtime. Teste mudança de schema no Docker local.
+
+Limites esperados do free tier: o Neon dorme após ~5 min sem uso, então a primeira visita do dia leva 1–3s a mais.
 
 ## Modelo de dados (resumo)
 
