@@ -32,6 +32,99 @@ const seedPlayers: Array<{
   { name: "Thiago Barbosa", skill: 5 },
 ];
 
+function isoDate(d: Date): string {
+  const offset = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function wednesdayShift(weeks: number): string {
+  const now = new Date();
+  const day = now.getDay();
+  const toNextWednesday = (3 - day + 7) % 7 || 7;
+  const date = new Date(now);
+  date.setDate(now.getDate() + toNextWednesday + weeks * 7);
+  return isoDate(date);
+}
+
+async function seedPastMatchDay(
+  allPlayers: schema.Player[],
+  date: string,
+  rotation: number,
+) {
+  // Seleção "aleatória" determinística: gira a lista e pega 12.
+  const rotated = [...allPlayers.slice(rotation), ...allPlayers.slice(0, rotation)];
+  const goalkeepers = rotated.filter((p) => p.isGoalkeeper).slice(0, 2);
+  const line = rotated.filter((p) => !p.isGoalkeeper).slice(0, 10);
+  const confirmed = [...goalkeepers, ...line];
+
+  const [matchDay] = await db
+    .insert(schema.matchDays)
+    .values({ date, startTime: "20:00", location: "Quadra do Zenha", status: "finished" })
+    .returning();
+
+  await db.insert(schema.attendances).values(
+    confirmed.map((p) => ({ matchDayId: matchDay.id, playerId: p.id, status: "in" as const })),
+  );
+  const out = rotated.filter((p) => !confirmed.includes(p)).slice(0, 3);
+  await db.insert(schema.attendances).values(
+    out.map((p) => ({ matchDayId: matchDay.id, playerId: p.id, status: "out" as const })),
+  );
+
+  // Dois times: goleiro + linha alternada (equilíbrio aproximado basta no seed).
+  const sortedLine = [...line].sort((a, b) => b.skill - a.skill);
+  const teamAPlayers = [goalkeepers[0], ...sortedLine.filter((_, i) => i % 2 === 0)];
+  const teamBPlayers = [goalkeepers[1], ...sortedLine.filter((_, i) => i % 2 === 1)];
+
+  const [teamA] = await db
+    .insert(schema.teams)
+    .values({ matchDayId: matchDay.id, name: "Preto", sortOrder: 0 })
+    .returning();
+  const [teamB] = await db
+    .insert(schema.teams)
+    .values({ matchDayId: matchDay.id, name: "Branco", sortOrder: 1 })
+    .returning();
+  await db.insert(schema.teamPlayers).values([
+    ...teamAPlayers.map((p) => ({ teamId: teamA.id, playerId: p.id })),
+    ...teamBPlayers.map((p) => ({ teamId: teamB.id, playerId: p.id })),
+  ]);
+
+  const scores: Array<[number, number]> = [
+    [2 + (rotation % 2), 1],
+    [0, 2],
+    [1 + (rotation % 3), 1 + ((rotation + 1) % 2)],
+  ];
+  for (const [i, [scoreA, scoreB]] of scores.entries()) {
+    const [game] = await db
+      .insert(schema.games)
+      .values({
+        matchDayId: matchDay.id,
+        teamAId: teamA.id,
+        teamBId: teamB.id,
+        scoreA,
+        scoreB,
+        sortOrder: i,
+      })
+      .returning();
+
+    // Autores: melhores da linha de cada time marcam (nem todo gol tem autor).
+    const scorersA = teamAPlayers.slice(1, 1 + Math.min(scoreA, 2));
+    const scorersB = teamBPlayers.slice(1, 1 + Math.min(scoreB, 2));
+    const goalRows = [
+      ...scorersA.map((p, j) => ({
+        gameId: game.id,
+        playerId: p.id,
+        quantity: j === 0 ? Math.max(1, scoreA - scorersA.length + 1) : 1,
+      })),
+      ...scorersB.map((p, j) => ({
+        gameId: game.id,
+        playerId: p.id,
+        quantity: j === 0 ? Math.max(1, scoreB - scorersB.length + 1) : 1,
+      })),
+    ];
+    if (goalRows.length > 0) await db.insert(schema.goals).values(goalRows);
+  }
+}
+
 async function main() {
   console.log("Limpando tabelas...");
   await db.delete(schema.goals);
@@ -43,7 +136,30 @@ async function main() {
   await db.delete(schema.players);
 
   console.log(`Inserindo ${seedPlayers.length} jogadores...`);
-  await db.insert(schema.players).values(seedPlayers);
+  const inserted = await db.insert(schema.players).values(seedPlayers).returning();
+
+  console.log("Criando 3 peladas passadas encerradas...");
+  await seedPastMatchDay(inserted, wednesdayShift(-3), 0);
+  await seedPastMatchDay(inserted, wednesdayShift(-2), 5);
+  await seedPastMatchDay(inserted, wednesdayShift(-1), 9);
+
+  console.log("Criando a próxima pelada com algumas presenças...");
+  const [next] = await db
+    .insert(schema.matchDays)
+    .values({
+      date: wednesdayShift(0),
+      startTime: "20:00",
+      location: "Quadra do Zenha",
+      status: "scheduled",
+    })
+    .returning();
+  await db.insert(schema.attendances).values(
+    inserted.slice(0, 8).map((p) => ({
+      matchDayId: next.id,
+      playerId: p.id,
+      status: "in" as const,
+    })),
+  );
 
   console.log("Seed concluído.");
   await conn.end();

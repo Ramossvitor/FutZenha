@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { attendances, games, matchDays, players, teamPlayers, teams } from "@/db/schema";
+import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
 import { drawTeams } from "@/lib/draw";
 import { requireAdmin } from "@/lib/require-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
@@ -152,6 +152,101 @@ export async function swapPlayersAction(matchDayId: number, formData: FormData) 
   });
 
   revalidateMatchDay(matchDayId);
+}
+
+export async function createGame(matchDayId: number, formData: FormData) {
+  await requireAdmin();
+  const teamAId = Number(formData.get("teamAId"));
+  const teamBId = Number(formData.get("teamBId"));
+  const scoreA = Number(formData.get("scoreA"));
+  const scoreB = Number(formData.get("scoreB"));
+  if (
+    !Number.isInteger(teamAId) ||
+    !Number.isInteger(teamBId) ||
+    teamAId === teamBId ||
+    !Number.isInteger(scoreA) ||
+    !Number.isInteger(scoreB) ||
+    scoreA < 0 ||
+    scoreB < 0
+  ) {
+    redirect(`/admin/peladas/${matchDayId}?erro=dados-invalidos`);
+  }
+
+  const dayTeams = await db.select().from(teams).where(eq(teams.matchDayId, matchDayId));
+  const teamIds = new Set(dayTeams.map((t) => t.id));
+  if (!teamIds.has(teamAId) || !teamIds.has(teamBId)) {
+    redirect(`/admin/peladas/${matchDayId}?erro=dados-invalidos`);
+  }
+
+  const existing = await db.select().from(games).where(eq(games.matchDayId, matchDayId));
+  await db.insert(games).values({
+    matchDayId,
+    teamAId,
+    teamBId,
+    scoreA,
+    scoreB,
+    sortOrder: existing.length,
+  });
+  revalidateMatchDay(matchDayId);
+}
+
+export async function updateGameScore(matchDayId: number, gameId: number, formData: FormData) {
+  await requireAdmin();
+  const scoreA = Number(formData.get("scoreA"));
+  const scoreB = Number(formData.get("scoreB"));
+  if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
+    redirect(`/admin/peladas/${matchDayId}?erro=dados-invalidos`);
+  }
+  await db
+    .update(games)
+    .set({ scoreA, scoreB })
+    .where(and(eq(games.id, gameId), eq(games.matchDayId, matchDayId)));
+  revalidateMatchDay(matchDayId);
+}
+
+export async function deleteGame(matchDayId: number, gameId: number) {
+  await requireAdmin();
+  await db.delete(games).where(and(eq(games.id, gameId), eq(games.matchDayId, matchDayId)));
+  revalidateMatchDay(matchDayId);
+}
+
+export async function addGoal(matchDayId: number, gameId: number, formData: FormData) {
+  await requireAdmin();
+  const playerId = Number(formData.get("playerId"));
+  const quantity = Number(formData.get("quantity") ?? 1);
+  if (!Number.isInteger(playerId) || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+    redirect(`/admin/peladas/${matchDayId}?erro=dados-invalidos`);
+  }
+  const [game] = await db
+    .select()
+    .from(games)
+    .where(and(eq(games.id, gameId), eq(games.matchDayId, matchDayId)));
+  if (!game) redirect(`/admin/peladas/${matchDayId}?erro=dados-invalidos`);
+
+  await db.insert(goals).values({ gameId, playerId, quantity });
+  revalidateMatchDay(matchDayId);
+}
+
+export async function deleteGoal(matchDayId: number, goalId: number) {
+  await requireAdmin();
+  await db.delete(goals).where(eq(goals.id, goalId));
+  revalidateMatchDay(matchDayId);
+}
+
+export async function finishMatchDay(matchDayId: number) {
+  await requireAdmin();
+  await db.update(matchDays).set({ status: "finished" }).where(eq(matchDays.id, matchDayId));
+  revalidateMatchDay(matchDayId);
+  revalidatePath("/artilharia");
+  revalidatePath("/rankings");
+}
+
+export async function reopenMatchDay(matchDayId: number) {
+  await requireAdmin();
+  await db.update(matchDays).set({ status: "teams_drawn" }).where(eq(matchDays.id, matchDayId));
+  revalidateMatchDay(matchDayId);
+  revalidatePath("/artilharia");
+  revalidatePath("/rankings");
 }
 
 export async function setAttendanceAdmin(

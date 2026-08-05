@@ -1,0 +1,247 @@
+- generic [ref=f2e1]:
+  - banner [ref=f2e2]:
+    - generic [ref=f2e3]:
+      - link "⚽ FutZenha" [ref=f2e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=f2e5]:
+        - link "Peladas" [ref=f2e6] [cursor=pointer]:
+          - /url: /peladas
+        - link "Artilharia" [ref=f2e7] [cursor=pointer]:
+          - /url: /artilharia
+        - link "Rankings" [ref=f2e8] [cursor=pointer]:
+          - /url: /rankings
+  - main [ref=f2e9]:
+    - generic [ref=f2e10]:
+      - generic [ref=f2e11]:
+        - generic [ref=f2e12]: Admin
+        - navigation [ref=f2e13]:
+          - link "Dashboard" [ref=f2e14] [cursor=pointer]:
+            - /url: /admin
+          - link "Jogadores" [ref=f2e15] [cursor=pointer]:
+            - /url: /admin/jogadores
+          - link "Peladas" [ref=f2e16] [cursor=pointer]:
+            - /url: /admin/peladas
+        - button "Sair" [ref=f2e18]
+      - generic [ref=f2e180]:
+        - generic [ref=f2e181]:
+          - heading "quarta-feira, 12/08" [level=1] [ref=f2e182]
+          - generic [ref=f2e183]: Times sorteados
+          - link "Ver página pública →" [ref=f2e184] [cursor=pointer]:
+            - /url: /pelada/4
+        - generic [ref=f2e185]:
+          - heading "Dados da pelada" [level=2] [ref=f2e186]
+          - generic [ref=f2e187]:
+            - generic [ref=f2e188]:
+              - text: Data
+              - textbox "Data" [ref=f2e189]: 2026-08-12
+            - generic [ref=f2e190]:
+              - text: Horário
+              - textbox "Horário" [ref=f2e191]: 20:00
+            - generic [ref=f2e192]:
+              - text: Local
+              - textbox "Local" [ref=f2e193]: Quadra do Zenha
+            - generic [ref=f2e194]:
+              - text: Observações
+              - textbox "Observações" [ref=f2e195]
+            - button "Salvar" [ref=f2e196]
+        - generic [ref=f2e197]:
+          - heading "Presença (10 confirmados)" [level=2] [ref=f2e198]:
+            - text: Presença
+            - generic [ref=f2e199]: (10 confirmados)
+          - paragraph [ref=f2e200]: Override do admin — vale mesmo depois do sorteio.
+          - list [ref=f2e201]:
+            - listitem [ref=f2e202]:
+              - generic [ref=f2e203]: André Souza
+              - button "Fora" [ref=f2e206]
+            - listitem [ref=f2e207]:
+              - generic [ref=f2e208]: Bruno Lima
+              - button "Fora" [ref=f2e211]
+            - listitem [ref=f2e212]:
+              - generic [ref=f2e213]: Carlos Eduardo
+              - button "Fora" [ref=f2e216]
+            - listitem [ref=f2e217]:
+              - generic [ref=f2e218]: Diego Ferreira
+              - button "Fora" [ref=f2e221]
+            - listitem [ref=f2e222]:
+              - generic [ref=f2e223]: Eduardo Ramos
+              - button "Fora" [ref=f2e226]
+            - listitem [ref=f2e227]:
+              - generic [ref=f2e228]: Felipe Costa
+              - button "Fora" [ref=f2e231]
+            - listitem [ref=f2e232]:
+              - generic [ref=f2e233]: Gabriel Martins
+              - button "Fora" [ref=f2e236]
+            - listitem [ref=f2e237]:
+              - generic [ref=f2e238]: Henrique Alves
+              - button "Fora" [ref=f2e241]
+            - listitem [ref=f2e242]:
+              - generic [ref=f2e243]: Igor Santana
+              - generic [ref=f2e244]:
+                - button "Vai" [ref=f2e246]
+                - button "Fora" [ref=f2e248]
+            - listitem [ref=f2e249]:
+              - generic [ref=f2e250]: João Pedro
+              - button "Fora" [ref=f2e253]
+            - listitem [ref=f2e254]:
+              - generic [ref=f2e255]: Kleber Nunes
+              - button "Fora" [ref=f2e258]
+            - listitem [ref=f2e259]:
+              - generic [ref=f2e260]: Lucas Oliveira
+              - generic [ref=f2e261]:
+                - button "Vai" [ref=f2e263]
+                - button "Fora" [ref=f2e265]
+            - listitem [ref=f2e266]:
+              - generic [ref=f2e267]: Marcos Vinícius
+              - generic [ref=f2e268]:
+                - button "Vai" [ref=f2e270]
+                - button "Fora" [ref=f2e272]
+            - listitem [ref=f2e273]:
+              - generic [ref=f2e274]: Nando Ribeiro
+              - generic [ref=f2e275]:
+                - button "Vai" [ref=f2e277]
+                - button "Fora" [ref=f2e279]
+            - listitem [ref=f2e280]:
+              - generic [ref=f2e281]: Otávio Mendes
+              - generic [ref=f2e282]:
+                - button "Vai" [ref=f2e284]
+                - button "Fora" [ref=f2e286]
+            - listitem [ref=f2e287]:
+              - generic [ref=f2e288]: Paulo Sérgio
+              - generic [ref=f2e289]:
+                - button "Vai" [ref=f2e291]
+                - button "Fora" [ref=f2e293]
+            - listitem [ref=f2e294]:
+              - generic [ref=f2e295]: Rafael Torres
+              - generic [ref=f2e296]:
+                - button "Vai" [ref=f2e298]
+                - button "Fora" [ref=f2e300]
+            - listitem [ref=f2e301]:
+              - generic [ref=f2e302]: Thiago Barbosa
+              - generic [ref=f2e303]:
+                - button "Vai" [ref=f2e305]
+                - button "Fora" [ref=f2e307]
+        - generic [ref=f2e308]:
+          - heading "Times" [level=2] [ref=f2e309]
+          - generic [ref=f2e310]:
+            - generic [ref=f2e311]:
+              - text: Nº de times
+              - combobox "Nº de times" [ref=f2e312]:
+                - option "2" [selected]
+                - option "3"
+                - option "4"
+            - button "Re-sortear" [ref=f2e313]
+            - generic [ref=f2e314]: 10 confirmados · apague os jogos antes de re-sortear
+          - generic [ref=f2e315]:
+            - generic [ref=f2e316]:
+              - generic [ref=f2e317]:
+                - generic [ref=f2e318]: Preto
+                - generic [ref=f2e319]: Σ 31 · média 6.2
+              - list [ref=f2e320]:
+                - listitem [ref=f2e321]:
+                  - generic [ref=f2e322]: Bruno Lima
+                  - generic [ref=f2e323]: "6"
+                - listitem [ref=f2e324]:
+                  - generic [ref=f2e325]: Carlos Eduardo
+                  - generic [ref=f2e326]: "7"
+                - listitem [ref=f2e327]:
+                  - generic [ref=f2e328]: Diego Ferreira
+                  - generic [ref=f2e329]: "5"
+                - listitem [ref=f2e330]:
+                  - generic [ref=f2e331]: João Pedro
+                  - generic [ref=f2e332]: "8"
+                - listitem [ref=f2e333]:
+                  - generic [ref=f2e334]: 🧤 Kleber Nunes
+                  - generic [ref=f2e335]: "5"
+            - generic [ref=f2e336]:
+              - generic [ref=f2e337]:
+                - generic [ref=f2e338]: Branco
+                - generic [ref=f2e339]: Σ 31 · média 6.2
+              - list [ref=f2e340]:
+                - listitem [ref=f2e341]:
+                  - generic [ref=f2e342]: André Souza
+                  - generic [ref=f2e343]: "8"
+                - listitem [ref=f2e344]:
+                  - generic [ref=f2e345]: Eduardo Ramos
+                  - generic [ref=f2e346]: "9"
+                - listitem [ref=f2e347]:
+                  - generic [ref=f2e348]: Felipe Costa
+                  - generic [ref=f2e349]: "4"
+                - listitem [ref=f2e350]:
+                  - generic [ref=f2e351]: Gabriel Martins
+                  - generic [ref=f2e352]: "7"
+                - listitem [ref=f2e353]:
+                  - generic [ref=f2e354]: 🧤 Henrique Alves
+                  - generic [ref=f2e355]: "3"
+          - generic [ref=f2e356]:
+            - generic [ref=f2e357]: Trocar jogadores de time
+            - combobox [ref=f2e358]:
+              - option "Bruno Lima" [selected]
+              - option "Carlos Eduardo"
+              - option "Diego Ferreira"
+              - option "João Pedro"
+              - option "Kleber Nunes"
+              - option "André Souza"
+              - option "Eduardo Ramos"
+              - option "Felipe Costa"
+              - option "Gabriel Martins"
+              - option "Henrique Alves"
+            - combobox [ref=f2e359]:
+              - option "Bruno Lima" [selected]
+              - option "Carlos Eduardo"
+              - option "Diego Ferreira"
+              - option "João Pedro"
+              - option "Kleber Nunes"
+              - option "André Souza"
+              - option "Eduardo Ramos"
+              - option "Felipe Costa"
+              - option "Gabriel Martins"
+              - option "Henrique Alves"
+            - button "Trocar" [ref=f2e360]
+        - generic [ref=f2e361]:
+          - heading "Jogos" [level=2] [ref=f2e362]
+          - generic [ref=f2e378]:
+            - generic [ref=f2e379]:
+              - generic [ref=f2e380]: Jogo 1
+              - generic [ref=f2e381]: Preto × Branco
+              - button "excluir jogo" [ref=f2e383]
+            - generic [ref=f2e384]:
+              - spinbutton [ref=f2e385]: "3"
+              - generic [ref=f2e386]: ×
+              - spinbutton [ref=f2e387]: "2"
+              - button "Salvar placar" [ref=f2e388]
+            - generic [ref=f2e390]:
+              - combobox [ref=f2e391]:
+                - option "Bruno Lima" [selected]
+                - option "Carlos Eduardo"
+                - option "Diego Ferreira"
+                - option "João Pedro"
+                - option "Kleber Nunes"
+                - option "André Souza"
+                - option "Eduardo Ramos"
+                - option "Felipe Costa"
+                - option "Gabriel Martins"
+                - option "Henrique Alves"
+              - spinbutton [ref=f2e392]: "1"
+              - button "+ Gol" [ref=f2e393]
+          - generic [ref=f2e363]:
+            - generic [ref=f2e364]: Novo jogo
+            - combobox [ref=f2e365]:
+              - option "Preto" [selected]
+              - option "Branco"
+            - spinbutton [ref=f2e366]: "0"
+            - generic [ref=f2e367]: ×
+            - spinbutton [ref=f2e368]: "0"
+            - combobox [ref=f2e369]:
+              - option "Preto"
+              - option "Branco" [selected]
+            - button "Adicionar" [active] [ref=f2e370]
+        - generic [ref=f2e372]:
+          - paragraph [ref=f2e373]: Encerrar trava a pelada e faz os resultados contarem na artilharia, nos rankings e na presença.
+          - button "Encerrar pelada" [ref=f2e374]
+        - button "Excluir esta pelada (apaga presenças, times e resultados)" [ref=f2e377]
+  - contentinfo [ref=f2e166]:
+    - text: FutZenha ·
+    - link "admin" [ref=f2e167] [cursor=pointer]:
+      - /url: /admin
+  - button "Open Next.js Dev Tools" [ref=f2e173] [cursor=pointer]
+  - alert [ref=f2e177]

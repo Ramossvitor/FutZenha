@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
+import { getTopScorers } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { attendances, games, goals, matchDays, players, teams } from "@/db/schema";
+import { attendances, games, matchDays, teams } from "@/db/schema";
 import { formatDate, formatTime, todayISO } from "@/lib/format";
 
 export default async function HomePage() {
@@ -54,16 +55,7 @@ export default async function HomePage() {
     : [];
   const teamNameById = new Map(teamRows.map((t) => [t.id, t.name]));
 
-  const topScorers = await db
-    .select({
-      name: players.name,
-      total: sql<number>`sum(${goals.quantity})::int`,
-    })
-    .from(goals)
-    .innerJoin(players, eq(goals.playerId, players.id))
-    .groupBy(players.name)
-    .orderBy(desc(sql`sum(${goals.quantity})`))
-    .limit(3);
+  const topScorers = (await getTopScorers()).slice(0, 3);
 
   return (
     <div className="flex flex-col gap-8">

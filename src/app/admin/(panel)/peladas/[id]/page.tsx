@@ -2,14 +2,21 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { attendances, games, matchDays, players, teamPlayers, teams } from "@/db/schema";
+import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
 import { formatDate, formatTime } from "@/lib/format";
 import { vestClass } from "@/lib/team-colors";
 import {
+  addGoal,
+  createGame,
+  deleteGame,
+  deleteGoal,
   deleteMatchDay,
   drawTeamsAction,
+  finishMatchDay,
+  reopenMatchDay,
   setAttendanceAdmin,
   swapPlayersAction,
+  updateGameScore,
   updateMatchDay,
 } from "../actions";
 
@@ -79,7 +86,31 @@ export default async function AdminPeladaPage({
           )
           .orderBy(asc(players.name))
       : [];
-  const gameCount = (await db.select().from(games).where(eq(games.matchDayId, id))).length;
+  const gameList = await db
+    .select()
+    .from(games)
+    .where(eq(games.matchDayId, id))
+    .orderBy(asc(games.sortOrder), asc(games.id));
+  const gameCount = gameList.length;
+  const goalRows =
+    gameList.length > 0
+      ? await db
+          .select({
+            id: goals.id,
+            gameId: goals.gameId,
+            quantity: goals.quantity,
+            playerName: players.name,
+          })
+          .from(goals)
+          .innerJoin(players, eq(goals.playerId, players.id))
+          .where(
+            inArray(
+              goals.gameId,
+              gameList.map((g) => g.id),
+            ),
+          )
+      : [];
+  const teamNameById = new Map(teamList.map((t) => [t.id, t.name]));
 
   return (
     <div className="flex flex-col gap-6">
@@ -286,6 +317,193 @@ export default async function AdminPeladaPage({
               </form>
             )}
           </>
+        )}
+      </section>
+
+      {teamList.length > 0 && (
+        <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="mb-3 font-bold">Jogos</h2>
+
+          {gameList.map((game, i) => {
+            const gameGoals = goalRows.filter((g) => g.gameId === game.id);
+            const gamePlayers = teamMembers.filter(
+              (m) => m.teamId === game.teamAId || m.teamId === game.teamBId,
+            );
+            return (
+              <div
+                key={game.id}
+                className="mb-3 rounded-xl border border-neutral-200 p-3 dark:border-neutral-800"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-neutral-400">Jogo {i + 1}</span>
+                  <span className="font-medium">
+                    {teamNameById.get(game.teamAId)} × {teamNameById.get(game.teamBId)}
+                  </span>
+                  {matchDay.status !== "finished" && (
+                    <form action={deleteGame.bind(null, matchDay.id, game.id)} className="ml-auto">
+                      <button type="submit" className="text-xs text-red-600 hover:underline">
+                        excluir jogo
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                <form
+                  action={updateGameScore.bind(null, matchDay.id, game.id)}
+                  className="mt-2 flex items-center gap-2"
+                >
+                  <input
+                    name="scoreA"
+                    type="number"
+                    min={0}
+                    defaultValue={game.scoreA}
+                    className={`${inputClass} w-16 text-center`}
+                  />
+                  <span className="text-neutral-400">×</span>
+                  <input
+                    name="scoreB"
+                    type="number"
+                    min={0}
+                    defaultValue={game.scoreB}
+                    className={`${inputClass} w-16 text-center`}
+                  />
+                  {matchDay.status !== "finished" && (
+                    <button
+                      type="submit"
+                      className="rounded-lg border border-neutral-300 px-3 py-1 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                    >
+                      Salvar placar
+                    </button>
+                  )}
+                </form>
+
+                <div className="mt-2 flex flex-col gap-1">
+                  {gameGoals.map((goal) => (
+                    <div key={goal.id} className="flex items-center gap-2 text-sm">
+                      <span>
+                        ⚽ {goal.playerName}
+                        {goal.quantity > 1 ? ` ×${goal.quantity}` : ""}
+                      </span>
+                      {matchDay.status !== "finished" && (
+                        <form action={deleteGoal.bind(null, matchDay.id, goal.id)}>
+                          <button type="submit" className="text-xs text-red-600 hover:underline">
+                            remover
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  ))}
+                  {matchDay.status !== "finished" && (
+                    <form
+                      action={addGoal.bind(null, matchDay.id, game.id)}
+                      className="mt-1 flex flex-wrap items-center gap-2"
+                    >
+                      <select name="playerId" className={inputClass}>
+                        {[game.teamAId, game.teamBId].map((teamId) => (
+                          <optgroup key={teamId} label={teamNameById.get(teamId)}>
+                            {gamePlayers
+                              .filter((m) => m.teamId === teamId)
+                              .map((m) => (
+                                <option key={m.playerId} value={m.playerId}>
+                                  {m.playerName}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <input
+                        name="quantity"
+                        type="number"
+                        min={1}
+                        max={20}
+                        defaultValue={1}
+                        className={`${inputClass} w-16 text-center`}
+                      />
+                      <button
+                        type="submit"
+                        className="rounded-lg border border-emerald-700 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-neutral-800"
+                      >
+                        + Gol
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {matchDay.status !== "finished" && teamList.length >= 2 && (
+            <form
+              action={createGame.bind(null, matchDay.id)}
+              className="flex flex-wrap items-end gap-2 border-t border-neutral-200 pt-3 dark:border-neutral-800"
+            >
+              <span className="w-full text-sm font-medium">Novo jogo</span>
+              <select name="teamAId" className={inputClass}>
+                {teamList.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                name="scoreA"
+                type="number"
+                min={0}
+                defaultValue={0}
+                className={`${inputClass} w-16 text-center`}
+              />
+              <span className="text-neutral-400">×</span>
+              <input
+                name="scoreB"
+                type="number"
+                min={0}
+                defaultValue={0}
+                className={`${inputClass} w-16 text-center`}
+              />
+              <select name="teamBId" defaultValue={teamList[1]?.id} className={inputClass}>
+                {teamList.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+              >
+                Adicionar
+              </button>
+            </form>
+          )}
+        </section>
+      )}
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        {matchDay.status === "finished" ? (
+          <form action={reopenMatchDay.bind(null, matchDay.id)}>
+            <p className="mb-2 text-sm text-neutral-500">
+              Pelada encerrada — os resultados contam na artilharia e nos rankings.
+            </p>
+            <button
+              type="submit"
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            >
+              Reabrir para correções
+            </button>
+          </form>
+        ) : (
+          <form action={finishMatchDay.bind(null, matchDay.id)}>
+            <p className="mb-2 text-sm text-neutral-500">
+              Encerrar trava a pelada e faz os resultados contarem na artilharia, nos rankings e na
+              presença.
+            </p>
+            <button
+              type="submit"
+              className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+            >
+              Encerrar pelada
+            </button>
+          </form>
         )}
       </section>
 
