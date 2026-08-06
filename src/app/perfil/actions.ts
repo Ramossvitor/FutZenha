@@ -128,6 +128,12 @@ export async function changePassword(
   // O hash nunca vive na sessão — re-busca aqui na hora de conferir.
   const [user] = await db.select().from(users).where(eq(users.id, session.userId));
   if (!user) return { error: "Conta não encontrada." };
+  // Conta que nasceu pelo Google não tem senha para conferir. Definir uma aqui
+  // seria criar credencial sem provar posse de nenhuma — quem quiser senha pede
+  // um convite ao admin, que é o caminho que já existe para isso.
+  if (user.passwordHash === null) {
+    return { error: "Sua conta entra pelo Google e não tem senha." };
+  }
   if (!(await verifyPassword(currentPassword, user.passwordHash))) {
     return { error: "Senha atual incorreta." };
   }

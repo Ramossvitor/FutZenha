@@ -6,7 +6,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
-import { criarJogadorComConvite, gerarConvite } from "@/lib/convites";
+import { criarJogadorComConvite, gerarConvite, parseEmailDeConvite } from "@/lib/convites";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 
@@ -28,15 +28,20 @@ function parsePlayerForm(formData: FormData) {
   });
 }
 
+
 // Cadastrar já cria o convite (ver src/lib/convites.ts); o botão de gerar
 // convite segue existindo para reenviar quando o prazo vencer.
 export async function createPlayer(formData: FormData) {
   await requirePlatformAdmin();
   const parsed = parsePlayerForm(formData);
   if (!parsed.success) redirect("/admin/jogadores?erro=dados-invalidos");
+  const email = parseEmailDeConvite(formData.get("email"));
+  if (!email.success) redirect("/admin/jogadores?erro=email-invalido");
 
   try {
-    await db.transaction((tx) => criarJogadorComConvite(tx, parsed.data));
+    await db.transaction((tx) =>
+      criarJogadorComConvite(tx, { ...parsed.data, email: email.data }),
+    );
   } catch (error) {
     if (isUniqueViolation(error)) redirect("/admin/jogadores?erro=nome-duplicado");
     throw error;
@@ -71,13 +76,15 @@ const idSchema = z.number().int().positive();
 // Convite para quem já tem conta é reset de senha — por isso esta action é
 // exclusiva da plataforma. É o único caminho que chega em `gerarConvite` com um
 // jogador que pode já ter conta; o do admin da pelada só cria jogador novo.
-export async function createInvite(playerId: number) {
+export async function createInvite(playerId: number, formData: FormData) {
   await requirePlatformAdmin();
   const id = idSchema.parse(playerId);
   const [player] = await db.select().from(players).where(eq(players.id, id));
   if (!player || !player.active) return;
+  const email = parseEmailDeConvite(formData.get("email"));
+  if (!email.success) redirect("/admin/jogadores?erro=email-invalido");
 
-  await db.transaction((tx) => gerarConvite(tx, id));
+  await db.transaction((tx) => gerarConvite(tx, id, email.data));
   revalidatePath("/admin/jogadores");
 }
 

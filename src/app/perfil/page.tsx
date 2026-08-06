@@ -1,22 +1,33 @@
 import type { Metadata } from "next";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+import { mensagemDeErro } from "@/lib/erros-login";
 import { formatDate, formatSkill } from "@/lib/format";
+import { googleLoginConfigurado } from "@/lib/google-oauth";
 import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
+import { GoogleButton } from "../google-button";
 import { ChangePasswordForm } from "./change-password-form";
 import { DenunciarForm } from "./denunciar-form";
 
 export const metadata: Metadata = { title: "Meu perfil" };
 
-export default async function PerfilPage() {
+export default async function PerfilPage({ searchParams }: PageProps<"/perfil">) {
   const session = await requirePlayer();
   const { player } = session;
+  const { erro } = await searchParams;
 
-  const [scorers, records, attendance, rodadas] = await Promise.all([
+  const [scorers, records, attendance, rodadas, [conta]] = await Promise.all([
     getTopScorers(),
     getPlayerRecords(),
     getAttendanceStats(),
     getEstrelasRecebidas(player.id),
+    db
+      .select({ email: users.email, googleSub: users.googleSub, passwordHash: users.passwordHash })
+      .from(users)
+      .where(eq(users.id, session.userId)),
   ]);
   const myGoals = scorers.find((s) => s.playerId === player.id)?.total ?? 0;
   const myRecord = records.find((r) => r.playerId === player.id);
@@ -142,9 +153,41 @@ export default async function PerfilPage() {
       </section>
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:max-w-sm">
-        <h2 className="mb-3 font-bold">Trocar senha</h2>
-        <ChangePasswordForm />
+        <h2 className="mb-3 font-bold">Acesso</h2>
+
+        {mensagemDeErro(erro) && (
+          <p className="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            {mensagemDeErro(erro)}
+          </p>
+        )}
+
+        {conta?.googleSub ? (
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            Conta Google vinculada: <strong>{conta.email}</strong>
+          </p>
+        ) : (
+          googleLoginConfigurado() && (
+            <>
+              <GoogleButton
+                href="/api/auth/google?vincular=1&next=/perfil"
+                label="Conectar conta Google"
+              />
+              <p className="mt-2 text-xs text-neutral-500">
+                Depois de conectar, você entra pelo Google. Vincular encerra suas sessões nos
+                outros aparelhos.
+              </p>
+            </>
+          )
+        )}
       </section>
+
+      {/* Conta que nasceu pelo Google nunca teve senha — não há o que trocar. */}
+      {conta?.passwordHash && (
+        <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:max-w-sm">
+          <h2 className="mb-3 font-bold">Trocar senha</h2>
+          <ChangePasswordForm />
+        </section>
+      )}
     </div>
   );
 }

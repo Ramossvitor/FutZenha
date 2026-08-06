@@ -9,6 +9,7 @@ import { createSessionToken } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { platformAdminsDoAmbiente } from "@/lib/platform-admins";
 import { setSessionCookie } from "@/lib/session";
+import { USERNAME_REGEX } from "@/lib/username";
 
 export type ClaimState = { error?: string };
 
@@ -17,7 +18,7 @@ const usernameSchema = z
   .trim()
   .toLowerCase()
   .regex(
-    /^[a-z0-9._-]{2,20}$/,
+    USERNAME_REGEX,
     "Nome de usuário inválido: use 2 a 20 caracteres entre letras minúsculas, números, ponto, hífen ou _.",
   );
 
@@ -50,6 +51,12 @@ export async function claimInvite(
   const [invite] = await db.select().from(invites).where(eq(invites.token, tokenParsed.data));
   if (!invite || invite.usedAt !== null || invite.expiresAt.getTime() <= Date.now()) {
     return { error: "Convite inválido ou expirado. Fala com quem te convidou para gerar outro." };
+  }
+  // Sem isto o vínculo estrito com o e-mail não valeria nada: quem pegasse o
+  // link no grupo criaria a conta por senha e pularia a conferência do Google.
+  // A página já esconde o formulário neste caso; esta é a trava de verdade.
+  if (invite.email !== null) {
+    return { error: "Este convite é de acesso pelo Google — use o botão do Google no link." };
   }
 
   const [player] = await db.select().from(players).where(eq(players.id, invite.playerId));

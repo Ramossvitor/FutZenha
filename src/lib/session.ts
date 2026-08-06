@@ -45,14 +45,22 @@ export const getSession = cache(async (): Promise<Session | null> => {
   };
 });
 
+// Exportado porque o callback do OAuth (src/app/api/auth/google/callback) grava
+// o cookie direto na NextResponse do redirect, não pelo cookies() do
+// next/headers — e duas listas de opções de cookie de sessão divergiriam.
+//
+// `sameSite: "lax"` não é detalhe: é o que faz o cookie viajar na volta do
+// Google, que é uma navegação de topo vinda de outra origem.
+export const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production",
+  maxAge: SESSION_DURATION_MS / 1000,
+  path: "/",
+} as const;
+
 // Só pode ser chamado de Server Action (regra do Next para escrever cookie).
 export async function setSessionCookie(token: string): Promise<void> {
   const store = await cookies();
-  store.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: SESSION_DURATION_MS / 1000,
-    path: "/",
-  });
+  store.set(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 }

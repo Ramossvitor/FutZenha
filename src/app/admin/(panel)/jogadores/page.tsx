@@ -23,6 +23,7 @@ const errorMessages: Record<string, string> = {
   "dados-invalidos": "Dados inválidos — confira o nome.",
   "auto-rebaixamento":
     "Você não pode tirar o próprio papel de admin da plataforma — peça a outro admin.",
+  "email-invalido": "E-mail inválido — confira o endereço da conta Google.",
 };
 
 function PlayerFields({ player }: { player?: Player }) {
@@ -36,6 +37,14 @@ function PlayerFields({ player }: { player?: Player }) {
         Apelido
         <input name="nickname" defaultValue={player?.nickname ?? ""} className={inputClass} />
       </label>
+      {/* Só no cadastro: o e-mail pertence ao convite, não ao jogador. Editar um
+          jogador que já existe não deve mexer no acesso dele. */}
+      {!player && (
+        <label className="flex flex-col gap-1 text-sm">
+          E-mail (conta Google)
+          <input name="email" type="email" placeholder="opcional" className={inputClass} />
+        </label>
+      )}
       <label className="flex items-center gap-2 py-2 text-sm">
         <input
           name="isGoalkeeper"
@@ -114,6 +123,11 @@ function AccessSection({
           <span className={`${badgeClass} bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200`}>
             convite pendente
           </span>
+          {invite.email && (
+            <span className={`${badgeClass} bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200`}>
+              Google · {invite.email}
+            </span>
+          )}
           <code className="max-w-full break-all rounded bg-neutral-100 px-2 py-1 text-xs dark:bg-neutral-800">
             {inviteUrl}
           </code>
@@ -130,10 +144,18 @@ function AccessSection({
       )}
 
       <div className="flex flex-wrap items-center gap-4">
+        {/* Errou o e-mail? Revogar e gerar de novo — o convite trava no endereço
+            digitado, então corrigi-lo é emitir outro. */}
         {!invitePending && (
-          <form action={createInvite.bind(null, player.id)}>
-            <button type="submit" className="text-sm text-emerald-700 hover:underline">
-              {user ? "Resetar senha (novo convite)" : inviteExpired ? "Gerar novo convite" : "Gerar convite"}
+          <form action={createInvite.bind(null, player.id)} className="flex items-end gap-2">
+            <input
+              name="email"
+              type="email"
+              placeholder="e-mail da conta Google (opcional)"
+              className={`${inputClass} w-64`}
+            />
+            <button type="submit" className="py-2 text-sm text-emerald-700 hover:underline">
+              {user ? "Resetar acesso (novo convite)" : inviteExpired ? "Gerar novo convite" : "Gerar convite"}
             </button>
           </form>
         )}

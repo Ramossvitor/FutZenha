@@ -159,7 +159,17 @@ export const users = pgTable("users", {
     .unique()
     .references(() => players.id, { onDelete: "cascade" }),
   username: text("username").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  // Nulo em conta que nasceu pelo Google e nunca definiu senha. Os dois caminhos
+  // convivem: quem já tinha senha continua entrando por ela até vincular o
+  // Google, e é por isso que nem `password_hash` nem `google_sub` podem ser
+  // obrigatórios — uma conta precisa é de pelo menos um dos dois.
+  passwordHash: text("password_hash"),
+  // Identificador estável da conta Google (claim `sub`). É por ele que o login
+  // reconhece a pessoa: o email pode mudar de dono num domínio corporativo, o
+  // `sub` não. Sempre em minúsculas, o email serve só para o primeiro encontro —
+  // casar o convite e vincular quem já tinha conta de senha.
+  email: text("email").unique(),
+  googleSub: text("google_sub").unique(),
   tokenVersion: integer("token_version").notNull().default(1),
   active: boolean("active").notNull().default(true),
   // Admin da plataforma: gerencia contas e convites, julga denúncias de nota
@@ -180,6 +190,12 @@ export const invites = pgTable("invites", {
   playerId: integer("player_id")
     .notNull()
     .references(() => players.id, { onDelete: "cascade" }),
+  // Email da conta Google que o admin quer convidar, em minúsculas. Preenchido,
+  // o convite vira convite de Google e **só aquele email** o resgata — o link
+  // corre num grupo de WhatsApp, então o token sozinho não pode bastar para
+  // virar conta. Nulo, o convite segue no fluxo antigo de usuário e senha, que é
+  // o que mantém válidos os links já entregues.
+  email: text("email"),
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

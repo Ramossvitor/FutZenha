@@ -1,0 +1,36 @@
+// Mensagens dos erros que o callback do OAuth devolve na query string.
+//
+// Vivem num módulo próprio porque quem escreve o código do erro (o route
+// handler) e quem o exibe (/login e /perfil) são arquivos diferentes — e um
+// código sem mensagem correspondente vira tela em branco no pior momento.
+
+export const ERROS_LOGIN: Record<string, string> = {
+  "google-indisponivel": "O login pelo Google não está configurado neste ambiente.",
+  "sessao-expirada": "O pedido demorou demais e expirou. Tente entrar de novo.",
+  "state-invalido": "Não foi possível validar o pedido. Tente entrar de novo.",
+  cancelado: "Login pelo Google cancelado.",
+  "troca-falhou": "O Google não confirmou o login. Tente de novo.",
+  "email-nao-verificado": "O e-mail dessa conta Google não está verificado.",
+  "sem-convite": "Você ainda não tem conta aqui. Peça um convite a quem organiza a pelada.",
+  "convite-invalido": "Convite inválido ou expirado. Fala com o admin para gerar outro.",
+  "convite-sem-email":
+    "Esse convite é do tipo antigo, de usuário e senha. Abra o link do convite e crie sua conta por lá.",
+  "email-nao-confere": "Esse convite é para outra conta Google.",
+  "jogador-inativo": "Jogador inativo — fala com o admin.",
+  "conta-inativa": "Sua conta está desativada. Fala com o admin.",
+  "google-ja-vinculado": "Essa conta Google já está vinculada a outro jogador.",
+};
+
+/** A mensagem, já com o e-mail esperado quando o erro carrega um. */
+export function mensagemDeErro(
+  erro: string | string[] | undefined,
+  esperado?: string | string[],
+): string | null {
+  if (typeof erro !== "string") return null;
+  const mensagem = ERROS_LOGIN[erro];
+  if (!mensagem) return null;
+  if (erro === "email-nao-confere" && typeof esperado === "string") {
+    return `Esse convite é para ${esperado}. Entre com essa conta Google.`;
+  }
+  return mensagem;
+}

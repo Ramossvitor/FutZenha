@@ -16,7 +16,7 @@ import {
   teams,
   type MatchDay,
 } from "@/db/schema";
-import { criarJogadorComConvite } from "@/lib/convites";
+import { criarJogadorComConvite, parseEmailDeConvite } from "@/lib/convites";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { abrirVotacao, apagarPelada, motivoExclusaoSchema } from "@/lib/deletion";
 import { drawTeams } from "@/lib/draw";
@@ -348,6 +348,8 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
     isGoalkeeper: formData.get("isGoalkeeper") === "on",
   });
   if (!parsed.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  const email = parseEmailDeConvite(formData.get("email"));
+  if (!email.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=email-invalido`);
 
   try {
     await db.transaction(async (tx) => {
@@ -355,6 +357,7 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
         name: parsed.data.name,
         nickname: null,
         isGoalkeeper: parsed.data.isGoalkeeper,
+        email: email.data,
       });
       await tx.insert(attendances).values({ matchDayId, playerId, status: "in" });
     });

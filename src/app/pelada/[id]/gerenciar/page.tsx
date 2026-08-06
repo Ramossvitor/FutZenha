@@ -47,6 +47,7 @@ const statusLabels = {
 
 const errorMessages: Record<string, string> = {
   "dados-invalidos": "Dados inválidos — confira os campos.",
+  "email-invalido": "E-mail inválido — confira o endereço da conta Google.",
   "nome-duplicado": "Já existe um jogador com esse nome — use a busca acima.",
   "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
   "jogos-lancados": "Já existem jogos lançados — apague os jogos antes de re-sortear.",
@@ -334,6 +335,16 @@ export default async function GerenciarPeladaPage({
                 className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
               />
             </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              E-mail (conta Google)
+              <input
+                name="email"
+                type="email"
+                maxLength={160}
+                placeholder="opcional"
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              />
+            </label>
             <label className="flex items-center gap-2 py-2 text-sm">
               <input type="checkbox" name="isGoalkeeper" /> Goleiro
             </label>
@@ -345,7 +356,8 @@ export default async function GerenciarPeladaPage({
             </button>
             <p className="w-full text-xs text-neutral-500">
               Cria o jogador, já marca a presença e gera o convite de acesso — o link aparece aqui
-              embaixo para você mandar no WhatsApp.
+              embaixo para você mandar no WhatsApp. Com o e-mail preenchido, a pessoa entra pelo
+              Google e só aquela conta resgata o convite.
             </p>
           </form>
         )}
