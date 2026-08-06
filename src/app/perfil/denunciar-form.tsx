@@ -14,7 +14,7 @@ export function DenunciarForm({ roundId, indice }: { roundId: number; indice: nu
   if (state.success) {
     return (
       <p className="text-xs text-emerald-700 dark:text-emerald-400">
-        Denúncia enviada. O admin tem 3 dias para responder.
+        Denúncia enviada. O admin da plataforma tem 3 dias para responder.
       </p>
     );
   }
@@ -38,7 +38,7 @@ export function DenunciarForm({ roundId, indice }: { roundId: number; indice: nu
           disabled={pending}
           className="self-start rounded-lg border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-800 dark:hover:bg-red-950"
         >
-          {pending ? "Enviando..." : "Reportar ao admin"}
+          {pending ? "Enviando..." : "Reportar"}
         </button>
       </form>
     </details>

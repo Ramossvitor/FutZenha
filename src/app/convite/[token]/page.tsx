@@ -25,7 +25,7 @@ function InvalidInvite() {
     <div className={cardClass}>
       <h1 className="mb-2 text-xl font-bold">Convite inválido ou expirado</h1>
       <p className="text-sm text-neutral-600 dark:text-neutral-400">
-        Fala com o admin para gerar outro link.
+        Fala com quem te convidou para gerar outro link.
       </p>
     </div>
   );

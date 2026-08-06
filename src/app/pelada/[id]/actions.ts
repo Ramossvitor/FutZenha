@@ -8,8 +8,8 @@ import { attendances, matchDays } from "@/db/schema";
 import { requirePlayer } from "@/lib/require-player";
 
 // Só o próprio jogador logado marca a própria presença; quem não tem conta é
-// marcado pelo admin no painel (setAttendanceAdmin). O playerId vem sempre da
-// sessão — nunca do cliente.
+// marcado pelo admin da pelada (definirPresenca, em ./gerenciar/actions.ts). O
+// playerId vem sempre da sessão — nunca do cliente.
 export async function setMyAttendance(matchDayId: number, status: "in" | "out") {
   const session = await requirePlayer();
   if (!session.player.active) return;
@@ -34,5 +34,5 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
     });
   revalidatePath("/");
   revalidatePath(`/pelada/${parsedId}`);
-  revalidatePath(`/admin/peladas/${parsedId}`);
+  revalidatePath(`/pelada/${parsedId}/gerenciar`);
 }

@@ -2,13 +2,23 @@
 
 Site para organizar a pelada semanal do grupo: confirmação de presença, sorteio de times balanceado, resultados, artilharia e rankings.
 
-**Modelo de uso:** cada jogador tem uma conta (criada via link de convite que o admin manda no WhatsApp) e marca **apenas a própria presença**. As páginas continuam públicas para consulta; quem ainda não tem conta é marcado pelo admin no painel `/admin`. Sem e-mail, sem serviço externo — o convite é o único canal de cadastro e também serve de reset de senha.
+**Modelo de uso:** cada jogador tem uma conta (criada via link de convite entregue no WhatsApp) e marca **apenas a própria presença**. As páginas continuam públicas para consulta. Sem e-mail, sem serviço externo — o convite é o único canal de cadastro e também serve de reset de senha.
+
+**Dois papéis de admin**, e um jogador pode ser os dois:
+
+| | Admin da pelada | Admin da plataforma |
+|---|---|---|
+| Quem é | quem **criou** aquela pelada | jogador com a flag `is_platform_admin` |
+| Onde | `/pelada/[id]/gerenciar` | `/admin` |
+| Pode | presenças, sorteio, placar, gols, encerrar, abrir votação de exclusão, cadastrar jogador novo | contas e convites, julgar denúncias de nota injusta, ver o uso do sistema, excluir pelada fabricada — e é fallback em qualquer pelada |
+
+Qualquer jogador logado marca uma pelada em `/peladas/nova` e vira admin **dela**.
 
 ## Stack
 
 - [Next.js 16](https://nextjs.org) (App Router) + TypeScript + Tailwind CSS v4
 - Postgres com [Drizzle ORM](https://orm.drizzle.team) (local via Docker; produção no [Neon](https://neon.tech) free tier)
-- Auth sem provider externo: cookie assinado (HMAC) com papel admin/jogador; admin entra com senha única em env var, jogadores com usuário + senha (hash scrypt do `node:crypto`)
+- Auth sem provider externo: cookie assinado (HMAC); todo mundo entra com usuário + senha (hash scrypt do `node:crypto`), e ser admin da plataforma é uma flag na conta
 - Deploy: [Vercel](https://vercel.com) (plano Hobby)
 
 ## Rodando local
@@ -20,7 +30,7 @@ Pré-requisitos: Node 22 (ver `.nvmrc`), Docker.
 docker compose up -d
 
 # 2. Env vars
-cp .env.example .env   # e edite ADMIN_PASSWORD / SESSION_SECRET
+cp .env.example .env   # e edite SESSION_SECRET / PLATFORM_ADMIN_USERNAMES
 
 # 3. Dependências + migrations + dados de exemplo
 npm install
@@ -31,7 +41,7 @@ npm run seed
 npm run dev
 ```
 
-Acesse http://localhost:3000 — o painel fica em `/admin` (senha = `ADMIN_PASSWORD` do `.env`).
+Acesse http://localhost:3000. O seed imprime os logins demo; o primeiro deles é o admin da plataforma e enxerga o painel `/admin`.
 
 ## Scripts
 
@@ -39,7 +49,7 @@ Acesse http://localhost:3000 — o painel fica em `/admin` (senha = `ADMIN_PASSW
 |---|---|
 | `npm run dev` | Dev server |
 | `npm run build` | Aplica migrations pendentes e faz o build (com type-check) |
-| `npm test` | Testes (nota, companheiros, anonimato, quórum, sorteio, sessão, senha) |
+| `npm test` | Testes (nota, companheiros, papéis, anonimato, quórum, sorteio, sessão, senha) |
 | `npm run db:generate` | Gera migration a partir de `src/db/schema.ts` |
 | `npm run db:migrate` | Aplica migrations no banco do `DATABASE_URL` |
 | `npm run db:migrate:prod` | Aplica migrations usando a connection string direta (conserto manual) |
@@ -48,11 +58,11 @@ Acesse http://localhost:3000 — o painel fica em `/admin` (senha = `ADMIN_PASSW
 
 ## Fluxo de uma pelada
 
-1. Admin cria a pelada em `/admin/peladas` (data, hora, local).
-2. O link público (`/pelada/[id]`) vai no grupo do WhatsApp; cada um entra na conta e marca **Vou / Fora** (só a própria presença — o admin também pode marcar por alguém no painel).
-3. No dia, o admin sorteia os times (balanceado por nota, goleiros separados) e ajusta manualmente se quiser.
-4. Durante/depois, o admin lança os jogos, placares e gols.
-5. **Conferir escalação e encerrar**: o admin revisa quem jogou em qual time, jogo a jogo, e confirma. Isso trava a pelada, faz os números contarem na artilharia, nos rankings e na presença, e **abre a rodada de avaliação**.
+1. Qualquer jogador logado cria a pelada em `/peladas/nova` (data, hora, local) e vira o **admin dela**.
+2. O link público (`/pelada/[id]`) vai no grupo do WhatsApp; cada um entra na conta e marca **Vou / Fora** (só a própria presença). O admin da pelada marca por **quem ainda não tem acesso** e cadastra quem chegou de última hora; quem já tem conta ativa entra e marca sozinho — depois disso o admin também ajusta a presença dessa pessoa. É o que impede alguém de marcar uma pelada e escalar gente que nunca soube do jogo, mexendo na presença e no V/E/D dela.
+3. No dia, o admin da pelada sorteia os times (balanceado por nota, goleiros separados) e ajusta manualmente se quiser.
+4. Durante/depois, ele lança os jogos, placares e gols.
+5. **Conferir escalação e encerrar**: revisa quem jogou em qual time, jogo a jogo, e confirma. Isso trava a pelada, faz os números contarem na artilharia, nos rankings e na presença, e **abre a rodada de avaliação**.
 
 ### Depois de encerrar
 
@@ -62,7 +72,7 @@ A escalação confirmada é **imutável** — é ela que define quem avalia quem
 
 A nota do jogador é **100% calculada** — o admin não digita mais. Todo mundo começa em **5,0**.
 
-1. Encerrada a pelada, cada jogador com conta recebe uma notificação e tem **2 dias** para dar de 1 a 5 estrelas aos companheiros com quem dividiu o lado em algum jogo daquele dia.
+1. Encerrada a pelada, cada jogador com conta recebe uma notificação e tem **2 dias** para dar de 1 a 5 estrelas aos companheiros com quem dividiu o lado em algum jogo daquele dia. A avaliação só acontece em **grupo de 3 ou mais com conta ativa no mesmo lado** — abaixo disso o time joga e conta para placar, artilharia e presença, mas não mexe em nota nenhuma. É a trava contra nota fabricada: sem ela, duas contas combinadas subiriam de 5,0 a 9,3 em cinco peladas de mentira.
 2. A rodada é apurada quando **todos avaliam** ou quando o prazo vence — o que vier primeiro.
 3. As estrelas viram nota numa escala linear (1★ = 1,0 · 2★ = 3,25 · 3★ = 5,5 · 4★ = 7,75 · 5★ = 10,0), e a nota nova é `(2 × nota atual + média recebida) / 3`. Ou seja, uma pelada pesa **1/3**.
 4. Todo mundo é notificado da mudança, e a nota nova aparece em `/rankings` e no perfil.
@@ -76,23 +86,32 @@ Detalhes que valem conhecer:
 
 ### Nota injusta
 
-O jogador vê no perfil cada estrela que recebeu, **sem saber quem deu**, e pode reportar uma delas ao admin em até 2 dias após a apuração (a partir de 2 avaliações recebidas). O admin tem 3 dias para decidir em `/admin/avaliacoes`; **se não responder, a denúncia é aceita automaticamente**. Descartar uma avaliação recalcula a nota de todo mundo daquela pelada em diante.
+O jogador vê no perfil cada estrela que recebeu, **sem saber quem deu**, e pode reportar uma delas em até 2 dias após a apuração (a partir de 2 avaliações recebidas). Quem julga é o **admin da plataforma**, em `/admin/avaliacoes`, e ele tem 3 dias; **se não responder, a denúncia é aceita automaticamente**. Descartar uma avaliação recalcula a nota de todo mundo daquela pelada em diante.
+
+Julgar denúncia **não** é do admin da pelada, de propósito: ele quase sempre jogou a rodada, então poderia julgar a própria denúncia — e, pior, descobriria de quem partiu a nota contestada. Aceitar uma denúncia também dispara o replay que recalcula a nota de todo mundo, o que é decisão de plataforma, não de pelada.
+
+Quem julga **vê o nome de quem avaliou** — o anonimato é entre jogadores, e para decidir é preciso saber de quem partiu a nota. Por isso a mesma regra vale para o admin da plataforma: **ele não julga denúncia de pelada que jogou**. Ele é jogador como qualquer outro, então sem essa trava bastaria denunciar a própria nota para abrir a lista de quem lhe deu cada estrela. Nessas denúncias ele vê que existem e que o prazo corre, sem os nomes e sem os botões; decide outro admin da plataforma, ou o prazo vence e o auto-aceite resolve.
 
 O anonimato tem um cuidado que não é óbvio: `ratings.id` é sequencial, então expor o id entregaria a ordem de envio. A tela trabalha com a **posição** na lista (ordenada por nota, com desempate por hash), e o id nunca sai do servidor.
 
 ### Excluir uma pelada
 
-Pelada **não encerrada** o admin apaga direto. Pelada **encerrada** exige votação: o admin abre com justificativa, e passa com **85% de SIM em 48h** entre quem jogou e tem conta. Não votar conta como **contra**, o voto é **definitivo**, e há **uma votação por pelada** — rejeitada, ela fica no histórico para sempre. Aprovada, a pelada é apagada com tudo que gerou e as notas são recalculadas.
+Pelada **não encerrada** o admin dela apaga direto. Pelada **encerrada** exige votação: o admin da pelada abre com justificativa, e passa com **85% de SIM em 48h** entre quem jogou e tem conta. Não votar conta como **contra**, o voto é **definitivo**, e há **uma votação por pelada** — rejeitada, ela fica no histórico para sempre. Aprovada, a pelada é apagada com tudo que gerou e as notas são recalculadas.
+
+Fora disso, o **admin da plataforma** pode excluir uma pelada direto em `/admin/peladas`, sem votação. É a contrapartida de qualquer um poder criar pelada: contra uma pelada fabricada não adianta votação, porque quem votaria são os "jogadores" dela. A tela mostra quem criou cada pelada, quantos jogaram e quantos tinham conta ativa — que é o que denuncia fabricação. Como a exclusão é unilateral e irreversível, o motivo escrito é obrigatório e vai para o log do servidor junto com quem apertou o botão.
+
+Enquanto a votação corre, quem propôs vê só **quantos** faltam votar — não o placar parcial nem os nomes. Com os dois, bastava recarregar antes e depois de alguém votar para saber como aquela pessoa votou, num voto que é definitivo.
 
 ## Contas de jogador
 
-- **Criar conta**: em `/admin/jogadores`, o admin clica em **Gerar convite** e manda o link no WhatsApp do jogador. O link (`/convite/[token]`) vale 7 dias e é de uso único; o jogador escolhe usuário e senha e já sai logado. Nada é consumido ao abrir o link — só ao enviar o formulário (bots de preview do WhatsApp não estragam o convite).
-- **Esqueceu a senha**: o admin clica em **Resetar senha (novo convite)** no mesmo lugar — o link redefine a senha, derruba as sessões antigas e reativa a conta se estava desativada.
+- **Criar conta**: em `/admin/jogadores`, o admin da plataforma clica em **Gerar convite** e manda o link no WhatsApp do jogador. O admin de uma pelada também cadastra gente nova pela própria tela de gestão, e o link do convite aparece ali mesmo, em **Convites para entregar** — só de quem ainda não tem conta, porque convite para quem já tem é reset de senha e isso é da plataforma. O link (`/convite/[token]`) vale 7 dias e é de uso único; o jogador escolhe usuário e senha e já sai logado. Nada é consumido ao abrir o link — só ao enviar o formulário (bots de preview do WhatsApp não estragam o convite).
+- **Esqueceu a senha**: o admin da plataforma clica em **Resetar senha (novo convite)** no mesmo lugar — o link redefine a senha, derruba as sessões antigas e reativa a conta se estava desativada.
 - **Desativar conta**: derruba a sessão do jogador no próximo acesso (a conta some sem apagar histórico; desativar o *jogador* é outra coisa — tira das listas mas a conta continua entrando).
 - **Meu perfil** (`/perfil`): nota atual, estatísticas próprias (só peladas encerradas), as estrelas recebidas em cada rodada e troca de senha.
 - Cadastrar um jogador **já gera o convite** — ninguém nasce sem acesso a caminho.
-- Logins de exemplo do seed: `du`, `ps` e `cadu`, todos com `senha123` (+ um convite pendente impresso no console do seed).
-- Limitação conhecida: um cookie = um papel por vez. O admin que também joga usa o override de presenças do painel, ou sai e entra com a conta de jogador.
+- Logins de exemplo do seed: quatro contas com `senha123`, impressas no console (a primeira é o admin da plataforma) + um convite pendente.
+- **Admin da plataforma**: `PLATFORM_ADMIN_USERNAMES` (lista por vírgula) vale como chave-mestra em runtime **e** liga a flag `users.is_platform_admin` a cada build. É o que impede ficar trancado do lado de fora de um banco sem shell. O build também **cria a conta** de quem está na lista e ainda não existe, imprimindo o link para definir a senha — é assim que nasce o primeiro admin de uma instalação nova. Esses usernames ficam **reservados**: ninguém consegue escolhê-los ao resgatar um convite, senão bastaria digitar o nome certo para sair admin.
+- **Promover e rebaixar**: em `/admin/jogadores` dá para tornar outra conta admin da plataforma, ou tirar o papel. Mexer nisso encerra a sessão em curso da pessoa (`token_version + 1`). Ninguém se rebaixa sozinho, e quem está em `PLATFORM_ADMIN_USERNAMES` continua admin de qualquer jeito — a env var vence o banco.
 - Sem rate limiting no login, de propósito (grupo fechado; o custo do scrypt já freia força bruta; mais que isso exigiria serviço de estado compartilhado, quebrando o R$ 0).
 
 ## Deploy (R$ 0)
@@ -106,12 +125,12 @@ Vercel Hobby + Neon free, com deploy contínuo: **`git push` na `main` aplica as
 1. **Banco**: vercel.com → **Storage** → **Create Database** → **Neon** → plano Free → nome `futzenha-db`. Deixe o branching de preview desligado.
 2. **Projeto**: **Add New… → Project** → importe este repo (framework Next.js detectado). Antes de dar Deploy, adicione em Environment Variables:
    - `SESSION_SECRET` — gere com `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
-   - `ADMIN_PASSWORD` — a senha do painel
+   - `PLATFORM_ADMIN_USERNAMES` — o(s) username(s) do admin da plataforma, separados por vírgula
    - `CRON_SECRET` — protege `/api/cron/pendencias`, que fecha as rodadas de avaliação vencidas. Gere com `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Sem ela a rota responde 503 (nunca "libera tudo"), e os prazos passam a depender só do acesso ao site.
 3. **O primeiro build falha de propósito** (`[migrate] Nenhuma connection string encontrada`): a Vercel só deixa conectar o banco depois que o projeto existe.
 4. **Conectar o banco**: Project → **Storage** → **Connect Database** → `futzenha-db`, marcando Production, Preview e Development. Isso injeta `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` e as `PG*`.
 5. **Redeploy** pelo painel. O log deve mostrar `[migrate] Migrations aplicadas.`
-6. Entre em `/admin`, cadastre os jogadores reais e mande os convites. **Nunca rode o seed em produção** (ele apaga tudo — e há uma trava que impede isso).
+6. **Pegue o link do primeiro admin no log do build**: como não existe mais senha de admin, o `migrate` cria a conta de quem está em `PLATFORM_ADMIN_USERNAMES` e imprime `[migrate] Conta de admin criada para "…". Defina a senha em: https://…/convite/<token>`. Abra o link, escolha a senha, e você entra como admin da plataforma. Depois vá em `/admin`, cadastre os jogadores reais e mande os convites. **Nunca rode o seed em produção** (ele apaga tudo — e há uma trava que impede isso).
 
 `NEXT_PUBLIC_SITE_URL` não precisa ser configurada: `src/lib/site-url.ts` deriva o domínio das env vars da própria Vercel. Só defina se quiser forçar um domínio próprio.
 
@@ -125,7 +144,7 @@ Limites esperados do free tier: o Neon dorme após ~5 min sem uso, então a prim
 
 ## Modelo de dados (resumo)
 
-`players` → `attendances` ← `match_days` → `teams` → `team_players`; `games` (time A × time B com placar) → `goals` (autor + quantidade) e `game_players` (quem jogou de qual lado **naquele jogo**). O placar digitado não precisa bater com a soma dos gols — cobre gol contra e gol sem autor lembrado.
+`players` → `attendances` ← `match_days` (com `created_by_player_id` = o admin daquela pelada; nulo = órfã — anterior a este modelo ou de criador apagado — e só a plataforma administra, sem dono inventado por backfill) → `teams` → `team_players`; `games` (time A × time B com placar) → `goals` (autor + quantidade) e `game_players` (quem jogou de qual lado **naquele jogo**). O placar digitado não precisa bater com a soma dos gols — cobre gol contra e gol sem autor lembrado.
 
 `game_players` é a fonte de verdade de quem jogou: `teams` guarda só o colete da pelada. É dela que saem o V/E/D e os "companheiros" da avaliação.
 
@@ -141,7 +160,8 @@ Prazos são timestamps absolutos gravados na criação, comparados sempre com o 
 
 ## Roadmap (fase 2)
 
+- Grupo/racha como entidade: hoje jogadores, nota, artilharia e rankings são **globais** — se dois grupos diferentes usarem o app, os números se misturam
+
 - Feed iCalendar (`/api/calendar.ics`) para assinar a agenda no Google/Apple Calendar
-- Admin de evento (hoje o admin é global, uma senha só)
 - Defesa contra conluio na avaliação — a denúncia só cobre nota injustamente baixa
 - Convidados avulsos, "craque da noite", caixinha do grupo, streaks/badges

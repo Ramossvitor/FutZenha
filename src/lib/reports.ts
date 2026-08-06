@@ -1,16 +1,49 @@
 import "server-only";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
-import { matchDays, ratingReports, ratingRounds, ratings } from "@/db/schema";
+import {
+  gamePlayers,
+  games,
+  matchDays,
+  ratingReports,
+  ratingRounds,
+  ratings,
+} from "@/db/schema";
 import { notificar } from "./notifications";
 import { aplicarReplay } from "./ratings-engine";
 
 /**
+ * O julgador jogou a pelada de onde saiu esta rodada?
+ *
+ * O admin da plataforma é jogador como qualquer outro (ver src/db/schema.ts), e
+ * isso o põe em conflito sempre que a denúncia nasce de uma pelada que ele
+ * jogou: julgaria a própria rodada e, pior, leria em `raterName` o nome de quem
+ * lhe deu cada estrela — inclusive denunciando uma nota própria só para abrir a
+ * lista. É o mesmo motivo que tira o admin da pelada do julgamento (ver
+ * README § Nota injusta); a diferença é que ali o impedimento é estrutural e
+ * aqui precisa ser consultado.
+ */
+const jogouNaRodada = (playerId: number) => sql<boolean>`exists (
+  select 1 from ${gamePlayers}
+    join ${games} on ${games.id} = ${gamePlayers.gameId}
+   where ${games.matchDayId} = ${ratingRounds.matchDayId}
+     and ${gamePlayers.playerId} = ${playerId}
+)`;
+
+/** Quem resolveu: o admin da plataforma, com nome, ou o varredor de prazos. */
+export type Julgador = { tipo: "admin"; playerId: number } | { tipo: "auto" };
+
+/**
  * Resolve uma denúncia e, se aceita, descarta a avaliação e recalcula tudo.
  *
- * `porAdmin = false` é o auto-aceite: o admin deixou o prazo vencer, e o
+ * `{ tipo: "auto" }` é o auto-aceite: o admin deixou o prazo vencer, e o
  * silêncio vale como aceite (decisão do produto — o jogador não pode ficar
  * refém da inércia de quem julga).
+ *
+ * Sem guard de propósito: quem autoriza é a action (`requirePlatformAdmin`).
+ * Este módulo também roda a partir de `processarPendencias()`, que é disparado
+ * pelo `after()` do layout e pelo cron, os dois sem sessão nenhuma — um
+ * `require*` aqui dentro quebraria o varredor em silêncio.
  *
  * A transição é `UPDATE ... WHERE status = 'open' RETURNING`: zero linhas
  * significa que outra execução já resolveu, e nada acontece de novo.
@@ -19,7 +52,7 @@ export async function resolverDenuncia(
   exec: Executor,
   reportId: number,
   aceita: boolean,
-  porAdmin: boolean,
+  por: Julgador,
   adminNote?: string,
 ): Promise<boolean> {
   const [resolvida] = await exec
@@ -27,7 +60,8 @@ export async function resolverDenuncia(
     .set({
       status: aceita ? "accepted" : "rejected",
       resolvedAt: sql`now()`,
-      resolvedBy: porAdmin ? "admin" : "auto",
+      resolvedBy: por.tipo,
+      resolvedByPlayerId: por.tipo === "admin" ? por.playerId : null,
       adminNote: adminNote?.trim() || null,
     })
     .where(and(eq(ratingReports.id, reportId), eq(ratingReports.status, "open")))
@@ -52,7 +86,7 @@ export async function resolverDenuncia(
       type: "rating_report_resolved",
       title: aceita ? "Sua denúncia foi aceita" : "Sua denúncia foi recusada",
       body: aceita
-        ? porAdmin
+        ? por.tipo === "admin"
           ? "O admin descartou a nota, e as notas foram recalculadas."
           : "O admin não respondeu no prazo, então a nota foi descartada automaticamente."
         : "O admin analisou e considerou a nota justa. Ela continua valendo.",
@@ -76,7 +110,7 @@ export async function resolverDenunciasVencidas(exec: Executor): Promise<number>
 
   let aceitas = 0;
   for (const denuncia of vencidas) {
-    if (await resolverDenuncia(exec, denuncia.id, true, false)) aceitas += 1;
+    if (await resolverDenuncia(exec, denuncia.id, true, { tipo: "auto" })) aceitas += 1;
   }
   return aceitas;
 }
@@ -92,10 +126,26 @@ export type DenunciaNaFila = {
   matchDayDate: string;
   starsDenunciada: number;
   horasParaResponder: number;
+  /**
+   * Quem deu a nota reclamada — `null` quando o julgador jogou a rodada.
+   *
+   * O anonimato é entre jogadores. Quem julga precisa saber de quem partiu a
+   * nota, e pode saber enquanto for alguém de fora daquela pelada; para o
+   * julgador impedido o campo não existe, e a tela cai na forma anônima.
+   */
+  raterName: string | null;
+  /** Falso quando o julgador jogou a rodada: a fila mostra, mas não deixa agir. */
+  podeJulgar: boolean;
 };
 
-/** Denúncias abertas, da mais urgente para a menos. */
-export async function getDenunciasAbertas(): Promise<DenunciaNaFila[]> {
+/**
+ * Denúncias abertas, da mais urgente para a menos.
+ *
+ * Recebe quem está olhando porque a resposta depende disso: o julgador que
+ * jogou a rodada vê a denúncia (para saber que ela existe e que o prazo corre)
+ * sem os nomes e sem os botões.
+ */
+export async function getDenunciasAbertas(julgadorPlayerId: number): Promise<DenunciaNaFila[]> {
   const linhas = await db
     .select({
       reportId: ratingReports.id,
@@ -110,6 +160,8 @@ export async function getDenunciasAbertas(): Promise<DenunciaNaFila[]> {
         ${ratingReports.adminDeadlineAt} - now()
       )) / 3600)::int)`,
       reporterName: sql<string>`(select name from players where id = ${ratingReports.reporterPlayerId})`,
+      raterName: sql<string>`(select name from players where id = ${ratings.raterPlayerId})`,
+      impedido: jogouNaRodada(julgadorPlayerId),
     })
     .from(ratingReports)
     .innerJoin(ratings, eq(ratingReports.ratingId, ratings.id))
@@ -118,7 +170,30 @@ export async function getDenunciasAbertas(): Promise<DenunciaNaFila[]> {
     .where(eq(ratingReports.status, "open"))
     .orderBy(asc(ratingReports.adminDeadlineAt));
 
-  return linhas;
+  return linhas.map(({ impedido, raterName, ...linha }) => ({
+    ...linha,
+    raterName: impedido ? null : raterName,
+    podeJulgar: !impedido,
+  }));
+}
+
+/**
+ * Se este julgador pode decidir esta denúncia. Consultado pelas actions antes
+ * de mutar — a fila já esconde os botões, mas Server Action é endpoint público
+ * (ver node_modules/next/dist/docs/01-app/02-guides/data-security.md).
+ */
+export async function julgadorImpedido(
+  reportId: number,
+  julgadorPlayerId: number,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ impedido: jogouNaRodada(julgadorPlayerId) })
+    .from(ratingReports)
+    .innerJoin(ratings, eq(ratingReports.ratingId, ratings.id))
+    .innerJoin(ratingRounds, eq(ratings.roundId, ratingRounds.id))
+    .where(eq(ratingReports.id, reportId));
+  // Denúncia inexistente cai como impedida: nada a decidir de qualquer forma.
+  return row?.impedido ?? true;
 }
 
 export type EstrelaNoContexto = {
@@ -126,6 +201,8 @@ export type EstrelaNoContexto = {
   descartada: boolean;
   /** Esta é a nota que foi reportada. */
   reclamada: boolean;
+  /** Quem deu — `null` quando o julgador jogou a rodada (ver `jogouNaRodada`). */
+  raterName: string | null;
 };
 
 /**
@@ -142,19 +219,28 @@ export async function getContextoDaDenuncia(
   roundId: number,
   playerId: number,
   ratingIdDenunciado: number,
+  julgadorPlayerId: number,
 ): Promise<EstrelaNoContexto[]> {
+  const [rodada] = await db
+    .select({ impedido: jogouNaRodada(julgadorPlayerId) })
+    .from(ratingRounds)
+    .where(eq(ratingRounds.id, roundId));
+  const impedido = rodada?.impedido ?? true;
+
   const linhas = await db
     .select({
       ratingId: ratings.id,
       stars: ratings.stars,
       descartada: sql<boolean>`${ratings.discardedAt} is not null`,
+      raterName: sql<string>`(select name from players where id = ${ratings.raterPlayerId})`,
     })
     .from(ratings)
     .where(and(eq(ratings.roundId, roundId), eq(ratings.ratedPlayerId, playerId)))
     .orderBy(asc(ratings.stars));
 
-  return linhas.map(({ ratingId, ...linha }) => ({
+  return linhas.map(({ ratingId, raterName, ...linha }) => ({
     ...linha,
+    raterName: impedido ? null : raterName,
     reclamada: ratingId === ratingIdDenunciado,
   }));
 }

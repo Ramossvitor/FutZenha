@@ -140,8 +140,6 @@ export async function changePassword(
 
   // token_version novo derruba as outras sessões; reemite o próprio cookie na
   // mesma action, senão este usuário se desloga sozinho no próximo request.
-  await setSessionCookie(
-    await createSessionToken({ role: "player", sub: user.id, v: tokenVersion }),
-  );
+  await setSessionCookie(await createSessionToken({ sub: user.id, v: tokenVersion }));
   return { success: true };
 }

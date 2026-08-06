@@ -4,6 +4,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
 import { formatDate, formatTime } from "@/lib/format";
+import { podeGerenciarPelada } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
 import { vestClass } from "@/lib/team-colors";
 import { setMyAttendance } from "./actions";
@@ -84,7 +85,13 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
   const teamNameById = new Map(teamList.map((t) => [t.id, t.name]));
 
   const canToggle = matchDay.status === "scheduled";
-  const myPlayerId = session?.role === "player" ? session.player.id : null;
+  const myPlayerId = session?.player.id ?? null;
+  const podeGerenciar =
+    session !== null &&
+    podeGerenciarPelada(
+      { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin },
+      matchDay,
+    );
 
   return (
     <div className="flex flex-col gap-6">
@@ -172,7 +179,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
         {!canToggle && (
           <p className="text-sm text-neutral-500">
             {matchDay.status === "teams_drawn"
-              ? "Os times já foram sorteados — fala com o admin para mudar a presença."
+              ? "Os times já foram sorteados — fala com quem organiza a pelada para mudar a presença."
               : "Pelada encerrada."}
           </p>
         )}
@@ -187,11 +194,11 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
             para marcar presença.
           </p>
         )}
-        {canToggle && session?.role === "admin" && (
+        {podeGerenciar && (
           <p className="text-sm text-neutral-500">
-            Você está como admin — gerencie presenças no{" "}
-            <Link href={`/admin/peladas/${matchDay.id}`} className="underline">
-              painel
+            Você administra esta pelada —{" "}
+            <Link href={`/pelada/${matchDay.id}/gerenciar`} className="underline">
+              abrir o painel
             </Link>
             .
           </p>
@@ -256,7 +263,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
           })}
         </ul>
         <p className="text-xs text-neutral-400">
-          Não está na lista ou não tem conta? Fala com o admin para te cadastrar.
+          Não está na lista ou não tem conta? Fala com quem organiza a pelada.
         </p>
       </section>
     </div>

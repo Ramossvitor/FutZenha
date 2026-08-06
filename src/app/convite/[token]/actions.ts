@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
 import { createSessionToken } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
+import { platformAdminsDoAmbiente } from "@/lib/platform-admins";
 import { setSessionCookie } from "@/lib/session";
 
 export type ClaimState = { error?: string };
@@ -36,7 +37,7 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 // Resgata um convite: cria a conta do jogador ou, se ela já existe, redefine a
-// senha (o admin ter gerado o convite é a autorização — inclusive reativa a
+// senha (ter gerado o convite é a autorização — inclusive reativa a
 // conta). Tudo é revalidado aqui dentro; o GET da página não vale nada no POST.
 export async function claimInvite(
   token: string,
@@ -48,11 +49,11 @@ export async function claimInvite(
 
   const [invite] = await db.select().from(invites).where(eq(invites.token, tokenParsed.data));
   if (!invite || invite.usedAt !== null || invite.expiresAt.getTime() <= Date.now()) {
-    return { error: "Convite inválido ou expirado. Fala com o admin para gerar outro." };
+    return { error: "Convite inválido ou expirado. Fala com quem te convidou para gerar outro." };
   }
 
   const [player] = await db.select().from(players).where(eq(players.id, invite.playerId));
-  if (!player || !player.active) return { error: "Jogador inativo — fala com o admin." };
+  if (!player || !player.active) return { error: "Jogador inativo — fala com o admin da plataforma." };
 
   const passwordParsed = passwordSchema.safeParse(formData.get("password"));
   if (!passwordParsed.success) return { error: passwordParsed.error.issues[0].message };
@@ -81,6 +82,14 @@ export async function claimInvite(
   } else {
     const usernameParsed = usernameSchema.safeParse(formData.get("username"));
     if (!usernameParsed.success) return { error: usernameParsed.error.issues[0].message };
+    // Os nomes de PLATFORM_ADMIN_USERNAMES não são de quem chegar primeiro: a
+    // env var dá admin pelo username, então deixar um estranho escolher um nome
+    // da lista entregaria a plataforma. O `npm run build` já cria essas contas
+    // (ver provisionarPlatformAdmins), e esta é a segunda tranca — vale para a
+    // janela entre alguém editar a env var na Vercel e o build seguinte rodar.
+    if (platformAdminsDoAmbiente().has(usernameParsed.data)) {
+      return { error: "Esse nome de usuário não está disponível." };
+    }
     try {
       const created = await db.transaction(async (tx) => {
         const [row] = await tx
@@ -98,6 +107,9 @@ export async function claimInvite(
     }
   }
 
-  await setSessionCookie(await createSessionToken({ role: "player", sub, v: tokenVersion }));
+  // O cookie não carrega papel: quem é admin da plataforma é decidido a cada
+  // request pelo getSession, lendo a flag do banco e a env var. Quem resgata um
+  // convite de conta que já é admin sai daqui admin, sem nada a mais aqui.
+  await setSessionCookie(await createSessionToken({ sub, v: tokenVersion }));
   redirect("/");
 }

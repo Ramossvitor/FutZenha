@@ -38,9 +38,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     return { error: "Usuário ou senha incorretos." };
   }
 
-  await setSessionCookie(
-    await createSessionToken({ role: "player", sub: user.id, v: user.tokenVersion }),
-  );
+  await setSessionCookie(await createSessionToken({ sub: user.id, v: user.tokenVersion }));
   // next só pode ser caminho interno ("/..." mas não "//...") para evitar open redirect.
   redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
 }

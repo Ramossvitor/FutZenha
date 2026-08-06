@@ -1,19 +1,24 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { asc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   attendances,
   gamePlayers,
   games,
   goals,
+  invites,
   matchDays,
   players,
   teamPlayers,
   teams,
+  users,
 } from "@/db/schema";
+import { CopyButton } from "@/app/admin/(panel)/jogadores/copy-button";
 import { getFaltamVotar, getVotacaoDaPelada } from "@/lib/deletion";
 import { formatDate, formatSkill, formatTime } from "@/lib/format";
+import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
+import { siteUrl } from "@/lib/site-url";
 import { vestClass } from "@/lib/team-colors";
 import { BuscaJogador, type ItemJogador } from "./busca-jogador";
 import {
@@ -24,11 +29,12 @@ import {
   deleteGoal,
   deleteMatchDay,
   drawTeamsAction,
-  setAttendanceAdmin,
+  convidarParaPelada,
+  definirPresenca,
   swapPlayersAction,
   updateGameScore,
   updateMatchDay,
-} from "../actions";
+} from "./actions";
 
 const inputClass =
   "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
@@ -41,8 +47,13 @@ const statusLabels = {
 
 const errorMessages: Record<string, string> = {
   "dados-invalidos": "Dados inválidos — confira os campos.",
+  "nome-duplicado": "Já existe um jogador com esse nome — use a busca acima.",
   "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
   "jogos-lancados": "Já existem jogos lançados — apague os jogos antes de re-sortear.",
+  "artilheiro-fora-do-jogo":
+    "Só quem entrou nesse jogo pode marcar gol nele. Ajuste a escalação primeiro.",
+  "precisa-confirmar":
+    "Esse jogador tem conta e ainda não entrou nesta pelada — ele mesmo marca Vou pela página da pelada. Você marca por quem ainda não tem acesso.",
   "precisa-votacao":
     "Pelada encerrada não se apaga direto — abra a votação de exclusão para o grupo decidir.",
   "motivo-curto": "Explique em pelo menos 10 caracteres por que a pelada deve ser apagada.",
@@ -52,14 +63,16 @@ const errorMessages: Record<string, string> = {
     "As 24h para corrigir placar e gols já passaram. Para alterar, é preciso excluir a pelada — o que exige votação dos jogadores.",
 };
 
-export default async function AdminPeladaPage({
+export default async function GerenciarPeladaPage({
   params,
   searchParams,
-}: PageProps<"/admin/peladas/[id]">) {
+}: PageProps<"/pelada/[id]/gerenciar">) {
   const { id: idParam } = await params;
   const { erro } = await searchParams;
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
+  // 404 para quem não administra esta pelada — inclusive para id inexistente.
+  await requirePeladaAdmin(id);
 
   // A janela de correção vem calculada pelo Postgres — a regra de pureza do
   // React proíbe Date.now() durante o render.
@@ -72,7 +85,6 @@ export default async function AdminPeladaPage({
     })
     .from(matchDays)
     .where(eq(matchDays.id, id));
-  if (!matchDay) notFound();
   const errorMessage = typeof erro === "string" ? errorMessages[erro] : undefined;
 
   const dentroDaJanela = matchDay.finishedAt !== null && matchDay.segundosDeJanela > 0;
@@ -169,6 +181,31 @@ export default async function AdminPeladaPage({
   const votacao = await getVotacaoDaPelada(id);
   const faltamVotar = votacao?.status === "open" ? await getFaltamVotar(votacao.id) : [];
 
+  // Os convites de quem está nesta pelada e ainda não tem conta. É o que torna o
+  // "cadastrar quem chegou" utilizável: quem organiza gera o convite e precisa
+  // do link na mão para mandar no WhatsApp — não há e-mail no projeto. O
+  // leftJoin com `users` + isNull é o que mantém a regra: convite para quem já
+  // tem conta é reset de senha, e isso é da plataforma — não passa por aqui.
+  const convitesParaEntregar = await db
+    .select({
+      token: invites.token,
+      expiresAt: invites.expiresAt,
+      name: players.name,
+    })
+    .from(invites)
+    .innerJoin(players, eq(players.id, invites.playerId))
+    .innerJoin(attendances, eq(attendances.playerId, invites.playerId))
+    .leftJoin(users, eq(users.playerId, invites.playerId))
+    .where(
+      and(
+        eq(attendances.matchDayId, id),
+        isNull(invites.usedAt),
+        isNull(users.id),
+        gt(invites.expiresAt, sql`now()`),
+      ),
+    )
+    .orderBy(asc(players.name));
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center gap-2">
@@ -229,7 +266,9 @@ export default async function AdminPeladaPage({
           <span className="text-sm font-normal text-neutral-500">({confirmed.length} confirmados)</span>
         </h2>
         <p className="mb-3 text-xs text-neutral-500">
-          Override do admin — vale mesmo depois do sorteio.
+          Você marca por quem ainda não tem acesso — vale mesmo depois do sorteio. Quem já tem
+          conta marca <strong>Vou</strong> pela página da pelada; a partir daí você também ajusta a
+          presença dessa pessoa.
         </p>
         <BuscaJogador
           itens={activePlayers.map((player): ItemJogador => {
@@ -255,7 +294,7 @@ export default async function AdminPeladaPage({
               acoes: (
                 <>
                   {status !== "in" && (
-                    <form action={setAttendanceAdmin.bind(null, matchDay.id, player.id, "in")}>
+                    <form action={definirPresenca.bind(null, matchDay.id, player.id, "in")}>
                       <button
                         type="submit"
                         className="rounded-lg bg-emerald-700 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-800"
@@ -265,7 +304,7 @@ export default async function AdminPeladaPage({
                     </form>
                   )}
                   {status !== "out" && (
-                    <form action={setAttendanceAdmin.bind(null, matchDay.id, player.id, "out")}>
+                    <form action={definirPresenca.bind(null, matchDay.id, player.id, "out")}>
                       <button
                         type="submit"
                         className="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
@@ -279,6 +318,58 @@ export default async function AdminPeladaPage({
             };
           })}
         />
+
+        {matchDay.status !== "finished" && (
+          <form
+            action={convidarParaPelada.bind(null, matchDay.id)}
+            className="mt-4 flex flex-wrap items-end gap-2 border-t border-neutral-200 pt-4 dark:border-neutral-800"
+          >
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              Chegou gente nova?
+              <input
+                name="name"
+                required
+                maxLength={60}
+                placeholder="Nome do jogador"
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              />
+            </label>
+            <label className="flex items-center gap-2 py-2 text-sm">
+              <input type="checkbox" name="isGoalkeeper" /> Goleiro
+            </label>
+            <button
+              type="submit"
+              className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+            >
+              Cadastrar e confirmar
+            </button>
+            <p className="w-full text-xs text-neutral-500">
+              Cria o jogador, já marca a presença e gera o convite de acesso — o link aparece aqui
+              embaixo para você mandar no WhatsApp.
+            </p>
+          </form>
+        )}
+
+        {convitesParaEntregar.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+            <h3 className="text-sm font-medium">Convites para entregar</h3>
+            {/* Só de quem ainda não tem conta: convite para quem já tem é
+                redefinição de senha, e isso é da plataforma. */}
+            {convitesParaEntregar.map((c) => (
+              <div key={c.token} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium">{c.name}</span>
+                <code className="max-w-full break-all rounded bg-neutral-100 px-2 py-1 text-xs dark:bg-neutral-800">
+                  {`${siteUrl()}/convite/${c.token}`}
+                </code>
+                <CopyButton text={`${siteUrl()}/convite/${c.token}`} />
+                <span className="text-xs text-neutral-500">
+                  expira{" "}
+                  {c.expiresAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -573,7 +664,7 @@ export default async function AdminPeladaPage({
               rodada de avaliação abre para quem jogou.
             </p>
             <Link
-              href={`/admin/peladas/${matchDay.id}/encerrar`}
+              href={`/pelada/${matchDay.id}/gerenciar/encerrar`}
               className="inline-block rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
             >
               Conferir escalação e encerrar
@@ -607,13 +698,21 @@ export default async function AdminPeladaPage({
               </strong>{" "}
               — “{votacao.reason}”
             </p>
-            <p className="text-neutral-500">
-              {votacao.sim} a favor · {votacao.nao} contra · precisa de {votacao.requiredYes} de{" "}
-              {votacao.eligibleCount}
-              {votacao.status === "open" && ` · ${votacao.horasRestantes}h restantes`}
-            </p>
-            {votacao.status === "open" && faltamVotar.length > 0 && (
-              <p className="text-neutral-500">Faltam votar: {faltamVotar.join(", ")}</p>
+            {/* Enquanto a votação corre, quem propôs vê só quantos faltam — nunca
+                o placar nem os nomes. Esta tela era do admin global, que não
+                jogava; agora é de quem propôs a exclusão e é par de quem vota.
+                Com placar e lista de faltantes, dois refreshes seguidos dizem
+                como fulano votou, num voto que o README chama de definitivo. */}
+            {votacao.status === "open" ? (
+              <p className="text-neutral-500">
+                Faltam {faltamVotar.length} de {votacao.eligibleCount} votarem · precisa de{" "}
+                {votacao.requiredYes} sim · {votacao.horasRestantes}h restantes
+              </p>
+            ) : (
+              <p className="text-neutral-500">
+                {votacao.sim} a favor · {votacao.nao} contra · precisava de {votacao.requiredYes} de{" "}
+                {votacao.eligibleCount}
+              </p>
             )}
             {votacao.status === "rejected" && (
               <p className="text-neutral-500">

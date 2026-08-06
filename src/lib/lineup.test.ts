@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { companheirosPorJogador, type EscalacaoRow } from "./lineup";
+import {
+  companheirosPorJogador,
+  gruposElegiveis,
+  MIN_GRUPO_AVALIACAO,
+  type EscalacaoRow,
+} from "./lineup";
 
 // Atalho: "1A" = jogador 1 no lado A do jogo informado.
 function escalacao(gameId: number, ladoA: number[], ladoB: number[]): EscalacaoRow[] {
@@ -78,5 +83,57 @@ describe("companheirosPorJogador", () => {
       expect(lista(invertido, playerId)).toEqual(lista(direto, playerId));
     }
     expect(invertido.size).toBe(direto.size);
+  });
+});
+
+describe("gruposElegiveis", () => {
+  const elegiveis = (rows: EscalacaoRow[], comConta: number[]) =>
+    [...gruposElegiveis(companheirosPorJogador(rows), new Set(comConta))].sort((a, b) => a - b);
+
+  it("o mínimo é três — o jogador mais dois companheiros", () => {
+    expect(MIN_GRUPO_AVALIACAO).toBe(3);
+  });
+
+  // O ataque que a regra existe para barrar: duas contas combinadas fabricando
+  // nota uma para a outra, pelada após pelada.
+  it("duas contas sozinhas não avaliam ninguém", () => {
+    expect(elegiveis(escalacao(1, [1, 2], [3, 4]), [1, 2])).toEqual([]);
+  });
+
+  it("três contas do mesmo lado avaliam", () => {
+    expect(elegiveis(escalacao(1, [1, 2, 3], [4, 5, 6]), [1, 2, 3])).toEqual([1, 2, 3]);
+  });
+
+  // O caso que o usuário pediu explicitamente: só um time tem gente com conta.
+  it("um lado com três contas avalia mesmo com o outro lado abaixo do mínimo", () => {
+    expect(elegiveis(escalacao(1, [1, 2, 3], [4, 5, 6]), [1, 2, 3, 4, 5])).toEqual([1, 2, 3]);
+  });
+
+  it("companheiro sem conta não conta para o grupo", () => {
+    // Quatro do mesmo lado, mas só dois têm conta.
+    expect(elegiveis(escalacao(1, [1, 2, 3, 4], [5, 6]), [1, 2])).toEqual([]);
+  });
+
+  it("jogador sem conta nunca é avaliador, mesmo em grupo grande", () => {
+    expect(elegiveis(escalacao(1, [1, 2, 3, 4], [5, 6]), [2, 3, 4])).toEqual([2, 3, 4]);
+  });
+
+  // A união entre jogos fecha o grupo de quem trocou de colete — e só dele.
+  // Aqui 1 jogou com 2 (jogo 1) e com 3 (jogo 2), então avalia os dois; mas 2 e
+  // 3 nunca se cruzaram, e cada um fica com um só companheiro com conta. A
+  // elegibilidade é individual, não do time: quem avalia e quem é avaliado não
+  // precisam coincidir.
+  it("trocar de colete fecha o grupo de quem trocou, não o dos outros", () => {
+    const rows = [...escalacao(1, [1, 2], [3, 4]), ...escalacao(2, [1, 3], [2, 4])];
+    expect(elegiveis(rows, [1, 2, 3])).toEqual([1]);
+  });
+
+  it("quatro contas embaralhadas entre os jogos elegem todo mundo", () => {
+    const rows = [...escalacao(1, [1, 2], [3, 4]), ...escalacao(2, [1, 3], [2, 4])];
+    expect(elegiveis(rows, [1, 2, 3, 4])).toEqual([1, 2, 3, 4]);
+  });
+
+  it("escalação vazia não elege ninguém", () => {
+    expect(elegiveis([], [1, 2, 3])).toEqual([]);
   });
 });
