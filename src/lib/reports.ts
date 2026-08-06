@@ -1,12 +1,9 @@
 import "server-only";
-import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
+import { db, type Executor } from "@/db";
 import { matchDays, ratingReports, ratingRounds, ratings } from "@/db/schema";
 import { notificar } from "./notifications";
 import { aplicarReplay } from "./ratings-engine";
-import { PRAZO_ADMIN_DIAS, prazoEmDias } from "./ratings";
-
-type Executor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
 
 /**
  * Resolve uma denúncia e, se aceita, descarta a avaliação e recalcula tudo.
@@ -124,9 +121,29 @@ export async function getDenunciasAbertas(): Promise<DenunciaNaFila[]> {
   return linhas;
 }
 
-/** Todas as notas que o jogador recebeu na rodada, para o admin decidir com contexto. */
-export async function getContextoDaDenuncia(roundId: number, playerId: number) {
-  return db
+export type EstrelaNoContexto = {
+  stars: number;
+  descartada: boolean;
+  /** Esta é a nota que foi reportada. */
+  reclamada: boolean;
+};
+
+/**
+ * Todas as notas que o jogador recebeu na rodada, para o admin decidir com
+ * contexto.
+ *
+ * O `ratings.id` fica no servidor: ele é serial, e a tela lista as notas
+ * ordenadas por estrelas — devolver o id entregaria a ordem de envio junto,
+ * inclusive no payload RSC, onde ele viajaria como `key` de cada item. Por isso
+ * quem sabe qual foi a nota reclamada é esta função, que já recebe o id, e não
+ * a página comparando ids.
+ */
+export async function getContextoDaDenuncia(
+  roundId: number,
+  playerId: number,
+  ratingIdDenunciado: number,
+): Promise<EstrelaNoContexto[]> {
+  const linhas = await db
     .select({
       ratingId: ratings.id,
       stars: ratings.stars,
@@ -135,16 +152,24 @@ export async function getContextoDaDenuncia(roundId: number, playerId: number) {
     .from(ratings)
     .where(and(eq(ratings.roundId, roundId), eq(ratings.ratedPlayerId, playerId)))
     .orderBy(asc(ratings.stars));
+
+  return linhas.map(({ ratingId, ...linha }) => ({
+    ...linha,
+    reclamada: ratingId === ratingIdDenunciado,
+  }));
 }
 
-export const PRAZO_DENUNCIA_ADMIN_DIAS = PRAZO_ADMIN_DIAS;
-export const prazoDoAdmin = () => prazoEmDias(PRAZO_ADMIN_DIAS);
-
-/** Denúncias abertas cujo prazo ainda corre — usado no contador do painel. */
+/**
+ * Denúncias ainda não resolvidas — usado no contador do painel. Inclui as de
+ * prazo vencido de propósito: elas continuam pendentes até o varredor passar, e
+ * são justamente as que o admin ainda tem chance de responder antes do
+ * auto-aceite. `status = 'open'` já implica `resolved_at is null`: os dois são
+ * escritos no mesmo UPDATE em resolverDenuncia().
+ */
 export async function contarDenunciasAbertas(): Promise<number> {
   const [row] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(ratingReports)
-    .where(and(eq(ratingReports.status, "open"), isNull(ratingReports.resolvedAt)));
+    .where(eq(ratingReports.status, "open"));
   return row?.total ?? 0;
 }

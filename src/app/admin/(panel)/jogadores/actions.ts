@@ -7,6 +7,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { requireAdmin } from "@/lib/require-admin";
 
 const playerSchema = z.object({
@@ -28,16 +29,6 @@ function parsePlayerForm(formData: FormData) {
 }
 
 const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
-
-// O drizzle embrulha o erro do driver (DrizzleQueryError → cause) — percorre a
-// cadeia de cause atrás do código 23505 do Postgres.
-function isUniqueViolation(error: unknown): boolean {
-  while (typeof error === "object" && error !== null) {
-    if ("code" in error && error.code === "23505") return true;
-    error = (error as { cause?: unknown }).cause;
-  }
-  return false;
-}
 
 // Cadastrar já cria o convite: participar da pelada é coisa de quem está no
 // sistema, então ninguém nasce sem acesso a caminho. O link continua sendo

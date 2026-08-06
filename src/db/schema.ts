@@ -206,6 +206,11 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "skill_changed",
   "skill_recalculated",
   "rating_report_resolved",
+  // A votação de exclusão tem os próprios tipos: `type` é a única classificação
+  // legível por máquina da caixa de entrada, e reaproveitar os do ciclo de
+  // avaliação gravaria linha mentindo sobre o que aconteceu.
+  "deletion_vote_open",
+  "deletion_vote_resolved",
 ]);
 
 // Uma rodada por pelada — a unique em match_day_id é o que garante isso e o que

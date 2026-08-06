@@ -55,7 +55,27 @@ export async function enviarAvaliacoes(
     notas.push({ ratedPlayerId: companheiro.playerId, stars: parsed.data });
   }
 
-  await db.transaction(async (tx) => {
+  const fechouNoMeio = await db.transaction(async (tx) => {
+    // Reconfere dentro da transação, travando a linha. Entre a checagem lá em
+    // cima e este insert a rodada pode ter fechado — o admin clicando em
+    // "Apurar agora" faz isso de forma determinística. Sem esta trava a nota
+    // entraria numa rodada `closed`: fecharSeTodosAvaliaram não faria nada
+    // agora, mas o replay lê todas as avaliações de todas as rodadas fechadas,
+    // então ela seria absorvida silenciosamente no próximo recálculo, depois do
+    // histórico daquela rodada já ter sido publicado.
+    const [aberta] = await tx
+      .select({ id: ratingRounds.id })
+      .from(ratingRounds)
+      .where(
+        and(
+          eq(ratingRounds.id, roundId),
+          eq(ratingRounds.status, "open"),
+          gt(ratingRounds.deadlineAt, sql`now()`),
+        ),
+      )
+      .for("update");
+    if (!aberta) return true;
+
     await tx
       .insert(ratings)
       .values(
@@ -97,7 +117,13 @@ export async function enviarAvaliacoes(
           ),
         ),
       );
+
+    return false;
   });
+
+  if (fechouNoMeio) {
+    return { error: "Esta avaliação não está mais aberta para você." };
+  }
 
   // Se este era o último que faltava, a rodada fecha e as notas saem na hora —
   // ninguém precisa esperar os 2 dias.

@@ -14,7 +14,7 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  const soDeJogador = ["/perfil", "/avaliar", "/notificacoes"];
+  const soDeJogador = ["/perfil", "/avaliar", "/notificacoes", "/votacao"];
   if (soDeJogador.some((rota) => pathname.startsWith(rota)) && !payload) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -27,5 +27,14 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/perfil/:path*", "/avaliar/:path*", "/notificacoes/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/perfil/:path*",
+    "/avaliar/:path*",
+    "/notificacoes/:path*",
+    // /votacao entra aqui e não só no requirePlayer() da página porque é só o
+    // proxy que monta o ?next=: sem ele, quem abre o link da notificação
+    // deslogado cai na home depois do login, e não na votação que tem 48h.
+    "/votacao/:path*",
+  ],
 };

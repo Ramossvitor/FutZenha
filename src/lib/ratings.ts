@@ -105,14 +105,6 @@ export async function getRatersElegiveis(matchDayId: number): Promise<RaterElegi
   );
 }
 
-export async function getRodadaDaPelada(matchDayId: number): Promise<RatingRound | undefined> {
-  const [round] = await db
-    .select()
-    .from(ratingRounds)
-    .where(eq(ratingRounds.matchDayId, matchDayId));
-  return round;
-}
-
 export type RodadaAberta = {
   round: RatingRound;
   matchDayDate: string;

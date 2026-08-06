@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { ratingReports, ratingRounds, ratings, users } from "@/db/schema";
 import { createSessionToken } from "@/lib/auth";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
   MIN_AVALIACOES_PARA_DENUNCIAR,
@@ -59,6 +60,22 @@ export async function denunciarAvaliacao(
     };
   }
 
+  // Uma denúncia por rodada, não uma por nota recebida. A unique em
+  // rating_id sozinha só impede reportar a *mesma* nota duas vezes — sem esta
+  // checagem dava para reportar todas as estrelas da rodada de uma vez e, com
+  // o auto-aceite por silêncio do admin, anular a pelada inteira.
+  const [jaDenunciou] = await db
+    .select({ id: ratingReports.id })
+    .from(ratingReports)
+    .innerJoin(ratings, eq(ratingReports.ratingId, ratings.id))
+    .where(
+      and(
+        eq(ratings.roundId, roundId),
+        eq(ratingReports.reporterPlayerId, session.player.id),
+      ),
+    );
+  if (jaDenunciou) return { error: "Você já reportou uma nota desta rodada." };
+
   const ratingId = await resolverAvaliacaoPorIndice(roundId, session.player.id, indice);
   if (ratingId === null) return { error: "Avaliação não encontrada." };
 
@@ -66,12 +83,16 @@ export async function denunciarAvaliacao(
     await db.insert(ratingReports).values({
       ratingId,
       reporterPlayerId: session.player.id,
-      reason: parsedReason.data?.trim() || null,
+      // O .trim() do schema já é transform de saída no Zod 4.
+      reason: parsedReason.data || null,
       adminDeadlineAt: prazoEmDias(PRAZO_ADMIN_DIAS),
     });
-  } catch {
-    // unique em rating_id: já existe denúncia para esta avaliação.
-    return { error: "Esta nota já foi reportada." };
+  } catch (error) {
+    // Só a unique em rating_id vira mensagem. Qualquer outra falha (conexão
+    // caída no cold start do Neon, FK) tem que subir: reportá-la como
+    // duplicata faria o jogador desistir de um envio que nunca aconteceu.
+    if (isUniqueViolation(error)) return { error: "Esta nota já foi reportada." };
+    throw error;
   }
 
   revalidatePath("/perfil");

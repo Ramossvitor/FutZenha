@@ -40,7 +40,7 @@ export default async function AdminAvaliacoesPage() {
   // O contexto de cada denúncia: todas as notas que a pessoa recebeu naquela
   // rodada, para o admin não decidir olhando só a nota reclamada.
   const contextos = await Promise.all(
-    denuncias.map((d) => getContextoDaDenuncia(d.roundId, d.reporterPlayerId)),
+    denuncias.map((d) => getContextoDaDenuncia(d.roundId, d.reporterPlayerId, d.ratingId)),
   );
 
   return (
@@ -93,9 +93,9 @@ export default async function AdminAvaliacoesPage() {
                   Todas as notas que recebeu nessa pelada:{" "}
                   {contexto.map((c, j) => (
                     <span
-                      key={c.ratingId}
+                      key={j}
                       className={
-                        c.ratingId === d.ratingId
+                        c.reclamada
                           ? "font-bold text-amber-600 dark:text-amber-400"
                           : c.descartada
                             ? "text-neutral-400 line-through"
@@ -103,7 +103,7 @@ export default async function AdminAvaliacoesPage() {
                       }
                     >
                       {j > 0 && " · "}
-                      {c.stars}★{c.ratingId === d.ratingId ? " (reclamada)" : ""}
+                      {c.stars}★{c.reclamada ? " (reclamada)" : ""}
                     </span>
                   ))}
                 </p>

@@ -41,7 +41,6 @@ const statusLabels = {
 
 const errorMessages: Record<string, string> = {
   "dados-invalidos": "Dados inválidos — confira os campos.",
-  "pelada-encerrada": "A pelada já foi encerrada.",
   "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
   "jogos-lancados": "Já existem jogos lançados — apague os jogos antes de re-sortear.",
   "precisa-votacao":

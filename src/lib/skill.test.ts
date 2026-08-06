@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { replaySkills, type RatingInput, type RoundInput } from "./skill";
+import {
+  centParaNota,
+  diffNotas,
+  notaParaCent,
+  replaySkills,
+  SKILL_INICIAL_CENT,
+  SKILL_MAX_CENT,
+  SKILL_MIN_CENT,
+  type RatingInput,
+  type RoundInput,
+} from "./skill";
 
 // Helpers: os ids dos avaliadores não importam para a nota, só a contagem —
 // então geramos avaliadores distintos automaticamente.
@@ -257,5 +267,94 @@ describe("replaySkills", () => {
       [2, 1],
       [2, 3],
     ]);
+  });
+
+  // match_days.date não tem unique, então duas peladas no mesmo dia são
+  // possíveis. Sem o desempate por id, a nota final dependeria da ordem que o
+  // Postgres devolvesse — o mesmo dado daria notas diferentes entre execuções.
+  it("desempata peladas da mesma data por id, de forma estável", () => {
+    const mesmoDia = [
+      { ...rodada(7, recebe(1, [1, 1, 1]), "2026-03-01"), matchDayId: 7 },
+      { ...rodada(3, recebe(1, [5, 5, 5], 2000), "2026-03-01"), matchDayId: 3 },
+    ];
+    const naOrdem = replaySkills(mesmoDia);
+    const invertido = replaySkills([mesmoDia[1], mesmoDia[0]]);
+
+    // matchDayId 3 antes do 7, independente da ordem de chegada.
+    expect(naOrdem.history.map((h) => h.roundId)).toEqual([3, 7]);
+    expect(invertido.history).toEqual(naOrdem.history);
+  });
+});
+
+describe("notaParaCent / centParaNota", () => {
+  // notaParaCent é o que decide quem recebe UPDATE e "sua nota mudou": é ele
+  // que impede 5.699999999999999 e 5.7 contarem como notas diferentes.
+  it("faz round-trip em toda a grade de 0,1 da escala", () => {
+    for (let cent = SKILL_MIN_CENT; cent <= SKILL_MAX_CENT; cent += 10) {
+      const nota = centParaNota(cent);
+      expect(notaParaCent(nota)).toBe(cent);
+      expect(centParaNota(notaParaCent(nota))).toBe(nota);
+    }
+  });
+
+  it("absorve o ruído de ponto flutuante", () => {
+    expect(notaParaCent(5.699999999999999)).toBe(notaParaCent(5.7));
+    expect(notaParaCent(0.1 + 0.2 + 5.4)).toBe(notaParaCent(5.7));
+  });
+});
+
+describe("diffNotas", () => {
+  const inicial = centParaNota(SKILL_INICIAL_CENT);
+
+  it("lista só quem mudou", () => {
+    const mudou = diffNotas(
+      [
+        { id: 1, skill: 5 },
+        { id: 2, skill: 6.7 },
+      ],
+      new Map([
+        [1, 6.7],
+        [2, 6.7],
+      ]),
+    );
+    expect(mudou).toEqual([{ id: 1, antes: 5, depois: 6.7 }]);
+  });
+
+  // O bug que motivou extrair esta função: quem sai do replay tem que voltar
+  // para 5,0. Acontece quando a única pelada em que ele foi avaliado é apagada
+  // por votação, ou quando todas as notas que recebeu são descartadas.
+  it("devolve para 5,0 quem sumiu do replay", () => {
+    expect(diffNotas([{ id: 1, skill: 6.7 }], new Map())).toEqual([
+      { id: 1, antes: 6.7, depois: inicial },
+    ]);
+  });
+
+  it("replay vazio reseta todo mundo que não estava em 5,0", () => {
+    const mudou = diffNotas(
+      [
+        { id: 1, skill: 6.7 },
+        { id: 2, skill: 5 },
+        { id: 3, skill: 3.2 },
+      ],
+      new Map(),
+    );
+    expect(mudou).toEqual([
+      { id: 1, antes: 6.7, depois: inicial },
+      { id: 3, antes: 3.2, depois: inicial },
+    ]);
+  });
+
+  it("não acusa mudança por ruído de ponto flutuante", () => {
+    expect(diffNotas([{ id: 1, skill: 5.7 }], new Map([[1, 5.699999999999999]]))).toEqual([]);
+  });
+
+  it("é idempotente: aplicado o resultado, não sobra nada para mudar", () => {
+    const atuais = [
+      { id: 1, skill: 6.7 },
+      { id: 2, skill: 4.1 },
+    ];
+    const alvo = new Map([[1, 5.5]]);
+    const depois = atuais.map((p) => ({ id: p.id, skill: alvo.get(p.id) ?? inicial }));
+    expect(diffNotas(depois, alvo)).toEqual([]);
   });
 });

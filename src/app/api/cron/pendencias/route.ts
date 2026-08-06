@@ -6,8 +6,8 @@ import { processarPendencias } from "@/lib/pendencias";
 // no layout, que só roda quando alguém acessa o site. Este cron garante que
 // uma rodada feche mesmo se ninguém abrir o app por dias.
 //
-// Atenção: /api/* NÃO passa pelo src/proxy.ts (o matcher cobre só /admin,
-// /perfil, /avaliar e /notificacoes). Esta rota se autentica sozinha.
+// Atenção: /api/* NÃO passa pelo src/proxy.ts (o matcher cobre só as áreas de
+// admin e de jogador). Esta rota se autentica sozinha.
 export const dynamic = "force-dynamic";
 
 // Comparação em tempo constante — o mesmo cuidado que src/lib/auth.ts toma com

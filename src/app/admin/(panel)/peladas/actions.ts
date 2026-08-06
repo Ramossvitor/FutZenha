@@ -17,6 +17,7 @@ import {
 } from "@/db/schema";
 import { abrirVotacao } from "@/lib/deletion";
 import { drawTeams } from "@/lib/draw";
+import { aplicarReplay } from "@/lib/ratings-engine";
 import { requireAdmin } from "@/lib/require-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
 
@@ -101,11 +102,22 @@ export async function abrirVotacaoExclusao(matchDayId: number, formData: FormDat
 
   const resultado = await abrirVotacao(matchDayId, parsed.data);
   if (resultado.tipo === "sem-eleitores") {
-    await db.delete(matchDays).where(eq(matchDays.id, matchDayId));
+    // Mesmo sem eleitor, a pelada pode ter rodada apurada e avaliações válidas
+    // — basta as contas de quem jogou terem sido desativadas depois. O delete
+    // leva as avaliações por cascade, então o replay tem que rodar no mesmo
+    // commit, como em resolverVotacao(). Sem ele a nota de todo mundo ficaria
+    // com a contribuição de uma pelada que não existe mais.
+    await db.transaction(async (tx) => {
+      await tx.delete(matchDays).where(eq(matchDays.id, matchDayId));
+      await aplicarReplay(tx, {
+        tipo: "revisao",
+        dedupeKey: `nota:pelada-apagada:${matchDayId}`,
+      });
+    });
     revalidatePath("/");
     revalidatePath("/admin/peladas");
     revalidatePath("/rankings");
-    redirect("/admin/peladas?erro=excluida-sem-votacao");
+    redirect("/admin/peladas?ok=excluida-sem-votacao");
   }
 
   revalidateMatchDay(matchDayId);
@@ -327,7 +339,18 @@ export async function addGoal(matchDayId: number, gameId: number, formData: Form
 
 export async function deleteGoal(matchDayId: number, goalId: number) {
   await requireAdmin();
-  await db.delete(goals).where(eq(goals.id, goalId));
+  await assertPlacarEditavel(matchDayId);
+  // Escopo pela pelada: `goalId` vem do cliente, e sem o filtro um id de outra
+  // pelada — encerrada há meses — seria apagado por esta mesma chamada.
+  await db.delete(goals).where(
+    and(
+      eq(goals.id, goalId),
+      inArray(
+        goals.gameId,
+        db.select({ id: games.id }).from(games).where(eq(games.matchDayId, matchDayId)),
+      ),
+    ),
+  );
   revalidateMatchDay(matchDayId);
 }
 

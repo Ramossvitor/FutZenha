@@ -14,17 +14,35 @@ const statusLabels = {
   finished: "encerrada",
 } as const;
 
+const errorMessages: Record<string, string> = {
+  "dados-invalidos": "Dados inválidos — confira data e local.",
+};
+
+const okMessages: Record<string, string> = {
+  "excluida-sem-votacao":
+    "Pelada apagada direto: ninguém com conta jogou, então não havia quem votasse. As notas foram recalculadas.",
+};
+
 export default async function AdminPeladasPage({ searchParams }: PageProps<"/admin/peladas">) {
-  const { erro } = await searchParams;
+  const { erro, ok } = await searchParams;
   const days = await db.select().from(matchDays).orderBy(desc(matchDays.date), desc(matchDays.id));
+
+  const mensagemErro = typeof erro === "string" ? errorMessages[erro] : undefined;
+  const mensagemOk = typeof ok === "string" ? okMessages[ok] : undefined;
 
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Peladas</h1>
 
-      {erro === "dados-invalidos" && (
+      {mensagemErro && (
         <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          Dados inválidos — confira data e local.
+          {mensagemErro}
+        </p>
+      )}
+
+      {mensagemOk && (
+        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+          {mensagemOk}
         </p>
       )}
 

@@ -107,13 +107,18 @@ export async function confirmarEncerramento(matchDayId: number) {
     redirect(`/admin/peladas/${matchDayId}/encerrar?erro=jogo-sem-time`);
   }
 
-  await db
-    .update(matchDays)
-    .set({ status: "finished", finishedAt: sql`now()` })
-    .where(eq(matchDays.id, matchDayId));
+  // Encerrar com a escalação confirmada é o gatilho da avaliação, e as duas
+  // coisas têm que ser o mesmo commit: uma pelada que ficasse `finished` sem
+  // rodada seria um beco sem saída — a linha 91 impede repetir a ação, o
+  // varredor só fecha rodada que já existe, e não existe "reabrir pelada".
+  await db.transaction(async (tx) => {
+    await tx
+      .update(matchDays)
+      .set({ status: "finished", finishedAt: sql`now()` })
+      .where(eq(matchDays.id, matchDayId));
 
-  // Encerrar com a escalação confirmada é o gatilho da avaliação.
-  await abrirRodada(matchDayId);
+    await abrirRodada(tx, matchDayId);
+  });
 
   revalidatePath("/");
   revalidatePath("/peladas");

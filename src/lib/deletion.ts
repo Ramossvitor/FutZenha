@@ -1,6 +1,6 @@
 import "server-only";
-import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { db, type Executor } from "@/db";
 import {
   gamePlayers,
   games,
@@ -15,8 +15,6 @@ import { notificar } from "./notifications";
 import { prazoEmDias } from "./ratings";
 import { aplicarReplay } from "./ratings-engine";
 import { avaliarVotacao, placar, PRAZO_VOTACAO_DIAS, votosNecessarios } from "./votacao";
-
-type Executor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
 
 /**
  * Quem vota: jogou a pelada e tem conta ativa. São os afetados — a exclusão
@@ -71,7 +69,7 @@ export async function abrirVotacao(
       tx,
       eleitores.map((playerId) => ({
         playerId,
-        type: "rating_round_open" as const,
+        type: "deletion_vote_open" as const,
         title: "Votação: excluir uma pelada",
         body: `O admin propôs apagar a pelada de ${formatDate(matchDay.date)}. Seu voto é definitivo e não votar conta como contra.`,
         href: `/votacao/${votacao.id}`,
@@ -91,10 +89,22 @@ export async function registrarVoto(
   aFavor: boolean,
 ): Promise<ResultadoVoto> {
   return db.transaction(async (tx) => {
+    // O prazo entra no filtro, e não só o status: a votação continua `open` no
+    // banco até o varredor passar (visita ao site, no máximo 1×/min, ou o cron
+    // diário), então numa semana parada ela fica vencida e aberta por horas.
+    // Sem esta condição, um SIM atrasado ainda contaria — e como avaliarVotacao
+    // testa o quórum antes do prazo, ele aprovaria a exclusão de uma pelada que
+    // já deveria ter sido mantida por silêncio.
     const [votacao] = await tx
       .select()
       .from(matchDayDeletionVotes)
-      .where(and(eq(matchDayDeletionVotes.id, voteId), eq(matchDayDeletionVotes.status, "open")));
+      .where(
+        and(
+          eq(matchDayDeletionVotes.id, voteId),
+          eq(matchDayDeletionVotes.status, "open"),
+          gt(matchDayDeletionVotes.deadlineAt, sql`now()`),
+        ),
+      );
     if (!votacao) return "encerrada";
 
     // Voto é definitivo: só grava quando ainda está nulo. Zero linhas de volta
@@ -185,7 +195,7 @@ export async function resolverVotacao(exec: Executor, voteId: number): Promise<b
     exec,
     eleitores.map((e) => ({
       playerId: e.playerId,
-      type: "rating_report_resolved" as const,
+      type: "deletion_vote_resolved" as const,
       title: destino === "approved" ? "Pelada excluída pelo grupo" : "Pelada mantida",
       body:
         destino === "approved"

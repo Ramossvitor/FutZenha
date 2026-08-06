@@ -27,3 +27,16 @@ const conn =
 if (process.env.NODE_ENV !== "production") globalForDb.conn = conn;
 
 export const db = drizzle(conn, { schema });
+
+/**
+ * O `db` ou o `tx` de dentro de uma transação.
+ *
+ * É o que deixa as etapas do ciclo de avaliação comporem num commit só —
+ * fechar a rodada, rodar o replay e notificar acontecem juntos ou não
+ * acontecem. Declarar aqui, e não em cada módulo, evita que um deles aceite um
+ * executor que os outros da mesma cadeia não aceitariam.
+ */
+export type Executor = Pick<
+  typeof db,
+  "select" | "insert" | "update" | "delete" | "execute"
+>;

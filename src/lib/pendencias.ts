@@ -4,12 +4,8 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { ratingRounds } from "@/db/schema";
 import { resolverVotacoesVencidas } from "./deletion";
-import { fecharRodada } from "./ratings-engine";
+import { fecharRodada, LOCK_NOTA } from "./ratings-engine";
 import { resolverDenunciasVencidas } from "./reports";
-
-// Chave arbitrária, mas fixa: identifica o varredor de avaliações no Postgres.
-// O cast para bigint acontece no SQL — o target do TS aqui não tem BigInt.
-const LOCK_KEY = 918273645;
 
 export type ResultadoVarredura = {
   rodadasFechadas: number;
@@ -32,11 +28,15 @@ export type ResultadoVarredura = {
  * de sessão pode ficar preso numa conexão reciclada. O `try_` não bloqueia:
  * quem chega depois volta na hora, porque o trabalho é idempotente e será
  * retentado no próximo request.
+ *
+ * A chave é a mesma que `aplicarReplay` toma (LOCK_NOTA): a seção crítica que
+ * os dois protegem é reescrever a nota. Reaver a chave lá dentro, já segurando
+ * ela aqui, é no-op — advisory lock é reentrante na mesma transação.
  */
 export async function processarPendencias(): Promise<ResultadoVarredura> {
   return db.transaction(async (tx) => {
     const travou = await tx.execute<{ locked: boolean }>(
-      sql`select pg_try_advisory_xact_lock(${LOCK_KEY}::bigint) as locked`,
+      sql`select pg_try_advisory_xact_lock(${LOCK_NOTA}::bigint) as locked`,
     );
     if (!travou[0]?.locked) {
       return { rodadasFechadas: 0, denunciasAceitas: 0, votacoesResolvidas: 0 };

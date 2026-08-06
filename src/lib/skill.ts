@@ -198,3 +198,30 @@ export function replaySkills(rounds: RoundInput[]): ReplayResult {
   for (const [playerId, cent] of notaCent) skillByPlayer.set(playerId, centParaNota(cent));
   return { skillByPlayer, history };
 }
+
+export type NotaDoJogador = { id: number; skill: number };
+export type MudancaDeNota = { id: number; antes: number; depois: number };
+
+/**
+ * Quem teve a nota alterada por um replay — quem recebe UPDATE e notificação.
+ *
+ * A regra que não é óbvia: **quem não aparece em `skillByPlayer` voltou para
+ * 5,0**, não "ficou como estava". Sumir do replay é exatamente o que acontece
+ * quando a única pelada em que o jogador foi avaliado é apagada pelo grupo, ou
+ * quando todas as notas que ele recebeu são descartadas por denúncia aceita.
+ * Nesses casos a nota tem que desandar junto: deixá-la parada guardaria um
+ * valor calculado a partir de avaliação que não existe mais, e é justamente
+ * isso que a promessa de "recalcular sempre do zero" existe para evitar.
+ *
+ * Compara em centésimos para ruído de ponto flutuante não virar UPDATE e um
+ * "sua nota mudou" sem mudança nenhuma.
+ */
+export function diffNotas(
+  atuais: NotaDoJogador[],
+  skillByPlayer: Map<number, number>,
+): MudancaDeNota[] {
+  const inicial = centParaNota(SKILL_INICIAL_CENT);
+  return atuais
+    .map((p) => ({ id: p.id, antes: p.skill, depois: skillByPlayer.get(p.id) ?? inicial }))
+    .filter((m) => notaParaCent(m.antes) !== notaParaCent(m.depois));
+}

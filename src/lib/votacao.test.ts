@@ -71,4 +71,14 @@ describe("avaliarVotacao", () => {
     expect(avaliarVotacao({ elegiveis: 3, sim: 2, nao: 1 }, false)).toBe("rejected");
     expect(avaliarVotacao({ elegiveis: 3, sim: 3, nao: 0 }, false)).toBe("approved");
   });
+
+  // Documenta uma armadilha, não um comportamento desejado: com eleitorado
+  // vazio votosNecessarios dá 0, e 0 >= 0 aprova — apagaria a pelada sem
+  // ninguém ter votado. Só não é caminho vivo porque abrirVotacao() intercepta
+  // antes, devolvendo "sem-eleitores" (src/lib/deletion.ts). Se este teste um
+  // dia falhar junto com aquele guard removido, a pelada some sozinha.
+  it("eleitorado vazio aprovaria — quem barra é o guard de abrirVotacao", () => {
+    expect(votosNecessarios(0)).toBe(0);
+    expect(avaliarVotacao({ elegiveis: 0, sim: 0, nao: 0 }, false)).toBe("approved");
+  });
 });

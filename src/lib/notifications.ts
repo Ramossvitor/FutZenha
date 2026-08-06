@@ -1,11 +1,7 @@
 import "server-only";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { db, type Executor } from "@/db";
 import { notifications, type Notification, type NotificationType } from "@/db/schema";
-
-// Aceita tanto o `db` quanto o `tx` de dentro de uma transação — notificar é
-// quase sempre a última coisa que acontece junto de uma escrita maior.
-type Executor = Pick<typeof db, "insert" | "select" | "update">;
 
 export type NovaNotificacao = {
   playerId: number;
