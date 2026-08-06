@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { logout } from "@/app/login/actions";
+import { agendarProcessamento } from "@/lib/pendencias";
 import { getSession } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
+import { NotificationBell } from "./notification-bell";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,6 +42,10 @@ const navLinks = [
 // deliberada para mostrar quem está logado em qualquer página.
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const session = await getSession();
+  // Prazos vencidos são aplicados depois da resposta, no máximo 1× por minuto
+  // por instância. O cron diário é só a rede de segurança para quando o site
+  // fica sem tráfego.
+  agendarProcessamento();
   return (
     <html
       lang="pt-BR"
@@ -59,6 +65,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               ))}
               {session?.role === "player" && (
                 <>
+                  <Link href="/avaliar" className="hover:underline">
+                    Avaliar
+                  </Link>
+                  <NotificationBell playerId={session.player.id} />
                   <Link
                     href="/perfil"
                     className="rounded-full bg-emerald-700 px-3 py-1 hover:bg-emerald-600"

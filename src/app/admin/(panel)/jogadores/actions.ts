@@ -7,6 +7,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { requireAdmin } from "@/lib/require-admin";
 
 const playerSchema = z.object({
@@ -16,7 +17,6 @@ const playerSchema = z.object({
     .trim()
     .max(60)
     .transform((v) => (v === "" ? null : v)),
-  skill: z.coerce.number().int().min(1).max(10),
   isGoalkeeper: z.coerce.boolean(),
 });
 
@@ -24,28 +24,30 @@ function parsePlayerForm(formData: FormData) {
   return playerSchema.safeParse({
     name: formData.get("name") ?? "",
     nickname: formData.get("nickname") ?? "",
-    skill: formData.get("skill") ?? 5,
     isGoalkeeper: formData.get("isGoalkeeper") === "on",
   });
 }
 
-// O drizzle embrulha o erro do driver (DrizzleQueryError → cause) — percorre a
-// cadeia de cause atrás do código 23505 do Postgres.
-function isUniqueViolation(error: unknown): boolean {
-  while (typeof error === "object" && error !== null) {
-    if ("code" in error && error.code === "23505") return true;
-    error = (error as { cause?: unknown }).cause;
-  }
-  return false;
-}
+const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
 
+// Cadastrar já cria o convite: participar da pelada é coisa de quem está no
+// sistema, então ninguém nasce sem acesso a caminho. O link continua sendo
+// entregue na mão pelo admin (não há e-mail), e o botão de gerar convite segue
+// existindo para reenviar quando o prazo vencer.
 export async function createPlayer(formData: FormData) {
   await requireAdmin();
   const parsed = parsePlayerForm(formData);
   if (!parsed.success) redirect("/admin/jogadores?erro=dados-invalidos");
 
   try {
-    await db.insert(players).values(parsed.data);
+    await db.transaction(async (tx) => {
+      const [created] = await tx.insert(players).values(parsed.data).returning();
+      await tx.insert(invites).values({
+        token: randomBytes(32).toString("base64url"),
+        playerId: created.id,
+        expiresAt: new Date(Date.now() + INVITE_DURATION_MS),
+      });
+    });
   } catch (error) {
     if (isUniqueViolation(error)) redirect("/admin/jogadores?erro=nome-duplicado");
     throw error;
@@ -76,8 +78,6 @@ export async function setPlayerActive(playerId: number, active: boolean) {
 }
 
 const idSchema = z.number().int().positive();
-
-const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
 
 // Gera um convite novo e apaga os pendentes anteriores do jogador — fica no
 // máximo um pendente por jogador. Para quem já tem conta, resgatar o convite

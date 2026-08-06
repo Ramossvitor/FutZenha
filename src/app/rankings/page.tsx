@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { getAttendanceStats, getAvailableYears, getPlayerRecords } from "@/lib/stats";
+import { formatSkill } from "@/lib/format";
+import {
+  getAttendanceStats,
+  getAvailableYears,
+  getPlayerRecords,
+  getSkillRanking,
+} from "@/lib/stats";
 
 export const metadata = { title: "Rankings" };
 export const dynamic = "force-dynamic";
@@ -9,10 +15,11 @@ const MIN_GAMES = 3;
 export default async function RankingsPage({ searchParams }: PageProps<"/rankings">) {
   const { ano } = await searchParams;
   const year = typeof ano === "string" && /^\d{4}$/.test(ano) ? Number(ano) : undefined;
-  const [records, attendance, years] = await Promise.all([
+  const [records, attendance, years, notas] = await Promise.all([
     getPlayerRecords(year, MIN_GAMES),
     getAttendanceStats(year),
     getAvailableYears(),
+    getSkillRanking(),
   ]);
 
   return (
@@ -36,6 +43,44 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
           </Link>
         ))}
       </nav>
+
+      {/* A nota é estado atual do jogador, não acumulado de temporada — por
+          isso a seção fica fora do filtro por ano. */}
+      <section>
+        <h2 className="mb-1 text-lg font-bold">Notas</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          Calculada pelas avaliações dos companheiros depois de cada pelada. Todo mundo começa em
+          5,0. A variação é da última pelada apurada.
+        </p>
+        {notas.length === 0 ? (
+          <p className="text-neutral-500">Ninguém com acesso ao sistema ainda.</p>
+        ) : (
+          <ol className="flex flex-col gap-1">
+            {notas.map((n, i) => (
+              <li
+                key={n.playerId}
+                className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900"
+              >
+                <span className="w-6 text-sm text-neutral-400">{i + 1}º</span>
+                <span className="font-medium">{n.name}</span>
+                {n.nickname && <span className="text-sm text-neutral-500">“{n.nickname}”</span>}
+                {n.variacao !== null && n.variacao !== 0 && (
+                  <span
+                    className={`text-xs font-medium ${
+                      n.variacao > 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {n.variacao > 0 ? "▲" : "▼"} {formatSkill(Math.abs(n.variacao))}
+                  </span>
+                )}
+                <span className="ml-auto text-lg font-bold">{formatSkill(n.skill)}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <section>
         <h2 className="mb-1 text-lg font-bold">Aproveitamento</h2>

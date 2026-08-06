@@ -1,25 +1,29 @@
 import type { Metadata } from "next";
+import { formatDate, formatSkill } from "@/lib/format";
+import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
 import { ChangePasswordForm } from "./change-password-form";
+import { DenunciarForm } from "./denunciar-form";
 
 export const metadata: Metadata = { title: "Meu perfil" };
 
-// A nota (skill) é segredo do admin — nunca aparece aqui.
 export default async function PerfilPage() {
   const session = await requirePlayer();
   const { player } = session;
 
-  const [scorers, records, attendance] = await Promise.all([
+  const [scorers, records, attendance, rodadas] = await Promise.all([
     getTopScorers(),
     getPlayerRecords(),
     getAttendanceStats(),
+    getEstrelasRecebidas(player.id),
   ]);
   const myGoals = scorers.find((s) => s.playerId === player.id)?.total ?? 0;
   const myRecord = records.find((r) => r.playerId === player.id);
   const myAttendance = attendance.perPlayer.find((a) => a.playerId === player.id)?.attended ?? 0;
 
   const statCards = [
+    { label: "Nota", value: formatSkill(player.skill) },
     { label: "Gols", value: String(myGoals) },
     { label: "Jogos", value: String(myRecord?.gamesPlayed ?? 0) },
     {
@@ -53,7 +57,7 @@ export default async function PerfilPage() {
           Meus números{" "}
           <span className="text-sm font-normal text-neutral-500">(só peladas encerradas)</span>
         </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {statCards.map((card) => (
             <div
               key={card.label}
@@ -68,6 +72,72 @@ export default async function PerfilPage() {
           <p className="text-sm text-neutral-500">
             Você está fora das listas no momento — fala com o admin para voltar.
           </p>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-bold">Avaliações que recebi</h2>
+        {rodadas.length === 0 ? (
+          <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            Nenhuma ainda. Depois que uma pelada que você jogou for apurada, as estrelas que os
+            companheiros te deram aparecem aqui.
+          </p>
+        ) : (
+          rodadas.map((rodada) => (
+            <div
+              key={rodada.roundId}
+              className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="font-medium capitalize">{formatDate(rodada.matchDayDate)}</span>
+                {rodada.skillBefore !== null && rodada.skillAfter !== null && (
+                  <span className="text-sm text-neutral-500">
+                    nota {formatSkill(rodada.skillBefore)} → {formatSkill(rodada.skillAfter)}
+                  </span>
+                )}
+                <span className="ml-auto text-xs text-neutral-400">
+                  as avaliações são anônimas
+                </span>
+              </div>
+              <ul className="flex flex-col gap-2">
+                {rodada.estrelas.map((e) => (
+                  <li
+                    key={e.indice}
+                    className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-2 first:border-0 first:pt-0 dark:border-neutral-800"
+                  >
+                    <span
+                      className={e.descartada ? "text-neutral-300 line-through dark:text-neutral-600" : "text-amber-400"}
+                    >
+                      {"★".repeat(e.stars)}
+                      <span className="text-neutral-200 dark:text-neutral-700">
+                        {"★".repeat(5 - e.stars)}
+                      </span>
+                    </span>
+                    {e.descartada && (
+                      <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
+                        descartada
+                      </span>
+                    )}
+                    {e.denunciaStatus === "open" && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                        em análise
+                      </span>
+                    )}
+                    {e.denunciaStatus === "rejected" && (
+                      <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
+                        considerada justa
+                      </span>
+                    )}
+                    <span className="ml-auto">
+                      {rodada.podeDenunciar && e.denunciaStatus === null && !e.descartada && (
+                        <DenunciarForm roundId={rodada.roundId} indice={e.indice} />
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
         )}
       </section>
 

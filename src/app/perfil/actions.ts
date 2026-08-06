@@ -1,13 +1,103 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { ratingReports, ratingRounds, ratings, users } from "@/db/schema";
 import { createSessionToken } from "@/lib/auth";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import {
+  MIN_AVALIACOES_PARA_DENUNCIAR,
+  PRAZO_ADMIN_DIAS,
+  prazoEmDias,
+  resolverAvaliacaoPorIndice,
+} from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { setSessionCookie } from "@/lib/session";
+
+export type DenunciarState = { error?: string; success?: boolean };
+
+const reasonSchema = z.string().trim().max(500).optional();
+
+/**
+ * Denuncia uma nota recebida. O jogador manda a POSIÇÃO na lista, não o id da
+ * avaliação: `ratings.id` é serial e entregaria a ordem de envio. O servidor
+ * repete a mesma ordenação anônima da tela para descobrir de qual avaliação se
+ * trata.
+ */
+export async function denunciarAvaliacao(
+  roundId: number,
+  indice: number,
+  _prev: DenunciarState,
+  formData: FormData,
+): Promise<DenunciarState> {
+  const session = await requirePlayer();
+  const parsedReason = reasonSchema.safeParse(formData.get("reason") ?? undefined);
+  if (!parsedReason.success) return { error: "Motivo longo demais." };
+
+  // A rodada precisa estar apurada e dentro do prazo de contestação.
+  const [rodada] = await db
+    .select({ id: ratingRounds.id })
+    .from(ratingRounds)
+    .where(
+      and(
+        eq(ratingRounds.id, roundId),
+        eq(ratingRounds.status, "closed"),
+        gt(ratingRounds.reportDeadlineAt, sql`now()`),
+      ),
+    );
+  if (!rodada) return { error: "O prazo para contestar esta rodada já passou." };
+
+  const recebidas = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(ratings)
+    .where(and(eq(ratings.roundId, roundId), eq(ratings.ratedPlayerId, session.player.id)));
+  if ((recebidas[0]?.total ?? 0) < MIN_AVALIACOES_PARA_DENUNCIAR) {
+    return {
+      error: `Só dá para reportar quando você recebeu ao menos ${MIN_AVALIACOES_PARA_DENUNCIAR} avaliações na rodada.`,
+    };
+  }
+
+  // Uma denúncia por rodada, não uma por nota recebida. A unique em
+  // rating_id sozinha só impede reportar a *mesma* nota duas vezes — sem esta
+  // checagem dava para reportar todas as estrelas da rodada de uma vez e, com
+  // o auto-aceite por silêncio do admin, anular a pelada inteira.
+  const [jaDenunciou] = await db
+    .select({ id: ratingReports.id })
+    .from(ratingReports)
+    .innerJoin(ratings, eq(ratingReports.ratingId, ratings.id))
+    .where(
+      and(
+        eq(ratings.roundId, roundId),
+        eq(ratingReports.reporterPlayerId, session.player.id),
+      ),
+    );
+  if (jaDenunciou) return { error: "Você já reportou uma nota desta rodada." };
+
+  const ratingId = await resolverAvaliacaoPorIndice(roundId, session.player.id, indice);
+  if (ratingId === null) return { error: "Avaliação não encontrada." };
+
+  try {
+    await db.insert(ratingReports).values({
+      ratingId,
+      reporterPlayerId: session.player.id,
+      // O .trim() do schema já é transform de saída no Zod 4.
+      reason: parsedReason.data || null,
+      adminDeadlineAt: prazoEmDias(PRAZO_ADMIN_DIAS),
+    });
+  } catch (error) {
+    // Só a unique em rating_id vira mensagem. Qualquer outra falha (conexão
+    // caída no cold start do Neon, FK) tem que subir: reportá-la como
+    // duplicata faria o jogador desistir de um envio que nunca aconteceu.
+    if (isUniqueViolation(error)) return { error: "Esta nota já foi reportada." };
+    throw error;
+  }
+
+  revalidatePath("/perfil");
+  return { success: true };
+}
 
 export type ChangePasswordState = { error?: string; success?: boolean };
 
