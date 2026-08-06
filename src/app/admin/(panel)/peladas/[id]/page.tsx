@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   attendances,
@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import { formatDate, formatSkill, formatTime } from "@/lib/format";
 import { vestClass } from "@/lib/team-colors";
+import { BuscaJogador, type ItemJogador } from "./busca-jogador";
 import {
   addGoal,
   createGame,
@@ -21,8 +22,6 @@ import {
   deleteGoal,
   deleteMatchDay,
   drawTeamsAction,
-  finishMatchDay,
-  reopenMatchDay,
   setAttendanceAdmin,
   swapPlayersAction,
   updateGameScore,
@@ -43,6 +42,10 @@ const errorMessages: Record<string, string> = {
   "pelada-encerrada": "A pelada já foi encerrada.",
   "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
   "jogos-lancados": "Já existem jogos lançados — apague os jogos antes de re-sortear.",
+  "escalacao-travada":
+    "A pelada já foi encerrada e a escalação não muda mais. Para corrigir, é preciso excluir a pelada — o que exige votação dos jogadores.",
+  "janela-encerrada":
+    "As 24h para corrigir placar e gols já passaram. Para alterar, é preciso excluir a pelada — o que exige votação dos jogadores.",
 };
 
 export default async function AdminPeladaPage({
@@ -54,9 +57,27 @@ export default async function AdminPeladaPage({
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
 
-  const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, id));
+  // A janela de correção vem calculada pelo Postgres — a regra de pureza do
+  // React proíbe Date.now() durante o render.
+  const [matchDay] = await db
+    .select({
+      ...getTableColumns(matchDays),
+      segundosDeJanela: sql<number>`greatest(0, extract(epoch from (
+        ${matchDays.finishedAt} + interval '24 hours' - now()
+      ))::int)`,
+    })
+    .from(matchDays)
+    .where(eq(matchDays.id, id));
   if (!matchDay) notFound();
   const errorMessage = typeof erro === "string" ? errorMessages[erro] : undefined;
+
+  const dentroDaJanela = matchDay.finishedAt !== null && matchDay.segundosDeJanela > 0;
+  // Placar e gols não mexem em quem avalia quem, então sobrevivem ao
+  // encerramento por 24h. A escalação, não: some do formulário na hora.
+  const podeEditarPlacar = matchDay.status !== "finished" || dentroDaJanela;
+  const horas = Math.floor(matchDay.segundosDeJanela / 3600);
+  const minutos = Math.floor((matchDay.segundosDeJanela % 3600) / 60);
+  const horasRestantes = horas > 0 ? `${horas}h${String(minutos).padStart(2, "0")}` : `${minutos}min`;
 
   const activePlayers = await db
     .select()
@@ -204,23 +225,29 @@ export default async function AdminPeladaPage({
         <p className="mb-3 text-xs text-neutral-500">
           Override do admin — vale mesmo depois do sorteio.
         </p>
-        <ul className="flex flex-col gap-1">
-          {activePlayers.map((player) => {
+        <BuscaJogador
+          itens={activePlayers.map((player): ItemJogador => {
             const status = statusByPlayer.get(player.id);
-            return (
-              <li key={player.id} className="flex items-center gap-2 py-1">
-                <span
-                  className={
-                    status === "in"
-                      ? "font-medium text-emerald-700 dark:text-emerald-400"
-                      : status === "out"
-                        ? "text-neutral-400 line-through"
-                        : ""
-                  }
-                >
-                  {player.name}
-                </span>
-                <span className="ml-auto flex gap-1">
+            return {
+              id: player.id,
+              nome: player.name,
+              apelido: player.nickname,
+              selos: (
+                <>
+                  {status === "in" && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                      vai
+                    </span>
+                  )}
+                  {status === "out" && (
+                    <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
+                      fora
+                    </span>
+                  )}
+                </>
+              ),
+              acoes: (
+                <>
                   {status !== "in" && (
                     <form action={setAttendanceAdmin.bind(null, matchDay.id, player.id, "in")}>
                       <button
@@ -241,11 +268,11 @@ export default async function AdminPeladaPage({
                       </button>
                     </form>
                   )}
-                </span>
-              </li>
-            );
+                </>
+              ),
+            };
           })}
-        </ul>
+        />
       </section>
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -399,7 +426,7 @@ export default async function AdminPeladaPage({
                     defaultValue={game.scoreB}
                     className={`${inputClass} w-16 text-center`}
                   />
-                  {matchDay.status !== "finished" && (
+                  {podeEditarPlacar && (
                     <button
                       type="submit"
                       className="rounded-lg border border-neutral-300 px-3 py-1 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
@@ -416,7 +443,7 @@ export default async function AdminPeladaPage({
                         ⚽ {goal.playerName}
                         {goal.quantity > 1 ? ` ×${goal.quantity}` : ""}
                       </span>
-                      {matchDay.status !== "finished" && (
+                      {podeEditarPlacar && (
                         <form action={deleteGoal.bind(null, matchDay.id, goal.id)}>
                           <button type="submit" className="text-xs text-red-600 hover:underline">
                             remover
@@ -425,7 +452,7 @@ export default async function AdminPeladaPage({
                       )}
                     </div>
                   ))}
-                  {matchDay.status !== "finished" && (
+                  {podeEditarPlacar && (
                     <form
                       action={addGoal.bind(null, matchDay.id, game.id)}
                       className="mt-1 flex flex-wrap items-center gap-2"
@@ -515,30 +542,37 @@ export default async function AdminPeladaPage({
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         {matchDay.status === "finished" ? (
-          <form action={reopenMatchDay.bind(null, matchDay.id)}>
-            <p className="mb-2 text-sm text-neutral-500">
-              Pelada encerrada — os resultados contam na artilharia e nos rankings.
+          <>
+            <p className="text-sm text-neutral-500">
+              Pelada encerrada — os resultados contam na artilharia, nos rankings e na presença, e a
+              escalação está travada.
             </p>
-            <button
-              type="submit"
-              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-            >
-              Reabrir para correções
-            </button>
-          </form>
+            <p className="mt-2 text-sm">
+              {dentroDaJanela ? (
+                <span className="text-amber-700 dark:text-amber-400">
+                  Placar e gols ainda podem ser corrigidos por mais {horasRestantes}.
+                </span>
+              ) : (
+                <span className="text-neutral-500">
+                  A janela de 24h para corrigir placar e gols já passou. Só é possível alterar esta
+                  pelada excluindo ela, o que exige votação dos jogadores.
+                </span>
+              )}
+            </p>
+          </>
         ) : (
-          <form action={finishMatchDay.bind(null, matchDay.id)}>
+          <>
             <p className="mb-2 text-sm text-neutral-500">
-              Encerrar trava a pelada e faz os resultados contarem na artilharia, nos rankings e na
-              presença.
+              Encerrar passa pela conferência da escalação. Depois disso ela não muda mais, e a
+              rodada de avaliação abre para quem jogou.
             </p>
-            <button
-              type="submit"
-              className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+            <Link
+              href={`/admin/peladas/${matchDay.id}/encerrar`}
+              className="inline-block rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
             >
-              Encerrar pelada
-            </button>
-          </form>
+              Conferir escalação e encerrar
+            </Link>
+          </>
         )}
       </section>
 

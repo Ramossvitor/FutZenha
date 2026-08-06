@@ -45,6 +45,9 @@ export const matchDays = pgTable("match_days", {
   location: text("location").notNull(),
   status: matchDayStatusEnum("status").notNull().default("scheduled"),
   notes: text("notes"),
+  // Quando o admin confirmou a escalação e encerrou. A partir daqui a
+  // escalação é imutável, e placar e gols têm 24h de janela para correção.
+  finishedAt: timestamp("finished_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

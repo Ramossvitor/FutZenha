@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -16,7 +16,6 @@ import {
   teams,
 } from "@/db/schema";
 import { drawTeams } from "@/lib/draw";
-import { abrirRodada, descartarRodadaAberta } from "@/lib/ratings-engine";
 import { requireAdmin } from "@/lib/require-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
 
@@ -72,6 +71,37 @@ export async function deleteMatchDay(matchDayId: number) {
   redirect("/admin/peladas");
 }
 
+// A escalação (times, jogos, quem jogou) é imutável depois do encerramento —
+// é ela que define quem avalia quem, e mexer nela invalidaria avaliações já
+// enviadas. Corrigir escalação errada só excluindo a pelada.
+async function assertEscalacaoEditavel(matchDayId: number) {
+  const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, matchDayId));
+  if (!matchDay) redirect("/admin/peladas");
+  if (matchDay.status === "finished") {
+    redirect(`/admin/peladas/${matchDayId}?erro=escalacao-travada`);
+  }
+  return matchDay;
+}
+
+// Placar e gols não mexem em quem avalia quem, então ganham uma janela de 24h
+// depois do encerramento. `finished_at` nulo numa pelada encerrada conta como
+// fora da janela: sem marco temporal não há o que liberar.
+const JANELA_CORRECAO = sql`
+  ${matchDays.status} <> 'finished'
+  or (${matchDays.finishedAt} is not null and ${matchDays.finishedAt} + interval '24 hours' > now())
+`;
+
+async function assertPlacarEditavel(matchDayId: number) {
+  const [row] = await db
+    .select({ dentroDaJanela: sql<boolean>`${JANELA_CORRECAO}` })
+    .from(matchDays)
+    .where(eq(matchDays.id, matchDayId));
+  if (!row) redirect("/admin/peladas");
+  if (!row.dentroDaJanela) {
+    redirect(`/admin/peladas/${matchDayId}?erro=janela-encerrada`);
+  }
+}
+
 function revalidateMatchDay(matchDayId: number) {
   revalidatePath("/");
   revalidatePath("/peladas");
@@ -86,10 +116,7 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
     redirect(`/admin/peladas/${matchDayId}?erro=dados-invalidos`);
   }
 
-  const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, matchDayId));
-  if (!matchDay || matchDay.status === "finished") {
-    redirect(`/admin/peladas/${matchDayId}?erro=pelada-encerrada`);
-  }
+  await assertEscalacaoEditavel(matchDayId);
 
   // Re-sortear apagaria os jogos por cascade — exige apagar os jogos antes.
   const existingGames = await db.select().from(games).where(eq(games.matchDayId, matchDayId));
@@ -134,6 +161,7 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
 
 export async function swapPlayersAction(matchDayId: number, formData: FormData) {
   await requireAdmin();
+  await assertEscalacaoEditavel(matchDayId);
   const playerA = Number(formData.get("playerA"));
   const playerB = Number(formData.get("playerB"));
   if (!Number.isInteger(playerA) || !Number.isInteger(playerB) || playerA === playerB) return;
@@ -166,6 +194,7 @@ export async function swapPlayersAction(matchDayId: number, formData: FormData) 
 
 export async function createGame(matchDayId: number, formData: FormData) {
   await requireAdmin();
+  await assertEscalacaoEditavel(matchDayId);
   const teamAId = Number(formData.get("teamAId"));
   const teamBId = Number(formData.get("teamBId"));
   const scoreA = Number(formData.get("scoreA"));
@@ -217,6 +246,7 @@ export async function createGame(matchDayId: number, formData: FormData) {
 
 export async function updateGameScore(matchDayId: number, gameId: number, formData: FormData) {
   await requireAdmin();
+  await assertPlacarEditavel(matchDayId);
   const scoreA = Number(formData.get("scoreA"));
   const scoreB = Number(formData.get("scoreB"));
   if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
@@ -231,12 +261,14 @@ export async function updateGameScore(matchDayId: number, gameId: number, formDa
 
 export async function deleteGame(matchDayId: number, gameId: number) {
   await requireAdmin();
+  await assertEscalacaoEditavel(matchDayId);
   await db.delete(games).where(and(eq(games.id, gameId), eq(games.matchDayId, matchDayId)));
   revalidateMatchDay(matchDayId);
 }
 
 export async function addGoal(matchDayId: number, gameId: number, formData: FormData) {
   await requireAdmin();
+  await assertPlacarEditavel(matchDayId);
   const playerId = Number(formData.get("playerId"));
   const quantity = Number(formData.get("quantity") ?? 1);
   if (!Number.isInteger(playerId) || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
@@ -258,28 +290,9 @@ export async function deleteGoal(matchDayId: number, goalId: number) {
   revalidateMatchDay(matchDayId);
 }
 
-export async function finishMatchDay(matchDayId: number) {
-  await requireAdmin();
-  await db.update(matchDays).set({ status: "finished" }).where(eq(matchDays.id, matchDayId));
-  // Encerrar a pelada é o gatilho da avaliação. Pelada sem jogos lançados, ou
-  // sem ninguém com conta, encerra igual — só não abre rodada.
-  await abrirRodada(matchDayId);
-  revalidateMatchDay(matchDayId);
-  revalidatePath("/artilharia");
-  revalidatePath("/rankings");
-}
-
-export async function reopenMatchDay(matchDayId: number) {
-  await requireAdmin();
-  // Reabrir permite mexer nos jogos, e é a escalação deles que define quem
-  // avalia quem — uma rodada em andamento não sobrevive a isso. Encerrar de
-  // novo abre uma rodada nova, do zero.
-  await descartarRodadaAberta(matchDayId);
-  await db.update(matchDays).set({ status: "teams_drawn" }).where(eq(matchDays.id, matchDayId));
-  revalidateMatchDay(matchDayId);
-  revalidatePath("/artilharia");
-  revalidatePath("/rankings");
-}
+// Encerrar mora em ./[id]/encerrar/actions.ts: passa pela conferência da
+// escalação, que é o que trava a base da avaliação. Não existe "reabrir" —
+// escalação errada só se conserta excluindo a pelada.
 
 export async function setAttendanceAdmin(
   matchDayId: number,
@@ -287,6 +300,7 @@ export async function setAttendanceAdmin(
   status: "in" | "out",
 ) {
   await requireAdmin();
+  await assertEscalacaoEditavel(matchDayId);
   await db
     .insert(attendances)
     .values({ matchDayId, playerId, status })

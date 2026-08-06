@@ -1,7 +1,6 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { notifications, ratingRoundRaters, ratingRounds } from "@/db/schema";
+import { ratingRoundRaters, ratingRounds } from "@/db/schema";
 import { notificar } from "./notifications";
 import { getRatersElegiveis, PRAZO_AVALIACAO_DIAS, prazoEmDias } from "./ratings";
 
@@ -49,35 +48,7 @@ export async function abrirRodada(matchDayId: number): Promise<number | null> {
   });
 }
 
-/**
- * Descarta a rodada em andamento de uma pelada. Usado quando o admin reabre a
- * pelada: os jogos voltam a ser editáveis e é a escalação deles que define quem
- * avalia quem, então a rodada não pode continuar de pé.
- *
- * Apaga em vez de marcar como cancelada, por dois motivos. Uma rodada aberta
- * ainda não produziu nada — nenhuma nota mudou, nenhuma linha de histórico
- * existe —, então ela literalmente não aconteceu. E a unique em `match_day_id`
- * é o que garante uma rodada por pelada: deixar a cancelada ocupando a vaga
- * impediria a pelada de abrir rodada nova ao ser encerrada de novo.
- *
- * O status `cancelled` fica reservado para rodada já apurada, onde as
- * avaliações precisam sobreviver para o replay saber o que ignorar.
- *
- * Efeito colateral assumido: as avaliações já enviadas nessa rodada somem junto
- * (cascade) e quem avaliou vai precisar avaliar de novo.
- */
-export async function descartarRodadaAberta(matchDayId: number): Promise<boolean> {
-  const [round] = await db
-    .select({ id: ratingRounds.id })
-    .from(ratingRounds)
-    .where(and(eq(ratingRounds.matchDayId, matchDayId), eq(ratingRounds.status, "open")));
-  if (!round) return false;
-
-  await db.transaction(async (tx) => {
-    // Avaliações e avaliadores caem por cascade; a notificação não, porque
-    // aponta para o jogador — e ficaria apontando para uma rodada inexistente.
-    await tx.delete(notifications).where(eq(notifications.dedupeKey, `rodada:${round.id}:aberta`));
-    await tx.delete(ratingRounds).where(eq(ratingRounds.id, round.id));
-  });
-  return true;
-}
+// Não existe função para descartar rodada: a escalação é confirmada no
+// encerramento e nunca mais muda, então a base da avaliação nunca fica
+// inválida. O status `cancelled` fica reservado para a Fase 10, quando excluir
+// a pelada por votação também apaga a rodada dela.
