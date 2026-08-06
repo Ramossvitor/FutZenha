@@ -50,7 +50,9 @@ export type Companheiro = {
 
 /**
  * Quem o jogador avalia nesta pelada: todos que dividiram o lado com ele em
- * algum jogo. Vazio se ele não jogou ou se não teve companheiro.
+ * algum jogo **e têm conta ativa**. Quem ainda não resgatou o convite jogou,
+ * mas não é avaliado — e por isso nem aparece na lista. Vazio se ele não jogou
+ * ou se nenhum companheiro tem conta.
  */
 export async function getCompanheiros(
   matchDayId: number,
@@ -68,6 +70,7 @@ export async function getCompanheiros(
       isGoalkeeper: players.isGoalkeeper,
     })
     .from(players)
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
     .where(inArray(players.id, ids))
     .orderBy(players.name);
 }
@@ -75,20 +78,28 @@ export async function getCompanheiros(
 export type RaterElegivel = { playerId: number; userId: number };
 
 /**
- * Quem pode avaliar numa pelada: jogou, tem pelo menos um companheiro e tem
- * conta ativa. Vira o denominador congelado do "todos já avaliaram".
+ * Quem pode avaliar numa pelada: jogou, tem conta ativa e tem pelo menos um
+ * companheiro **que também tem conta ativa**. Vira o denominador congelado do
+ * "todos já avaliaram".
+ *
+ * A segunda condição não é preciosismo: sem ela, alguém cujos companheiros
+ * estejam todos com o convite pendente entraria como avaliador de uma lista
+ * vazia, sem ter o que enviar — e a rodada nunca fecharia por completude.
  */
 export async function getRatersElegiveis(matchDayId: number): Promise<RaterElegivel[]> {
   const companheiros = companheirosPorJogador(await getEscalacaoDaPelada(matchDayId));
-  const comCompanheiro = [...companheiros]
-    .filter(([, conjunto]) => conjunto.size > 0)
-    .map(([playerId]) => playerId);
-  if (comCompanheiro.length === 0) return [];
+  const jogaram = [...companheiros.keys()];
+  if (jogaram.length === 0) return [];
 
-  return db
+  const contas = await db
     .select({ playerId: users.playerId, userId: users.id })
     .from(users)
-    .where(and(inArray(users.playerId, comCompanheiro), eq(users.active, true)));
+    .where(and(inArray(users.playerId, jogaram), eq(users.active, true)));
+
+  const comConta = new Set(contas.map((c) => c.playerId));
+  return contas.filter((c) =>
+    [...(companheiros.get(c.playerId) ?? [])].some((outro) => comConta.has(outro)),
+  );
 }
 
 export async function getRodadaDaPelada(matchDayId: number): Promise<RatingRound | undefined> {

@@ -1,9 +1,15 @@
 import "server-only";
 import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { attendances, gamePlayers, games, goals, matchDays, players } from "@/db/schema";
+import { attendances, gamePlayers, games, goals, matchDays, players, users } from "@/db/schema";
 
 // Estatísticas contam apenas peladas encerradas (status = finished).
+//
+// E apenas jogadores com conta ativa: o innerJoin com `users` em cada consulta
+// abaixo é o que implementa isso. Quem foi cadastrado mas ainda não resgatou o
+// convite joga normalmente e tem gols e presenças registrados — só não aparece
+// nos rankings. Como tudo aqui é derivado por query, no instante em que ele
+// cria a conta todo o passado dele entra nas listas sem backfill nenhum.
 
 function yearFilter(year?: number): SQL | undefined {
   return year ? sql`extract(year from ${matchDays.date}) = ${year}` : undefined;
@@ -29,6 +35,7 @@ export async function getTopScorers(year?: number) {
     .innerJoin(games, eq(goals.gameId, games.id))
     .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
     .innerJoin(players, eq(goals.playerId, players.id))
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
     .where(and(eq(matchDays.status, "finished"), yearFilter(year)))
     .groupBy(players.id, players.name, players.nickname)
     .orderBy(desc(sql`sum(${goals.quantity})`), players.name);
@@ -64,6 +71,7 @@ export async function getPlayerRecords(year?: number, minGames = 1): Promise<Pla
     .innerJoin(games, eq(gamePlayers.gameId, games.id))
     .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
     .innerJoin(players, eq(gamePlayers.playerId, players.id))
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
     .where(and(eq(matchDays.status, "finished"), yearFilter(year)))
     .groupBy(players.id, players.name, players.nickname);
 
@@ -101,6 +109,7 @@ export async function getAttendanceStats(year?: number): Promise<{
     .from(attendances)
     .innerJoin(matchDays, eq(attendances.matchDayId, matchDays.id))
     .innerJoin(players, eq(attendances.playerId, players.id))
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
     .where(
       and(
         eq(attendances.status, "in"),

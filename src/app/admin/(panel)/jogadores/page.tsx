@@ -195,6 +195,14 @@ export default async function JogadoresPage({ searchParams }: PageProps<"/admin/
                   🧤 goleiro
                 </span>
               )}
+              {/* Sem conta resgatada o jogador entra em campo normalmente, mas
+                  fica fora dos rankings e da avaliação — o admin precisa ver
+                  isso na hora de escalar. */}
+              {!userByPlayer.get(player.id)?.active && (
+                <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
+                  sem acesso
+                </span>
+              )}
               <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
                 nota {formatSkill(player.skill)}
               </span>
