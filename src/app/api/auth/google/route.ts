@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites } from "@/db/schema";
 import {
@@ -56,12 +56,23 @@ export async function GET(request: NextRequest) {
   // Pré-seleciona a conta certa na tela do Google. É só dica de UI — quem decide
   // é a conferência de email no callback —, mas evita o vaivém de quem tem duas
   // contas logadas no navegador e escolhe a errada.
+  //
+  // O filtro de validade não é zelo: sem ele este endpoint devolveria o endereço
+  // completo, no Location, de qualquer convite já resgatado ou vencido — logo o
+  // que a página do convite se recusa a mostrar e o mascararEmail existe para
+  // não entregar. Quem tem o link antigo do grupo pararia de precisar dele.
   let loginHint: string | null = null;
   if (convite) {
     const [invite] = await db
       .select({ email: invites.email })
       .from(invites)
-      .where(eq(invites.token, convite));
+      .where(
+        and(
+          eq(invites.token, convite),
+          isNull(invites.usedAt),
+          gt(invites.expiresAt, sql`now()`),
+        ),
+      );
     loginHint = invite?.email ?? null;
   }
 

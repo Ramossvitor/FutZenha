@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { destinoSeguro } from "@/lib/oauth-state";
 import { DUMMY_HASH, verifyPassword } from "@/lib/password";
 import { setSessionCookie } from "@/lib/session";
 
@@ -39,8 +40,9 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   }
 
   await setSessionCookie(await createSessionToken({ sub: user.id, v: user.tokenVersion }));
-  // next só pode ser caminho interno ("/..." mas não "//...") para evitar open redirect.
-  redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
+  // A regra de destino interno é uma só, e mora no destinoSeguro — duas cópias
+  // divergiriam, e a daqui já divergia: deixava passar a barra invertida.
+  redirect(destinoSeguro(next));
 }
 
 export async function logout() {

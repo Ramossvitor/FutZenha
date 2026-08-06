@@ -38,6 +38,12 @@ export type OAuthPendente = {
 
 export type OAuthState = { n: string; exp: number };
 
+// Domínios de assinatura (ver signBlob): o cookie e o state têm o mesmo segredo
+// e formatos parecidos o bastante para um passar pelo outro — o `n` e o `exp`
+// do cookie satisfazem, sozinhos, tudo que o lerOAuthState exige.
+const KIND_COOKIE = "oauth-cookie:";
+const KIND_STATE = "oauth-state:";
+
 export function gerarNonce(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -45,11 +51,11 @@ export function gerarNonce(): string {
 }
 
 export async function assinarOAuthCookie(pendente: OAuthPendente): Promise<string> {
-  return signBlob(pendente, sessionSecret());
+  return signBlob(pendente, sessionSecret(), KIND_COOKIE);
 }
 
 export async function lerOAuthCookie(valor: string | undefined): Promise<OAuthPendente | null> {
-  const p = await verifyBlob(valor, sessionSecret());
+  const p = await verifyBlob(valor, sessionSecret(), KIND_COOKIE);
   if (typeof p !== "object" || p === null) return null;
   const v = p as Record<string, unknown>;
   if (typeof v.n !== "string" || v.n === "") return null;
@@ -70,11 +76,11 @@ export async function lerOAuthCookie(valor: string | undefined): Promise<OAuthPe
 }
 
 export async function assinarOAuthState(state: OAuthState): Promise<string> {
-  return signBlob(state, sessionSecret());
+  return signBlob(state, sessionSecret(), KIND_STATE);
 }
 
 export async function lerOAuthState(valor: string | undefined): Promise<OAuthState | null> {
-  const s = await verifyBlob(valor, sessionSecret());
+  const s = await verifyBlob(valor, sessionSecret(), KIND_STATE);
   if (typeof s !== "object" || s === null) return null;
   const v = s as Record<string, unknown>;
   if (typeof v.n !== "string" || v.n === "") return null;
@@ -83,9 +89,16 @@ export async function lerOAuthState(valor: string | undefined): Promise<OAuthSta
 }
 
 /**
- * Destino interno seguro, ou "/". Barra o open redirect: "//evil.com" é URL
- * protocol-relative e escaparia de um teste que só olhasse a primeira barra.
+ * Destino interno seguro, ou "/". Barra o open redirect.
+ *
+ * Não basta recusar "//evil.com": em esquema especial (http/https) o parser de
+ * URL trata "\" como "/", então "/\evil.com" também vira autoridade externa —
+ * `new URL("/\\evil.com", base)` devolve "https://evil.com/", e um `Location`
+ * cru com a barra invertida é normalizado pelo navegador do mesmo jeito.
+ *
+ * Daí o teste ser sobre a forma (uma barra, e o caractere seguinte não pode
+ * abrir autoridade) e não uma lista de prefixos proibidos.
  */
 export function destinoSeguro(next: string | null | undefined): string {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  return next && /^\/[^/\\]/.test(next) ? next : "/";
 }

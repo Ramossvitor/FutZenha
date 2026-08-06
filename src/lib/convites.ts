@@ -4,7 +4,6 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { type Executor } from "@/db";
 import { invites, players } from "@/db/schema";
-import { siteUrl } from "./site-url";
 
 // Espelhado em src/db/migrate.ts, que roda sob tsx e não carrega `server-only`.
 const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
@@ -73,16 +72,3 @@ export function parseEmailDeConvite(
   const parsed = emailSchema.safeParse(valor);
   return parsed.success ? { success: true, data: parsed.data } : { success: false };
 }
-
-/**
- * Entrega o convite a quem foi convidado. Hoje devolve o link para o admin
- * colar no WhatsApp, que é como o projeto sempre funcionou — mas é o ponto
- * único por onde um provedor de e-mail entra depois, sem mexer em quem chama.
- */
-export function entregarConvite(convite: { token: string; email: string | null }): {
-  link: string;
-  entreguePorEmail: boolean;
-} {
-  return { link: `${siteUrl()}/convite/${convite.token}`, entreguePorEmail: false };
-}
-

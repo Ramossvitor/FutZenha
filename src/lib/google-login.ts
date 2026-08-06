@@ -5,7 +5,8 @@ import { invites, players, users } from "@/db/schema";
 import { createSessionToken } from "./auth";
 import { isUniqueViolation } from "./db-errors";
 import type { GoogleIdentity } from "./google-oauth";
-import { sugerirUsername, variacaoDeUsername } from "./username";
+import { conviteAutoriza, decidirPorContas, type ErroLogin } from "./regras-login-google";
+import { comSufixo, sugerirUsername, variacaoDeUsername } from "./username";
 
 // O que fazer com a identidade que voltou do Google. Toda a autorização do login
 // pelo Google mora aqui — o route handler só transporta.
@@ -19,37 +20,17 @@ import { sugerirUsername, variacaoDeUsername } from "./username";
 //    encontrando o Google pela primeira vez — vincula.
 // 5. Não conhecemos ninguém: só entra com convite, e só com o email do convite.
 //
-// `sub` antes de email de propósito. O email é como as duas contas se encontram
-// uma vez; depois disso o dono é o `sub`, que não muda quando a pessoa troca de
-// email — e que não pode ser herdado por quem receber um endereço reciclado.
+// Os passos 3 a 5 e a conferência do convite vivem em src/lib/regras-login-google.ts,
+// que não fala com o banco e por isso tem teste. Daqui para baixo é busca,
+// gravação e as travas que só o banco garante (as unique de email e google_sub).
 
-export type ErroLogin =
-  | "email-nao-verificado"
-  | "sem-convite"
-  | "convite-invalido"
-  | "convite-sem-email"
-  | "email-nao-confere"
-  | "jogador-inativo"
-  | "conta-inativa"
-  | "google-ja-vinculado";
+export type { ErroLogin };
 
 export type ResultadoLogin =
   | { ok: true; token: string }
   | { ok: false; erro: ErroLogin; emailEsperado?: string };
 
 type Conta = typeof users.$inferSelect;
-
-/**
- * "vitor.ramos@gmail.com" → "vi•••@gmail.com".
- *
- * O suficiente para a pessoa reconhecer a própria conta e trocar de login, sem
- * entregar o endereço inteiro a quem apenas interceptou o link no grupo.
- */
-export function mascararEmail(email: string): string {
-  const [local, dominio] = email.split("@");
-  if (!dominio) return "•••";
-  return `${local.slice(0, 2)}•••@${dominio}`;
-}
 
 async function sessaoDe(user: Conta): Promise<ResultadoLogin> {
   if (!user.active) return { ok: false, erro: "conta-inativa" };
@@ -66,18 +47,28 @@ export async function resolverLoginGoogle(
 
   if (pendente.link !== undefined) return vincularAConta(pendente.link, identidade);
 
-  const [porSub] = await db.select().from(users).where(eq(users.googleSub, identidade.sub));
-  if (porSub) return sessaoDe(porSub);
+  // As duas em paralelo: são independentes, e a decisão precisa das duas para
+  // valer como uma decisão só.
+  //
+  // Busca pelo email cru, e não canônico: `users.email` só é gravado a partir do
+  // que o Google devolve, então os dois lados aqui já vêm da mesma fonte — e é o
+  // valor gravado que a unique protege.
+  const [[porSub], [porEmail]] = await Promise.all([
+    db.select().from(users).where(eq(users.googleSub, identidade.sub)),
+    db.select().from(users).where(eq(users.email, identidade.email)),
+  ]);
 
-  const [porEmail] = await db.select().from(users).where(eq(users.email, identidade.email));
-  if (porEmail) {
-    // Mesmo email, outra conta Google: endereço que trocou de dono (só acontece
-    // em domínio corporativo). Quem manda é o `sub` já vinculado.
-    if (porEmail.googleSub !== null) return { ok: false, erro: "google-ja-vinculado" };
-    return vincularAConta(porEmail.id, identidade);
+  const decisao = decidirPorContas(porSub, porEmail);
+  switch (decisao.acao) {
+    case "sessao":
+      return sessaoDe(decisao.conta);
+    case "vincular":
+      return vincularAConta(decisao.userId, identidade);
+    case "recusar":
+      return { ok: false, ...decisao.recusa };
+    case "convite":
+      return resgatarConvite(identidade, pendente.t);
   }
-
-  return resgatarConvite(identidade, pendente.t);
 }
 
 /**
@@ -111,6 +102,25 @@ async function vincularAConta(userId: number, identidade: GoogleIdentity): Promi
   return { ok: true, token: await createSessionToken({ sub: userId, v: tokenVersion }) };
 }
 
+// As numeradas primeiro porque são as legíveis (`pedro2`), e são o caso comum:
+// dois ou três jogadores compartilhando o primeiro nome. Passando disso a
+// numeração vira uma fila que depende de quantos vieram antes — seis Pedros
+// esgotavam `pedro`…`pedro6` e derrubavam o login com um throw —, então o resto
+// das tentativas sorteia um sufixo, que não depende de ninguém.
+const TENTATIVAS_NUMERADAS = 3;
+const TENTATIVAS_DE_USERNAME = 8;
+
+function sufixoAleatorio(): string {
+  const [n] = crypto.getRandomValues(new Uint32Array(1));
+  return (n % 36 ** 4).toString(36).padStart(4, "0");
+}
+
+function candidatoDeUsername(base: string, tentativa: number): string {
+  return tentativa <= TENTATIVAS_NUMERADAS
+    ? variacaoDeUsername(base, tentativa)
+    : comSufixo(base, sufixoAleatorio());
+}
+
 async function resgatarConvite(
   identidade: GoogleIdentity,
   token: string | undefined,
@@ -118,15 +128,8 @@ async function resgatarConvite(
   if (!token) return { ok: false, erro: "sem-convite" };
 
   const [invite] = await db.select().from(invites).where(eq(invites.token, token));
-  if (!invite || invite.usedAt !== null || invite.expiresAt.getTime() <= Date.now()) {
-    return { ok: false, erro: "convite-invalido" };
-  }
-  // Convite antigo, de usuário e senha: não autoriza cadastro pelo Google. O
-  // caminho dele continua sendo o formulário em /convite/[token].
-  if (invite.email === null) return { ok: false, erro: "convite-sem-email" };
-  if (invite.email !== identidade.email) {
-    return { ok: false, erro: "email-nao-confere", emailEsperado: mascararEmail(invite.email) };
-  }
+  const autorizacao = conviteAutoriza(invite, identidade, Date.now());
+  if (!autorizacao.ok) return { ok: false, ...autorizacao.recusa };
 
   const [player] = await db.select().from(players).where(eq(players.id, invite.playerId));
   if (!player || !player.active) return { ok: false, erro: "jogador-inativo" };
@@ -160,10 +163,10 @@ async function resgatarConvite(
   }
 
   // Conta nova. Ninguém digita username aqui, então ele é derivado do nome do
-  // jogador e precisa sair livre sozinho — daí as variações numeradas.
+  // jogador e precisa sair livre sozinho — daí as variações.
   const base = sugerirUsername(player.name, player.nickname);
-  for (let tentativa = 1; tentativa <= 6; tentativa++) {
-    const username = variacaoDeUsername(base, tentativa);
+  for (let tentativa = 1; tentativa <= TENTATIVAS_DE_USERNAME; tentativa++) {
+    const username = candidatoDeUsername(base, tentativa);
     const [ocupado] = await db
       .select({ id: users.id })
       .from(users)

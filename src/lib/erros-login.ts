@@ -19,7 +19,14 @@ export const ERROS_LOGIN: Record<string, string> = {
   "jogador-inativo": "Jogador inativo — fala com o admin.",
   "conta-inativa": "Sua conta está desativada. Fala com o admin.",
   "google-ja-vinculado": "Essa conta Google já está vinculada a outro jogador.",
+  "erro-inesperado": "Algo deu errado do nosso lado. Tente de novo em instantes.",
 };
+
+// O `esperado` chega pela query string, então qualquer um pode escolher o que
+// vai aparecer dentro da nossa caixa de erro, no nosso domínio — terreno bom
+// para um "ligue para 0800…". Ele só é emitido pelo mascararEmail, e é essa
+// forma, e só ela, que aceitamos de volta.
+const ESPERADO_MASCARADO = /^.{0,2}•••@[^\s@]{1,80}$/;
 
 /** A mensagem, já com o e-mail esperado quando o erro carrega um. */
 export function mensagemDeErro(
@@ -29,7 +36,11 @@ export function mensagemDeErro(
   if (typeof erro !== "string") return null;
   const mensagem = ERROS_LOGIN[erro];
   if (!mensagem) return null;
-  if (erro === "email-nao-confere" && typeof esperado === "string") {
+  if (
+    erro === "email-nao-confere" &&
+    typeof esperado === "string" &&
+    ESPERADO_MASCARADO.test(esperado)
+  ) {
     return `Esse convite é para ${esperado}. Entre com essa conta Google.`;
   }
   return mensagem;

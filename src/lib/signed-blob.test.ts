@@ -4,6 +4,7 @@ import {
   base64urlDecode,
   base64urlDeBytes,
   base64urlEncode,
+  hmacHex,
   signBlob,
   verifyBlob,
 } from "./signed-blob";
@@ -74,7 +75,6 @@ describe("signBlob/verifyBlob", () => {
   it("assinatura válida sobre payload que não é JSON → null", async () => {
     // É o que reprova o formato antigo de cookie, "exp.assinatura".
     const naoJson = base64urlEncode("isto-nao-e-json");
-    const { hmacHex } = await import("./signed-blob");
     expect(await verifyBlob(`${naoJson}.${await hmacHex(naoJson, SEGREDO)}`, SEGREDO)).toBeNull();
   });
 
@@ -84,5 +84,36 @@ describe("signBlob/verifyBlob", () => {
     expect(await verifyBlob("sem-ponto", SEGREDO)).toBeNull();
     expect(await verifyBlob("a.b", SEGREDO)).toBeNull();
     expect(await verifyBlob("a.b.c", SEGREDO)).toBeNull();
+  });
+});
+
+describe("separação por kind", () => {
+  it("round-trip com o mesmo kind", async () => {
+    const token = await signBlob({ a: 1 }, SEGREDO, "x:");
+    expect(await verifyBlob(token, SEGREDO, "x:")).toEqual({ a: 1 });
+  });
+
+  it("kind diferente, ou nenhum, → null", async () => {
+    const token = await signBlob({ a: 1 }, SEGREDO, "x:");
+    expect(await verifyBlob(token, SEGREDO, "y:")).toBeNull();
+    expect(await verifyBlob(token, SEGREDO)).toBeNull();
+    expect(await verifyBlob(await signBlob({ a: 1 }, SEGREDO), SEGREDO, "x:")).toBeNull();
+  });
+
+  // O kind entra no que é assinado, não no que trafega: quem lê o token não
+  // descobre para que ele foi emitido.
+  it("não aparece no token", async () => {
+    const token = await signBlob({ a: 1 }, SEGREDO, "sessao-secreta:");
+    expect(token).not.toContain("sessao-secreta");
+    expect(JSON.parse(base64urlDecode(token.split(".")[0]))).toEqual({ a: 1 });
+  });
+
+  // A compatibilidade dos cookies em circulação depende disto: sem kind, o dado
+  // assinado é o `encoded` puro, exatamente como antes de o kind existir.
+  it("o default não muda a assinatura de antes", async () => {
+    const encoded = base64urlEncode(JSON.stringify({ sub: 1, v: 1 }));
+    const antigo = `${encoded}.${await hmacHex(encoded, SEGREDO)}`;
+    expect(await signBlob({ sub: 1, v: 1 }, SEGREDO)).toBe(antigo);
+    expect(await verifyBlob(antigo, SEGREDO)).toEqual({ sub: 1, v: 1 });
   });
 });

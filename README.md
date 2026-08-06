@@ -41,6 +41,8 @@ npm run seed
 npm run dev
 ```
 
+O login pelo Google é opcional no local: sem `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` o botão simplesmente não aparece e o `/login` fica só com usuário e senha (que é o que o seed cria). Para ligar, crie um OAuth client em console.cloud.google.com (**APIs & Services → Credentials → OAuth client ID → Web application**), cadastre `http://localhost:3000/api/auth/google/callback` como redirect URI e copie as duas credenciais para o `.env` — o `.env.example` tem as instruções ao lado das vars.
+
 Acesse http://localhost:3000. O seed imprime os logins demo; o primeiro deles é o admin da plataforma e enxerga o painel `/admin`.
 
 ## Scripts
@@ -104,8 +106,10 @@ Enquanto a votação corre, quem propôs vê só **quantos** faltam votar — n�
 
 ## Contas de jogador
 
-- **Criar conta**: em `/admin/jogadores`, o admin da plataforma clica em **Gerar convite** e manda o link no WhatsApp do jogador. O admin de uma pelada também cadastra gente nova pela própria tela de gestão, e o link do convite aparece ali mesmo, em **Convites para entregar** — só de quem ainda não tem conta, porque convite para quem já tem é reset de senha e isso é da plataforma. O link (`/convite/[token]`) vale 7 dias e é de uso único; o jogador escolhe usuário e senha e já sai logado. Nada é consumido ao abrir o link — só ao enviar o formulário (bots de preview do WhatsApp não estragam o convite).
-- **Esqueceu a senha**: o admin da plataforma clica em **Resetar senha (novo convite)** no mesmo lugar — o link redefine a senha, derruba as sessões antigas e reativa a conta se estava desativada.
+- **Criar conta**: em `/admin/jogadores`, o admin da plataforma clica em **Gerar convite** e manda o link no WhatsApp do jogador. O admin de uma pelada também cadastra gente nova pela própria tela de gestão, e o link do convite aparece ali mesmo, em **Convites para entregar** — só de quem ainda não tem conta, porque convite para quem já tem é reset de acesso e isso é da plataforma. O link (`/convite/[token]`) vale 7 dias e é de uso único. Nada é consumido ao abrir o link — só ao resgatar de verdade (bots de preview do WhatsApp não estragam o convite).
+- **Convite com e-mail = convite de Google**: preenchendo o campo **E-mail (conta Google)** ao gerar o convite, o link só é resgatado por *aquela* conta Google — o formulário de usuário e senha nem aparece. É o que impede quem pegou o link no grupo de virar conta: o token sozinho não basta. Deixando o campo vazio, o convite segue no fluxo antigo, em que o jogador escolhe usuário e senha. Errou o e-mail? Revogue e gere outro; o convite trava no endereço digitado.
+- **Entrar pelo Google**: quem tem conta Google vinculada entra pelo botão no `/login`. Quem já tinha usuário e senha vincula a própria conta em `/perfil` → **Conectar conta Google** (isso encerra as sessões nos outros aparelhos, como uma troca de senha). Conta nascida pelo Google não tem senha, e por isso não mostra "Trocar senha" no perfil. A identidade guardada é o `sub` do Google, não o e-mail: trocar de endereço não perde a conta.
+- **Esqueceu a senha**: o admin da plataforma clica em **Resetar acesso (novo convite)** no mesmo lugar — o link redefine o acesso, derruba as sessões antigas e reativa a conta se estava desativada.
 - **Desativar conta**: derruba a sessão do jogador no próximo acesso (a conta some sem apagar histórico; desativar o *jogador* é outra coisa — tira das listas mas a conta continua entrando).
 - **Meu perfil** (`/perfil`): nota atual, estatísticas próprias (só peladas encerradas), as estrelas recebidas em cada rodada e troca de senha.
 - Cadastrar um jogador **já gera o convite** — ninguém nasce sem acesso a caminho.
@@ -127,12 +131,14 @@ Vercel Hobby + Neon free, com deploy contínuo: **`git push` na `main` aplica as
    - `SESSION_SECRET` — gere com `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
    - `PLATFORM_ADMIN_USERNAMES` — o(s) username(s) do admin da plataforma, separados por vírgula
    - `CRON_SECRET` — protege `/api/cron/pendencias`, que fecha as rodadas de avaliação vencidas. Gere com `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Sem ela a rota responde 503 (nunca "libera tudo"), e os prazos passam a depender só do acesso ao site.
+   - `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` — opcionais, mas sem as duas o botão "Entrar com o Google" some e só resta usuário e senha (ver o passo 7). Peça apenas os escopos `openid`/`email`/`profile`: são não-sensíveis, dispensam a verificação do Google e é por isso que o login sai de graça.
 3. **O primeiro build falha de propósito** (`[migrate] Nenhuma connection string encontrada`): a Vercel só deixa conectar o banco depois que o projeto existe.
 4. **Conectar o banco**: Project → **Storage** → **Connect Database** → `futzenha-db`, marcando Production, Preview e Development. Isso injeta `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` e as `PG*`.
 5. **Redeploy** pelo painel. O log deve mostrar `[migrate] Migrations aplicadas.`
 6. **Pegue o link do primeiro admin no log do build**: como não existe mais senha de admin, o `migrate` cria a conta de quem está em `PLATFORM_ADMIN_USERNAMES` e imprime `[migrate] Conta de admin criada para "…". Defina a senha em: https://…/convite/<token>`. Abra o link, escolha a senha, e você entra como admin da plataforma. Depois vá em `/admin`, cadastre os jogadores reais e mande os convites. **Nunca rode o seed em produção** (ele apaga tudo — e há uma trava que impede isso).
+7. **Login pelo Google** (opcional, e só depois de o domínio existir): em console.cloud.google.com → **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**, cadastre como **Authorized redirect URI** exatamente `https://SEU-DOMINIO/api/auth/google/callback` (e `http://localhost:3000/api/auth/google/callback` se for usar no local). O Google confere essa URI byte a byte, duas vezes — na ida e na troca do code —, então um `/` sobrando já reprova. Copie o client ID e o secret para as env vars do passo 2 e redeploy.
 
-`NEXT_PUBLIC_SITE_URL` não precisa ser configurada: `src/lib/site-url.ts` deriva o domínio das env vars da própria Vercel. Só defina se quiser forçar um domínio próprio.
+`NEXT_PUBLIC_SITE_URL` não precisa ser configurada: `src/lib/site-url.ts` deriva o domínio das env vars da própria Vercel, preferindo o domínio **de produção** (estável) à URL única do deploy. É desse valor que sai a redirect URI do Google — o que também explica por que o login pelo Google não funciona em preview: lá a URL muda a cada publicação e nunca vai bater com a cadastrada. Defina a var se quiser forçar um domínio próprio.
 
 ### Lançando atualizações
 
@@ -151,6 +157,8 @@ Limites esperados do free tier: o Neon dorme após ~5 min sem uso, então a prim
 Avaliação: `rating_rounds` (uma por pelada) → `rating_round_raters` (o denominador congelado de quem deve avaliar) e `ratings` (`discarded_at` nulo = vale) → `rating_reports`. `skill_history` é **projeção** do replay, reescrita inteira a cada recálculo. `notifications` tem unique em `(player_id, dedupe_key)`, o que torna notificar idempotente.
 
 Exclusão por votação: `match_day_deletion_votes` (uma por pelada) → `match_day_deletion_voters` (eleitorado congelado + o voto).
+
+Acesso: `users` (um por `player`) guarda `password_hash` **ou** `google_sub`, os dois nulos-a-nulo mas nunca ambos vazios — conta nascida pelo Google não tem senha, conta de senha só ganha `google_sub` ao vincular. `email` e `google_sub` são unique, e é o `sub` que identifica a pessoa (o e-mail pode trocar de dono num domínio corporativo). `invites.email` preenchido trava o convite naquela conta Google; nulo, é o convite antigo de usuário e senha.
 
 Estatísticas são derivadas por query (`src/lib/stats.ts`), contando só peladas encerradas e só jogadores com conta ativa.
 

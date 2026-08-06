@@ -1,7 +1,9 @@
 // Blob assinado: "base64url(JSON do payload).assinatura HMAC-SHA256". É a
-// primitiva por trás de dois usos com prazos e formatos diferentes, mas com a
+// primitiva por trás de três usos com prazos e formatos diferentes, mas com a
 // mesma necessidade — entregar um dado ao cliente e recebê-lo de volta intacto:
-// o cookie de sessão (src/lib/auth.ts) e o state do OAuth (src/lib/oauth-state.ts).
+// o cookie de sessão (src/lib/auth.ts) e, no OAuth, o cookie e o state
+// (src/lib/oauth-state.ts). O `kind` do signBlob é o que impede um de valer
+// pelo outro.
 //
 // Web Crypto e btoa/atob de propósito, sem Buffer e sem node:crypto: o mesmo
 // código roda no runtime Node e no Edge, onde o proxy valida a sessão.
@@ -49,25 +51,40 @@ export function assinaturaConfere(recebida: string, esperada: string): boolean {
   return diff === 0;
 }
 
-export async function signBlob(payload: unknown, secret: string): Promise<string> {
+/**
+ * O `kind` entra no que é assinado (não no que trafega) e separa os usos: um
+ * blob emitido para um propósito não valida em outro, mesmo com o mesmo
+ * segredo. Sem ele o que mantém sessão, cookie do OAuth e state apartados é
+ * apenas o fato de os campos serem diferentes — e um campo novo em qualquer um
+ * deles apagaria essa distância sem ninguém notar.
+ *
+ * O default `""` é o formato da sessão: com ele o dado assinado é exatamente o
+ * `encoded`, byte a byte igual ao de antes desta separação existir, então os
+ * cookies em circulação seguem válidos.
+ */
+export async function signBlob(payload: unknown, secret: string, kind = ""): Promise<string> {
   const encoded = base64urlEncode(JSON.stringify(payload));
-  return `${encoded}.${await hmacHex(encoded, secret)}`;
+  return `${encoded}.${await hmacHex(kind + encoded, secret)}`;
 }
 
 /**
  * Confere a assinatura e devolve o JSON cru; devolve `null` em qualquer falha.
  *
  * Validar formato, prazo e significado é com quem chamou — esta função só
- * responde "isto saiu daqui e não foi mexido". Tokens em outro formato (o antigo
- * "exp.assinatura", por exemplo) reprovam no JSON.parse.
+ * responde "isto saiu daqui, para este propósito, e não foi mexido". Tokens em
+ * outro formato (o antigo "exp.assinatura", por exemplo) reprovam no JSON.parse.
  */
-export async function verifyBlob(token: string | undefined, secret: string): Promise<unknown> {
+export async function verifyBlob(
+  token: string | undefined,
+  secret: string,
+  kind = "",
+): Promise<unknown> {
   if (!token) return null;
   const dot = token.indexOf(".");
   if (dot < 0) return null;
   const encoded = token.slice(0, dot);
 
-  if (!assinaturaConfere(token.slice(dot + 1), await hmacHex(encoded, secret))) return null;
+  if (!assinaturaConfere(token.slice(dot + 1), await hmacHex(kind + encoded, secret))) return null;
 
   try {
     return JSON.parse(base64urlDecode(encoded));

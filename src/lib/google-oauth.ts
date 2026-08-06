@@ -136,28 +136,43 @@ export function buildAuthUrl(opts: {
   return `${AUTH_ENDPOINT}?${params}`;
 }
 
+// O `fetch` do Node não tem timeout nenhum por padrão. Sem isto, um endpoint do
+// Google que aceita a conexão e não responde segura o callback até o limite da
+// plataforma, com a pessoa olhando para uma página em branco — quando o que ela
+// precisa é falhar rápido e clicar de novo.
+const TIMEOUT_TROCA_MS = 10_000;
+
 /**
  * Troca o `code` pela identidade. Devolve `null` para qualquer resposta que não
- * seja um id_token legível — code expirado, reusado, PKCE errado, Google fora do ar.
+ * seja um id_token legível — code expirado, reusado, PKCE errado, Google fora do
+ * ar ou demorando demais.
  */
 export async function exchangeCode(opts: {
   code: string;
   redirectUri: string;
   codeVerifier: string;
 }): Promise<GoogleIdentity | null> {
-  const res = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code: opts.code,
-      client_id: clientId(),
-      client_secret: clientSecret(),
-      redirect_uri: opts.redirectUri,
-      grant_type: "authorization_code",
-      code_verifier: opts.codeVerifier,
-    }),
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(TOKEN_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code: opts.code,
+        client_id: clientId(),
+        client_secret: clientSecret(),
+        redirect_uri: opts.redirectUri,
+        grant_type: "authorization_code",
+        code_verifier: opts.codeVerifier,
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_TROCA_MS),
+    });
+  } catch {
+    // Timeout, DNS, conexão recusada: do ponto de vista de quem chamou é a mesma
+    // coisa que o Google recusar a troca.
+    return null;
+  }
   if (!res.ok) return null;
 
   const data: unknown = await res.json().catch(() => null);

@@ -8,7 +8,6 @@ import {
   lerOAuthState,
   OAUTH_DURATION_MS,
 } from "./oauth-state";
-import { signBlob } from "./signed-blob";
 
 const TEST_SECRET = "segredo-de-teste";
 
@@ -47,15 +46,21 @@ describe("cookie do OAuth", () => {
   });
 
   it("assinado com outro segredo → null", async () => {
-    const cookie = await signBlob({ n: "n", cv: "cv", exp: daquiAPouco() }, "outro-segredo");
+    process.env.SESSION_SECRET = "outro-segredo";
+    const cookie = await assinarOAuthCookie({ n: "n", cv: "cv", exp: daquiAPouco() });
+    process.env.SESSION_SECRET = TEST_SECRET;
     expect(await lerOAuthCookie(cookie)).toBeNull();
   });
 
   // O `link` vira `eq(users.id, …)` no google-login: um valor não inteiro
   // chegando lá é query quebrada, ou pior.
+  //
+  // Forjado pelo próprio emissor (com o tipo afrouxado) e não pelo signBlob cru:
+  // assim o `null` prova que a checagem de forma recusou, e não que o domínio de
+  // assinatura não bateu.
   it("campos com tipo errado → null", async () => {
     const exp = daquiAPouco();
-    const forjar = (payload: unknown) => signBlob(payload, TEST_SECRET);
+    const forjar = (payload: unknown) => assinarOAuthCookie(payload as never);
     expect(await lerOAuthCookie(await forjar({ n: "n", cv: "cv" }))).toBeNull();
     expect(await lerOAuthCookie(await forjar({ n: "", cv: "cv", exp }))).toBeNull();
     expect(await lerOAuthCookie(await forjar({ n: "n", cv: "cv", exp, link: "7" }))).toBeNull();
@@ -80,11 +85,21 @@ describe("state da URL", () => {
   // O state passa pelo navegador e pelos logs do Google. Se um dia alguém
   // guardar o convite aqui em vez do cookie, este teste cai junto.
   it("não carrega nada além de nonce e prazo", async () => {
-    const assinado = await signBlob(
-      { n: "n", exp: daquiAPouco(), t: "convite-vazado" },
-      TEST_SECRET,
-    );
+    const assinado = await assinarOAuthState({
+      n: "n",
+      exp: daquiAPouco(),
+      t: "convite-vazado",
+    } as never);
     expect(await lerOAuthState(assinado)).toEqual({ n: "n", exp: expect.any(Number) });
+  });
+
+  // O cookie tem `n` e `exp` — sozinhos, satisfazem tudo que o lerOAuthState
+  // exige. É o domínio de assinatura, e só ele, que os mantém apartados.
+  it("um cookie do OAuth não vale como state, nem o contrário", async () => {
+    const exp = daquiAPouco();
+    const cookie = await assinarOAuthCookie({ n: "n", cv: "cv", exp });
+    expect(await lerOAuthState(cookie)).toBeNull();
+    expect(await lerOAuthCookie(await assinarOAuthState({ n: "n", exp }))).toBeNull();
   });
 
   it("expirado ou adulterado → null", async () => {
@@ -108,6 +123,23 @@ describe("destinoSeguro", () => {
     expect(destinoSeguro("")).toBe("/");
     expect(destinoSeguro(null)).toBe("/");
     expect(destinoSeguro(undefined)).toBe("/");
+  });
+
+  // A barra invertida é o "//" disfarçado: o parser de URL a trata como "/" em
+  // http(s), então uma checagem que só recusasse "//" deixaria isto passar.
+  it("recusa a variante com barra invertida", () => {
+    for (const destino of ["/\\evil.com", "/\\\\evil.com", "\\\\evil.com", "\\evil.com"]) {
+      expect(destinoSeguro(destino)).toBe("/");
+    }
+  });
+
+  // O que sai daqui é sempre montado com `new URL(destino, base)` — o teste
+  // fecha o ciclo na função que de fato resolve o endereço.
+  it("o que passa nunca resolve para outra origem", () => {
+    const base = "https://futzenha.app";
+    for (const destino of ["/perfil", "//evil.com", "/\\evil.com", "\\\\evil.com", "/a/b?c=1"]) {
+      expect(new URL(destinoSeguro(destino), base).origin).toBe(base);
+    }
   });
 });
 

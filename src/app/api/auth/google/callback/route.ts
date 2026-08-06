@@ -15,9 +15,19 @@ export async function GET(request: NextRequest) {
 
   const pendente = await lerOAuthCookie(request.cookies.get(OAUTH_COOKIE)?.value);
 
-  // Quem estava vinculando a conta já está logado, e /login manda logado de
-  // volta para a home — o erro se perderia no caminho.
-  const paginaDeErro = pendente?.link === undefined ? "/login" : "/perfil";
+  // O erro tem que cair onde a pessoa consegue tentar de novo:
+  //
+  // - vinculando: já está logada, e /login manda logado de volta para a home —
+  //   o erro se perderia no caminho;
+  // - resgatando convite: só a página do convite tem o botão do Google com o
+  //   token junto. Mandar para /login seria beco sem saída, porque de lá o
+  //   próximo login sai sem convite nenhum e falha com "sem-convite".
+  const paginaDeErro =
+    pendente?.link !== undefined
+      ? "/perfil"
+      : pendente?.t
+        ? `/convite/${encodeURIComponent(pendente.t)}`
+        : "/login";
 
   const falhar = (erro: string, extra?: Record<string, string>) => {
     const url = new URL(paginaDeErro, base);
@@ -45,7 +55,17 @@ export async function GET(request: NextRequest) {
   });
   if (!identidade) return falhar("troca-falhou");
 
-  const resultado = await resolverLoginGoogle(identidade, pendente);
+  // O try/catch é o que separa "não deu" de tela de erro do Next: sem ele, um
+  // throw daqui para dentro (banco fora do ar, username sem variação livre)
+  // vira 500 com o cookie do OAuth ainda de pé, e a pessoa fica sem nem o
+  // caminho de tentar de novo.
+  let resultado;
+  try {
+    resultado = await resolverLoginGoogle(identidade, pendente);
+  } catch (error) {
+    console.error("[auth/google] falha ao resolver o login", error);
+    return falhar("erro-inesperado");
+  }
   if (!resultado.ok) {
     return falhar(resultado.erro, resultado.emailEsperado ? { esperado: resultado.emailEsperado } : undefined);
   }
