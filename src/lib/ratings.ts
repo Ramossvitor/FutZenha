@@ -1,17 +1,20 @@
 import "server-only";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   gamePlayers,
   games,
   matchDays,
   players,
+  ratingReports,
   ratingRoundRaters,
   ratingRounds,
   ratings,
+  skillHistory,
   users,
   type RatingRound,
 } from "@/db/schema";
+import { ordenarAnonimo } from "./anonimato";
 import { companheirosPorJogador, type EscalacaoRow } from "./lineup";
 
 // Prazos do ciclo de avaliação, em dias. São gravados como timestamp absoluto na
@@ -156,6 +159,109 @@ export async function getMinhasAvaliacoes(
     .from(ratings)
     .where(and(eq(ratings.roundId, roundId), eq(ratings.raterPlayerId, raterPlayerId)));
   return new Map(rows.map((r) => [r.ratedPlayerId, r.stars]));
+}
+
+export type EstrelaRecebida = {
+  /** Posição na lista ordenada — é por ela que o jogador denuncia. O id real
+   *  nunca sai do servidor: sendo serial, entregaria a ordem de envio. */
+  indice: number;
+  stars: number;
+  descartada: boolean;
+  denunciaStatus: "open" | "accepted" | "rejected" | null;
+};
+
+export type RodadaAvaliada = {
+  roundId: number;
+  matchDayId: number;
+  matchDayDate: string;
+  skillBefore: number | null;
+  skillAfter: number | null;
+  podeDenunciar: boolean;
+  estrelas: EstrelaRecebida[];
+};
+
+/**
+ * O que o jogador recebeu em cada rodada já apurada, anonimizado.
+ *
+ * A ordem vem de ordenarAnonimo (nota desc, desempate por hash) e é estável,
+ * então a posição na lista funciona como identificador estável da avaliação
+ * sem expor o `ratings.id`.
+ */
+export async function getEstrelasRecebidas(playerId: number): Promise<RodadaAvaliada[]> {
+  const linhas = await db
+    .select({
+      roundId: ratingRounds.id,
+      matchDayId: ratingRounds.matchDayId,
+      matchDayDate: matchDays.date,
+      ratingId: ratings.id,
+      stars: ratings.stars,
+      descartada: sql<boolean>`${ratings.discardedAt} is not null`,
+      denunciaStatus: ratingReports.status,
+      // Denúncia só vale dentro do prazo e a partir de 2 avaliações recebidas:
+      // com uma só, reportar seria apontar o dedo para alguém óbvio.
+      dentroDoPrazo: sql<boolean>`${ratingRounds.reportDeadlineAt} > now()`,
+    })
+    .from(ratings)
+    .innerJoin(ratingRounds, eq(ratings.roundId, ratingRounds.id))
+    .innerJoin(matchDays, eq(ratingRounds.matchDayId, matchDays.id))
+    .leftJoin(ratingReports, eq(ratingReports.ratingId, ratings.id))
+    .where(and(eq(ratings.ratedPlayerId, playerId), eq(ratingRounds.status, "closed")))
+    .orderBy(desc(matchDays.date), desc(ratingRounds.id));
+
+  const historico = await db
+    .select({
+      roundId: skillHistory.roundId,
+      before: skillHistory.skillBefore,
+      after: skillHistory.skillAfter,
+    })
+    .from(skillHistory)
+    .where(eq(skillHistory.playerId, playerId));
+  const historicoPorRodada = new Map(historico.map((h) => [h.roundId, h]));
+
+  const porRodada = new Map<number, typeof linhas>();
+  for (const linha of linhas) {
+    const lista = porRodada.get(linha.roundId);
+    if (lista) lista.push(linha);
+    else porRodada.set(linha.roundId, [linha]);
+  }
+
+  return [...porRodada.values()].map((grupo) => {
+    const primeira = grupo[0];
+    const h = historicoPorRodada.get(primeira.roundId);
+    return {
+      roundId: primeira.roundId,
+      matchDayId: primeira.matchDayId,
+      matchDayDate: primeira.matchDayDate,
+      skillBefore: h?.before ?? null,
+      skillAfter: h?.after ?? null,
+      podeDenunciar: primeira.dentroDoPrazo && grupo.length >= MIN_AVALIACOES_PARA_DENUNCIAR,
+      estrelas: ordenarAnonimo(grupo).map((r, indice) => ({
+        indice,
+        stars: r.stars,
+        descartada: r.descartada,
+        denunciaStatus: r.denunciaStatus,
+      })),
+    };
+  });
+}
+
+/**
+ * Traduz a posição que o jogador vê de volta para o `ratings.id` real,
+ * repetindo exatamente a mesma ordenação da tela. É o par de
+ * getEstrelasRecebidas: sem isto, a posição não teria como virar ação.
+ */
+export async function resolverAvaliacaoPorIndice(
+  roundId: number,
+  ratedPlayerId: number,
+  indice: number,
+): Promise<number | null> {
+  const linhas = await db
+    .select({ ratingId: ratings.id, stars: ratings.stars })
+    .from(ratings)
+    .where(and(eq(ratings.roundId, roundId), eq(ratings.ratedPlayerId, ratedPlayerId)));
+
+  const ordenadas = ordenarAnonimo(linhas);
+  return ordenadas[indice]?.ratingId ?? null;
 }
 
 export type PendenciaDaRodada = { total: number; pendentes: number };

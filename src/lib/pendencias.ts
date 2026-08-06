@@ -4,12 +4,13 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { ratingRounds } from "@/db/schema";
 import { fecharRodada } from "./ratings-engine";
+import { resolverDenunciasVencidas } from "./reports";
 
 // Chave arbitrária, mas fixa: identifica o varredor de avaliações no Postgres.
 // O cast para bigint acontece no SQL — o target do TS aqui não tem BigInt.
 const LOCK_KEY = 918273645;
 
-export type ResultadoVarredura = { rodadasFechadas: number };
+export type ResultadoVarredura = { rodadasFechadas: number; denunciasAceitas: number };
 
 /**
  * Aplica o que venceu por prazo: rodadas de avaliação com o prazo estourado
@@ -32,7 +33,7 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
     const travou = await tx.execute<{ locked: boolean }>(
       sql`select pg_try_advisory_xact_lock(${LOCK_KEY}::bigint) as locked`,
     );
-    if (!travou[0]?.locked) return { rodadasFechadas: 0 };
+    if (!travou[0]?.locked) return { rodadasFechadas: 0, denunciasAceitas: 0 };
 
     const vencidas = await tx
       .select({ id: ratingRounds.id })
@@ -43,7 +44,12 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
     for (const rodada of vencidas) {
       if (await fecharRodada(tx, rodada.id, "prazo")) rodadasFechadas += 1;
     }
-    return { rodadasFechadas };
+
+    // Depois das rodadas: o silêncio do admin no prazo vale como aceite, e
+    // cada aceite descarta a nota e dispara o replay em cascata.
+    const denunciasAceitas = await resolverDenunciasVencidas(tx);
+
+    return { rodadasFechadas, denunciasAceitas };
   });
 }
 
