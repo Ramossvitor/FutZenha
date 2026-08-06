@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function ArtilhariaPage({ searchParams }: PageProps<"/artilharia">) {
   const { ano } = await searchParams;
   const year = typeof ano === "string" && /^\d{4}$/.test(ano) ? Number(ano) : undefined;
-  const [scorers, years] = await Promise.all([getTopScorers(year), getAvailableYears()]);
+  const [scorers, years] = await Promise.all([getTopScorers({ year }), getAvailableYears()]);
 
   return (
     <div className="flex flex-col gap-4">

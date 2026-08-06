@@ -4,6 +4,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
 import { formatDate, formatTime } from "@/lib/format";
+import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { podeGerenciarPelada } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
 import { vestClass } from "@/lib/team-colors";
@@ -86,12 +87,24 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
 
   const canToggle = matchDay.status === "scheduled";
   const myPlayerId = session?.player.id ?? null;
+  // Em pelada de grupo, o admin do grupo também gerencia — e o papel sai do
+  // groupId da própria pelada, nunca de um id vindo da URL.
+  const papel =
+    session && matchDay.groupId !== null
+      ? await papelNoGrupo(matchDay.groupId, session.player.id)
+      : null;
+  const grupo = matchDay.groupId !== null ? await getGrupo(matchDay.groupId) : undefined;
   const podeGerenciar =
     session !== null &&
     podeGerenciarPelada(
       { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin },
       matchDay,
+      papel,
     );
+
+  // Grupo privado não vira link para quem está de fora: o 404 do guard não
+  // adianta nada se a própria pelada anuncia o nome e o id do grupo.
+  const grupoVisivel = grupo && (grupo.visibility === "public" || papel !== null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -106,6 +119,17 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
           {formatTime(matchDay.startTime) && <>{formatTime(matchDay.startTime)} · </>}
           {matchDay.location}
         </p>
+        {grupoVisivel && (
+          <p className="text-sm text-neutral-500">
+            Pelada do grupo{" "}
+            <Link
+              href={`/grupo/${grupo.id}`}
+              className="text-emerald-700 hover:underline dark:text-emerald-400"
+            >
+              {grupo.name}
+            </Link>
+          </p>
+        )}
         {matchDay.notes && <p className="text-sm text-neutral-500">{matchDay.notes}</p>}
       </header>
 

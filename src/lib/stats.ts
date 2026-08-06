@@ -1,7 +1,8 @@
 import "server-only";
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, gamePlayers, games, goals, matchDays, players, users } from "@/db/schema";
+import { escopo, jogouNoGrupo, type EscopoStats } from "./stats-escopo";
 
 // Estatísticas contam apenas peladas encerradas (status = finished).
 //
@@ -11,19 +12,20 @@ import { attendances, gamePlayers, games, goals, matchDays, players, users } fro
 // nos rankings. Como tudo aqui é derivado por query, no instante em que ele
 // cria a conta todo o passado dele entra nas listas sem backfill nenhum.
 
-function yearFilter(year?: number): SQL | undefined {
-  return year ? sql`extract(year from ${matchDays.date}) = ${year}` : undefined;
-}
+// O recorte (`escopo`, `jogouNoGrupo`) mora em ./stats-escopo, módulo puro que o
+// vitest alcança — aqui não dá, por causa do `server-only` e do `@/db`. Ver o
+// comentário de lá: são os dois predicados que falham em silêncio.
+export type { EscopoStats };
 
-export async function getAvailableYears(): Promise<number[]> {
+export async function getAvailableYears(e: EscopoStats = {}): Promise<number[]> {
   const rows = await db
     .selectDistinct({ year: sql<number>`extract(year from ${matchDays.date})::int` })
     .from(matchDays)
-    .where(eq(matchDays.status, "finished"));
+    .where(escopo(e));
   return rows.map((r) => r.year).sort((a, b) => b - a);
 }
 
-export async function getTopScorers(year?: number) {
+export async function getTopScorers(e: EscopoStats = {}) {
   return db
     .select({
       playerId: players.id,
@@ -36,7 +38,7 @@ export async function getTopScorers(year?: number) {
     .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
     .innerJoin(players, eq(goals.playerId, players.id))
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
-    .where(and(eq(matchDays.status, "finished"), yearFilter(year)))
+    .where(escopo(e))
     .groupBy(players.id, players.name, players.nickname)
     .orderBy(desc(sql`sum(${goals.quantity})`), players.name);
 }
@@ -52,7 +54,10 @@ export type PlayerRecord = {
   winRate: number;
 };
 
-export async function getPlayerRecords(year?: number, minGames = 1): Promise<PlayerRecord[]> {
+export async function getPlayerRecords(
+  e: EscopoStats = {},
+  minGames = 1,
+): Promise<PlayerRecord[]> {
   // A escalação por jogo (game_players) é a fonte de verdade de quem jogou de
   // qual lado — trocar alguém de colete depois não reescreve o passado.
   const isWin = sql`(${gamePlayers.side} = 'A' and ${games.scoreA} > ${games.scoreB}) or (${gamePlayers.side} = 'B' and ${games.scoreB} > ${games.scoreA})`;
@@ -72,7 +77,7 @@ export async function getPlayerRecords(year?: number, minGames = 1): Promise<Pla
     .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
     .innerJoin(players, eq(gamePlayers.playerId, players.id))
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
-    .where(and(eq(matchDays.status, "finished"), yearFilter(year)))
+    .where(escopo(e))
     .groupBy(players.id, players.name, players.nickname);
 
   return rows
@@ -98,8 +103,28 @@ export type SkillRankingRow = {
  * Ranking de notas. Diferente das outras funções daqui, não filtra por ano nem
  * por pelada encerrada: a nota é um estado atual do jogador, não um acumulado
  * de temporada.
+ *
+ * Com `groupId`, a nota exibida continua sendo a **global** — a lista só é
+ * restrita a quem jogou peladas daquele grupo. Não existe nota por grupo, e
+ * inventar uma (a média das estrelas recebidas só nas rodadas do grupo) seria
+ * pior que a falta: viria noutra escala (1–5 ao lado de 0–10 na mesma tela), sem
+ * histórico nem denúncia, e furaria o anonimato — num grupo pequeno a média se
+ * apoia em duas ou três avaliações, e com n=2 ela praticamente revela o voto
+ * individual que src/lib/anonimato.ts protege contra pistas bem mais fracas.
  */
-export async function getSkillRanking(): Promise<SkillRankingRow[]> {
+export async function getSkillRanking(e: EscopoStats = {}): Promise<SkillRankingRow[]> {
+  // Quem entrou em campo em alguma pelada encerrada do grupo. O predicado vem de
+  // ./stats-escopo porque é o caminho que NÃO passa por `escopo()` — e por isso
+  // é o mais fácil de deixar para trás numa mudança futura.
+  const quemJogou = e.groupId
+    ? db
+        .selectDistinct({ id: gamePlayers.playerId })
+        .from(gamePlayers)
+        .innerJoin(games, eq(gamePlayers.gameId, games.id))
+        .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
+        .where(jogouNoGrupo(e.groupId))
+    : null;
+
   return db
     .select({
       playerId: players.id,
@@ -118,7 +143,12 @@ export async function getSkillRanking(): Promise<SkillRankingRow[]> {
     })
     .from(players)
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
-    .where(eq(players.active, true))
+    .where(
+      and(
+        eq(players.active, true),
+        quemJogou ? inArray(players.id, quemJogou) : undefined,
+      ),
+    )
     .orderBy(desc(players.skill), players.name);
 }
 
@@ -128,14 +158,14 @@ export type AttendanceStat = {
   attended: number;
 };
 
-export async function getAttendanceStats(year?: number): Promise<{
+export async function getAttendanceStats(e: EscopoStats = {}): Promise<{
   totalDays: number;
   perPlayer: AttendanceStat[];
 }> {
   const [{ totalDays }] = await db
     .select({ totalDays: sql<number>`count(*)::int` })
     .from(matchDays)
-    .where(and(eq(matchDays.status, "finished"), yearFilter(year)));
+    .where(escopo(e));
 
   const perPlayer = await db
     .select({
@@ -147,13 +177,7 @@ export async function getAttendanceStats(year?: number): Promise<{
     .innerJoin(matchDays, eq(attendances.matchDayId, matchDays.id))
     .innerJoin(players, eq(attendances.playerId, players.id))
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
-    .where(
-      and(
-        eq(attendances.status, "in"),
-        eq(matchDays.status, "finished"),
-        yearFilter(year),
-      ),
-    )
+    .where(and(eq(attendances.status, "in"), escopo(e)))
     .groupBy(players.id, players.name)
     .orderBy(desc(sql`count(*)`), players.name);
 

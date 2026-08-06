@@ -166,9 +166,40 @@ Estatísticas são derivadas por query (`src/lib/stats.ts`), contando só pelada
 
 Prazos são timestamps absolutos gravados na criação, comparados sempre com o `now()` do Postgres. Quem os aplica é `processarPendencias()` (`src/lib/pendencias.ts`), disparado pelo `after()` no layout (no máximo 1× por minuto por instância) e por `GET /api/cron/pendencias` como rede de segurança — protegido por `CRON_SECRET` e agendado no `vercel.json`. É idempotente: cada transição é `UPDATE ... WHERE status = 'open' RETURNING` e o replay recalcula do zero.
 
-## Roadmap (fase 2)
+## Grupos
 
-- Grupo/racha como entidade: hoje jogadores, nota, artilharia e rankings são **globais** — se dois grupos diferentes usarem o app, os números se misturam
+Um grupo reúne quem joga junto. Quem cria vira **administrador**; ele promove
+**organizadores** (que marcam peladas do grupo e convidam gente) e todo o resto
+entra como **membro** — confirma presença e aparece no ranking do grupo.
+
+Cada grupo escolhe como é encontrado:
+
+| Visibilidade | Como se entra |
+| --- | --- |
+| **Privado** | Não aparece em listagem nenhuma. Só por link de convite ou convite nominal. |
+| **Público** + sob aprovação | Aparece em `/grupos`; a pessoa solicita e o admin decide. |
+| **Público** + entrada livre | Aparece em `/grupos`; qualquer conta entra sozinha. |
+
+Os três caminhos de entrada convivem: link com token (multi-uso, opcionalmente
+com teto), convite nominal a quem já tem conta (a pessoa aceita em `/grupos`) e
+pedido de entrada. O link **não cria conta** — quem não tem passa antes pelo
+cadastro normal.
+
+Marcar uma pelada dentro do grupo não fecha a pelada para o grupo: o organizador
+continua podendo convidar gente de fora, inclusive quem não tem conta (o que
+gera o link de cadastro de sempre).
+
+**Ranking do grupo** (`/grupo/[id]/ranking`) tem presença, artilharia,
+aproveitamento e notas, contando **só as peladas daquele grupo** — e contando
+todo mundo que jogou nelas, membro ou não. Os rankings gerais da plataforma
+continuam existindo e continuam somando tudo. A nota mostrada no grupo é a nota
+global do jogador: não existe nota por grupo, e a lista apenas recorta quem
+jogou ali.
+
+Pelada sem grupo continua funcionando como sempre — `match_days.group_id` é
+nulo, e o grupo é definido na criação e não muda depois.
+
+## Roadmap (fase 2)
 
 - Feed iCalendar (`/api/calendar.ics`) para assinar a agenda no Google/Apple Calendar
 - Defesa contra conluio na avaliação — a denúncia só cobre nota injustamente baixa

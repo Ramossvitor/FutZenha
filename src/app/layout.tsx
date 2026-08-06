@@ -34,6 +34,7 @@ export const metadata: Metadata = {
 const navLinks = [
   { href: "/", label: "Início" },
   { href: "/peladas", label: "Peladas" },
+  { href: "/grupos", label: "Grupos" },
   { href: "/artilharia", label: "Artilharia" },
   { href: "/rankings", label: "Rankings" },
 ] as const;

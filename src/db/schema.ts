@@ -14,6 +14,7 @@ import {
   time,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const matchDayStatusEnum = pgEnum("match_day_status", [
@@ -38,6 +39,182 @@ export const players = pgTable("players", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// ---------------------------------------------------------------------------
+// Grupos
+//
+// O grupo é o inquilino: peladas, papéis e ranking próprios. Ele não substitui
+// o ranking global — as estatísticas de toda pelada encerrada continuam
+// alimentando /rankings e /artilharia. O grupo é um recorte por cima disso (ver
+// EscopoStats em src/lib/stats.ts).
+//
+// Pelada sem grupo (`match_days.group_id` nulo) é a pelada avulsa, que é como o
+// sistema inteiro funcionava antes disto e continua funcionando.
+// ---------------------------------------------------------------------------
+
+export const groupRoleEnum = pgEnum("group_role", ["admin", "organizer", "member"]);
+
+export const groupVisibilityEnum = pgEnum("group_visibility", ["private", "public"]);
+
+export const groupJoinPolicyEnum = pgEnum("group_join_policy", ["request", "open"]);
+
+export const groupInvitationStatusEnum = pgEnum("group_invitation_status", [
+  "pending",
+  "accepted",
+  "declined",
+  "revoked",
+]);
+
+export const groupJoinRequestStatusEnum = pgEnum("group_join_request_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+
+export const groups = pgTable(
+  "groups",
+  {
+    id: serial("id").primaryKey(),
+    // Sem unique, de propósito. `players.name` é unique porque um jogador é uma
+    // pessoa real dentro da mesma pelada; grupo é inquilino, e duas "Pelada da
+    // firma" convivem sem se confundir — o id desempata. Uma unique global
+    // ainda viraria oráculo de enumeração: daria para descobrir a existência de
+    // um grupo privado tentando criar um homônimo, que é justamente o que o 404
+    // de `podeVerGrupo` esconde.
+    name: text("name").notNull(),
+    description: text("description"),
+    // `private` não é descobrível e só entra por convite. `public` aparece em
+    // /grupos, e aí `join_policy` decide como se entra.
+    visibility: groupVisibilityEnum("visibility").notNull().default("private"),
+    joinPolicy: groupJoinPolicyEnum("join_policy").notNull().default("request"),
+    // Registro histórico de quem fundou. A autoridade sobre quem manda é
+    // `group_members.role`, que se transfere; esta coluna, não.
+    createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("groups_descoberta_idx").on(t.visibility, t.name)],
+);
+
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    role: groupRoleEnum("role").notNull().default("member"),
+    joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // A PK composta é o que torna "entrar no grupo" idempotente: os três
+    // caminhos de entrada (link, convite nominal, pedido aprovado) usam
+    // onConflictDoNothing, e nenhum deles duplica linha nem rebaixa para
+    // "member" quem já era organizador.
+    primaryKey({ columns: [t.groupId, t.playerId] }),
+    index("group_members_player_idx").on(t.playerId),
+    // Um admin por grupo, garantido pelo banco. É a última linha de defesa do
+    // invariante que a aplicação já protege: sem ele, duas transferências
+    // concorrentes deixariam o grupo com dois donos — ou, se a ordem das
+    // statements se invertesse, com nenhum. Como o índice não é deferrable,
+    // transferir é obrigatoriamente rebaixar o atual e só então promover o
+    // alvo, nessa ordem e na mesma transação.
+    uniqueIndex("group_members_admin_unico_idx")
+      .on(t.groupId)
+      .where(sql`role = 'admin'`),
+  ],
+);
+
+// Convite por link, no molde de src/lib/convites.ts — com uma diferença que não
+// pode ser perdida de vista: `invites` cria CONTA, este aqui só adiciona ao
+// grupo uma conta que já existe, e por isso o resgate exige sessão. Se um dia
+// isso virar cadastro, o link que corre solto no WhatsApp vira fábrica de contas.
+export const groupInviteLinks = pgTable(
+  "group_invite_links",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(), // 32 bytes aleatórios em base64url
+    createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    // Multi-uso de propósito: link que morre no primeiro clique é inútil num
+    // grupo de WhatsApp com vinte pessoas. Nulo = sem teto.
+    maxUses: integer("max_uses"),
+    usesCount: integer("uses_count").notNull().default(0),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("group_invite_links_grupo_idx").on(t.groupId, t.revokedAt)],
+);
+
+// Convite nominal: o organizador escolhe a pessoa, e quem decide é ela.
+// Separado de group_join_requests de propósito — são a mesma forma com
+// decisores opostos, e numa tabela só todo `where` teria que carregar o
+// discriminador. Um esquecimento ali vira escalada de privilégio: aprovar o
+// próprio pedido pela rota de "aceitar convite".
+export const groupInvitations = pgTable(
+  "group_invitations",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    // Só jogador com conta ativa é convidável nominalmente (validado na action).
+    // Quem não tem conta entra pelo fluxo da pelada — convidarParaPelada, que é
+    // o que gera convite de plataforma.
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    invitedByPlayerId: integer("invited_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    status: groupInvitationStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    respondedAt: timestamp("responded_at"),
+  },
+  (t) => [
+    // Um pendente por pessoa por grupo. Parcial e não total: quem recusou hoje
+    // pode ser reconvidado no mês que vem, e o histórico das recusas fica.
+    uniqueIndex("group_invitations_pendente_idx")
+      .on(t.groupId, t.playerId)
+      .where(sql`status = 'pending'`),
+    index("group_invitations_convidado_idx").on(t.playerId, t.status),
+  ],
+);
+
+// Pedido de entrada. Só existe em grupo público — grupo privado não tem fila de
+// portaria, e é por isso que virar privado rejeita os pendentes.
+export const groupJoinRequests = pgTable(
+  "group_join_requests",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    status: groupJoinRequestStatusEnum("status").notNull().default("pending"),
+    decidedByPlayerId: integer("decided_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    decidedAt: timestamp("decided_at"),
+  },
+  (t) => [
+    uniqueIndex("group_join_requests_pendente_idx")
+      .on(t.groupId, t.playerId)
+      .where(sql`status = 'pending'`),
+    index("group_join_requests_fila_idx").on(t.groupId, t.status),
+  ],
+);
+
 export const matchDays = pgTable("match_days", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
@@ -45,6 +222,17 @@ export const matchDays = pgTable("match_days", {
   location: text("location").notNull(),
   status: matchDayStatusEnum("status").notNull().default("scheduled"),
   notes: text("notes"),
+  // Nulo = pelada avulsa, que é como tudo funcionava antes dos grupos e continua
+  // funcionando. Definido na criação e imutável depois: mover uma pelada
+  // encerrada entre grupos reescreveria dois rankings de uma vez, e por isso
+  // updateMatchDay não aceita este campo.
+  //
+  // `set null`, NUNCA `cascade`: apagar um grupo não pode apagar as peladas
+  // dele. Elas carregam gols, V/E/D, avaliações e skill_history que alimentam o
+  // ranking GLOBAL — cascatear reescreveria a nota de gente que nem é do grupo,
+  // e sem o aplicarReplay() que apagarPelada roda no mesmo commit (ver
+  // src/lib/deletion.ts).
+  groupId: integer("group_id").references(() => groups.id, { onDelete: "set null" }),
   // Quem criou a pelada é quem a administra: presenças, sorteio, placar, gols,
   // encerramento e abertura da votação de exclusão (ver src/lib/permissions.ts).
   // Nulo em pelada órfã — as que existiam antes deste modelo e as de criador
@@ -57,7 +245,12 @@ export const matchDays = pgTable("match_days", {
   // escalação é imutável, e placar e gols têm 24h de janela para correção.
   finishedAt: timestamp("finished_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+},
+(t) => [
+  // Todo recorte de grupo (peladas do grupo e as quatro consultas de
+  // src/lib/stats.ts) entra por group_id e ordena por data.
+  index("match_days_group_idx").on(t.groupId, t.date),
+]);
 
 export const attendances = pgTable(
   "attendances",
@@ -242,6 +435,13 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // avaliação gravaria linha mentindo sobre o que aconteceu.
   "deletion_vote_open",
   "deletion_vote_resolved",
+  // Grupos, pelo mesmo motivo acima: a caixa de entrada precisa distinguir "te
+  // convidaram para um grupo" (que espera uma resposta sua) de "pediram para
+  // entrar no seu grupo" (que espera uma decisão sua).
+  "group_invitation",
+  "group_join_request",
+  "group_join_request_resolved",
+  "group_role_changed",
 ]);
 
 // Uma rodada por pelada — a unique em match_day_id é o que garante isso e o que
@@ -456,6 +656,14 @@ export const matchDayDeletionVoters = pgTable(
 );
 
 export type Player = typeof players.$inferSelect;
+export type Group = typeof groups.$inferSelect;
+export type GroupMember = typeof groupMembers.$inferSelect;
+export type GroupInviteLink = typeof groupInviteLinks.$inferSelect;
+export type GroupInvitation = typeof groupInvitations.$inferSelect;
+export type GroupJoinRequest = typeof groupJoinRequests.$inferSelect;
+export type GroupRole = (typeof groupRoleEnum.enumValues)[number];
+export type GroupVisibility = (typeof groupVisibilityEnum.enumValues)[number];
+export type GroupJoinPolicy = (typeof groupJoinPolicyEnum.enumValues)[number];
 export type MatchDay = typeof matchDays.$inferSelect;
 export type Attendance = typeof attendances.$inferSelect;
 export type Team = typeof teams.$inferSelect;

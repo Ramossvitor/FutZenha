@@ -2,30 +2,64 @@
 // sem redirect: é a única forma de testar as regras no vitest, que aqui roda
 // sem config e sem alias.
 //
-// A divisão é entre dois papéis:
+// A divisão é entre dois papéis de plataforma e três de grupo:
 //
 // - **Admin da plataforma** (`users.is_platform_admin`): contas, convites,
 //   denúncias de nota injusta e supervisão de todas as peladas.
 // - **Admin da pelada** (`match_days.created_by_player_id`): quem criou. Manda
 //   naquela pelada — presenças, sorteio, placar, gols, encerramento e abertura
 //   da votação de exclusão — e em nenhuma outra.
+// - **Admin / organizador / membro do grupo** (`group_members.role`): valem só
+//   dentro do grupo, e as regras deles moram em ./grupos-permissions.
 //
 // O admin da plataforma é fallback em qualquer pelada, inclusive nas órfãs.
 
 export type Ator = { playerId: number; isPlatformAdmin: boolean };
 
-export type PeladaGerenciavel = { createdByPlayerId: number | null };
+/** Espelha `group_role` no schema. Fica aqui, no módulo raiz, para que
+ *  ./grupos-permissions possa importar deste sem circularidade. */
+export type PapelNoGrupo = "admin" | "organizer" | "member";
+
+export type PeladaGerenciavel = {
+  createdByPlayerId: number | null;
+  /** Nulo em pelada avulsa — que é como tudo funcionava antes dos grupos. */
+  groupId?: number | null;
+};
 
 /**
- * Quem administra esta pelada: o criador ou o admin da plataforma.
+ * Quem administra esta pelada: o criador, o admin da plataforma e — em pelada
+ * de grupo — o admin daquele grupo.
  *
  * A comparação com `null` é explícita porque pelada órfã (criada antes deste
  * modelo, ou de criador apagado) tem `createdByPlayerId` nulo — e uma coerção
  * distraída ali entregaria a pelada para qualquer um.
+ *
+ * `papelNoGrupo` é o papel do ator **no grupo desta pelada**. Passar o papel de
+ * outro grupo entregaria a pelada ao admin errado, e é por isso que quem lê o
+ * papel é o guard (src/lib/require-pelada-admin.ts), a partir de
+ * `matchDay.groupId` — nunca de um id que veio do cliente. O default `null`
+ * mantém honesto todo call site que não tem grupo em mãos.
+ *
+ * O organizador que **não** criou a pelada fica de fora de propósito: o poder
+ * dele é criar (e, ao criar, ele vira o criador). Se gerenciasse a pelada dos
+ * outros organizadores, mexeria em placar, gols e escalação alheios — e o V/E/D
+ * e a artilharia de quem jogou saem justamente daí.
+ *
+ * O admin do grupo entra porque o grupo precisa de um fallback próprio: sem
+ * ele, pelada de organizador que saiu do grupo só seria destravada pelo admin
+ * da plataforma, que não escala num modelo com muitos grupos.
  */
-export function podeGerenciarPelada(ator: Ator, pelada: PeladaGerenciavel): boolean {
+export function podeGerenciarPelada(
+  ator: Ator,
+  pelada: PeladaGerenciavel,
+  papelNoGrupo: PapelNoGrupo | null = null,
+): boolean {
   if (ator.isPlatformAdmin) return true;
-  return pelada.createdByPlayerId !== null && pelada.createdByPlayerId === ator.playerId;
+  if (pelada.createdByPlayerId !== null && pelada.createdByPlayerId === ator.playerId) return true;
+  // O teste de `groupId` não é redundante: papel só existe dentro de grupo, e um
+  // papel herdado de outra leitura entregaria pelada avulsa ao admin de um
+  // grupo qualquer.
+  return pelada.groupId != null && papelNoGrupo === "admin";
 }
 
 /**
@@ -46,6 +80,12 @@ export function podeGerenciarPelada(ator: Ator, pelada: PeladaGerenciavel): bool
  *
  * O admin da plataforma passa por cima — ele é o fallback de toda pelada, e é
  * quem conserta pelada órfã e pelada abandonada.
+ *
+ * Grupo **não** relaxa esta regra, e é de propósito que não há parâmetro de
+ * papel aqui. Ser membro de um grupo não é consentimento para ser escalado: a
+ * regra protege a presença e o V/E/D de quem tem conta, e uma pelada de grupo
+ * marcada para sábado não autoriza ninguém a marcar presença pelos outros
+ * quarenta membros. Quem confirma é a pessoa, na página da pelada.
  */
 export function podeDefinirPresencaPor(
   ator: Ator,

@@ -1,21 +1,32 @@
 import Link from "next/link";
 import { todayISO } from "@/lib/format";
+import { listarMeusGrupos } from "@/lib/grupos";
 import { requirePlayer } from "@/lib/require-player";
 import { createMatchDay } from "./actions";
 
 export const metadata = { title: "Marcar pelada" };
+export const dynamic = "force-dynamic";
 
 const inputClass =
   "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
 const errorMessages: Record<string, string> = {
   "dados-invalidos": "Dados inválidos — confira data e local.",
+  "sem-permissao-no-grupo":
+    "Você não pode marcar pelada nesse grupo — só o administrador e os organizadores.",
 };
 
 export default async function NovaPeladaPage({ searchParams }: PageProps<"/peladas/nova">) {
-  await requirePlayer();
-  const { erro } = await searchParams;
+  const session = await requirePlayer();
+  const { erro, grupo } = await searchParams;
   const mensagemErro = typeof erro === "string" ? errorMessages[erro] : undefined;
+
+  // Só os grupos em que a pessoa pode criar pelada entram no <select>. A action
+  // reconfere o papel de qualquer jogo — a lista aqui é conveniência, não trava.
+  const meusGrupos = (await listarMeusGrupos(session.player.id)).filter(
+    (g) => g.papel === "admin" || g.papel === "organizer",
+  );
+  const grupoPreSelecionado = typeof grupo === "string" ? grupo : "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -55,6 +66,23 @@ export default async function NovaPeladaPage({ searchParams }: PageProps<"/pelad
           Observações
           <input name="notes" placeholder="Opcional" className={inputClass} />
         </label>
+        {meusGrupos.length > 0 && (
+          <label className="flex flex-col gap-1 text-sm">
+            Grupo
+            <select name="groupId" defaultValue={grupoPreSelecionado} className={inputClass}>
+              <option value="">Sem grupo (pelada avulsa)</option>
+              {meusGrupos.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-neutral-500">
+              Pelada de grupo entra no ranking do grupo. Você continua podendo convidar gente de
+              fora — inclusive quem não tem conta.
+            </span>
+          </label>
+        )}
         <div className="flex items-center gap-3">
           <button
             type="submit"

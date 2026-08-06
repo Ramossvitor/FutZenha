@@ -31,6 +31,44 @@ describe("podeGerenciarPelada", () => {
   });
 });
 
+describe("podeGerenciarPelada em pelada de grupo", () => {
+  // Pelada criada pelo organizador `criador` (id 10) dentro do grupo 7.
+  const peladaDoGrupo = { createdByPlayerId: 10, groupId: 7 };
+
+  it("o admin do grupo gerencia a pelada criada pelo organizador", () => {
+    expect(podeGerenciarPelada(outro, peladaDoGrupo, "admin")).toBe(true);
+  });
+
+  // O ataque: reescrever placar, gols e escalação de pelada alheia mexe no
+  // V/E/D e na artilharia de todo mundo que jogou. O poder do organizador é
+  // criar — e, ao criar, ele já vira o criador.
+  it("organizador NÃO gerencia a pelada de outro organizador", () => {
+    expect(podeGerenciarPelada(outro, peladaDoGrupo, "organizer")).toBe(false);
+  });
+
+  it("membro do grupo não gerencia nada", () => {
+    expect(podeGerenciarPelada(outro, peladaDoGrupo, "member")).toBe(false);
+    expect(podeGerenciarPelada(outro, peladaDoGrupo, null)).toBe(false);
+  });
+
+  it("o criador segue gerenciando, qualquer que seja o papel dele no grupo", () => {
+    expect(podeGerenciarPelada(criador, peladaDoGrupo, "member")).toBe(true);
+    expect(podeGerenciarPelada(criador, peladaDoGrupo, null)).toBe(true);
+  });
+
+  // Documenta que o teste de `groupId` no corpo da função não é redundante: um
+  // papel herdado de outra leitura não pode entregar pelada avulsa ao admin de
+  // um grupo qualquer.
+  it("pelada avulsa ignora papel de grupo passado por engano", () => {
+    expect(podeGerenciarPelada(outro, { createdByPlayerId: 10, groupId: null }, "admin")).toBe(false);
+    expect(podeGerenciarPelada(outro, { createdByPlayerId: 10 }, "admin")).toBe(false);
+  });
+
+  it("admin da plataforma continua passando por cima", () => {
+    expect(podeGerenciarPelada(plataforma, peladaDoGrupo, null)).toBe(true);
+  });
+});
+
 describe("podeDefinirPresencaPor", () => {
   const semConta = { temContaAtiva: false, jaEstaNaPelada: false };
   const comContaDeFora = { temContaAtiva: true, jaEstaNaPelada: false };

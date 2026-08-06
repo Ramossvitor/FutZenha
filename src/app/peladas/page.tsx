@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { desc, asc, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { games, matchDays, teams } from "@/db/schema";
+import { games, groups, matchDays, teams } from "@/db/schema";
 import { formatDate, formatDateShort, formatTime } from "@/lib/format";
+import { listarMeusGrupos } from "@/lib/grupos";
 import { podeGerenciarPelada } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
 
@@ -35,6 +36,37 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
     : [];
   const teamNameById = new Map(teamRows.map((t) => [t.id, t.name]));
 
+  // Meu papel em cada grupo de que participo. Serve os dois selos abaixo: o
+  // "você gerencia" precisa do papel (`podeGerenciarPelada` quer o papel no
+  // grupo DAQUELA pelada), e o nome do grupo precisa só da associação.
+  const meuPapelPorGrupo = new Map(
+    session ? (await listarMeusGrupos(session.player.id)).map((g) => [g.id, g.papel]) : [],
+  );
+
+  // Nome do grupo de cada pelada, numa consulta só — mesmo padrão sem N+1 dos
+  // times acima.
+  //
+  // Esta página é PÚBLICA (não está no matcher de src/proxy.ts), então o nome do
+  // grupo passa pelo mesmo teste de `podeVerGrupo` que src/app/pelada/[id]/page.tsx
+  // faz: grupo privado não anuncia o nome para quem está de fora. Sem isso, o 404
+  // do guard não protege nada — bastava abrir /peladas deslogado para ler o nome
+  // de todo grupo privado com pelada marcada.
+  const groupIds = [...new Set(days.map((d) => d.groupId).filter((g) => g !== null))];
+  const groupRows = groupIds.length
+    ? await db
+        .select({ id: groups.id, name: groups.name, visibility: groups.visibility })
+        .from(groups)
+        .where(inArray(groups.id, groupIds))
+    : [];
+  const groupNameById = new Map(
+    groupRows
+      .filter(
+        (g) =>
+          g.visibility === "public" || meuPapelPorGrupo.has(g.id) || session?.isPlatformAdmin,
+      )
+      .map((g) => [g.id, g.name]),
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -59,7 +91,9 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
       <div className="flex flex-col gap-2">
         {days.map((day) => {
           const dayGames = gameRows.filter((g) => g.matchDayId === day.id);
-          const euGerencio = ator !== null && podeGerenciarPelada(ator, day);
+          const papel = day.groupId !== null ? (meuPapelPorGrupo.get(day.groupId) ?? null) : null;
+          const euGerencio = ator !== null && podeGerenciarPelada(ator, day, papel);
+          const nomeDoGrupo = day.groupId !== null ? groupNameById.get(day.groupId) : undefined;
           return (
             <Link
               key={day.id}
@@ -69,6 +103,11 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
               <div className="flex items-center gap-2">
                 <span className="font-bold capitalize">{formatDate(day.date)}</span>
                 <span className="text-sm text-neutral-500">{formatDateShort(day.date)}</span>
+                {nomeDoGrupo && (
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                    {nomeDoGrupo}
+                  </span>
+                )}
                 {euGerencio && (
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
                     você gerencia
