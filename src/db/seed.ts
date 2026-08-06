@@ -200,6 +200,8 @@ async function seedRatingRound(matchDayId: number) {
 
 async function main() {
   console.log("Limpando tabelas...");
+  await db.delete(schema.matchDayDeletionVoters);
+  await db.delete(schema.matchDayDeletionVotes);
   await db.delete(schema.notifications);
   await db.delete(schema.skillHistory);
   await db.delete(schema.ratingReports);

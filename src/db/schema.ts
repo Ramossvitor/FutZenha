@@ -355,6 +355,55 @@ export const notifications = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Exclusão de pelada por votação
+//
+// Escalação confirmada é imutável, e placar e gols travam 24h depois do
+// encerramento. Passado isso, a única forma de consertar uma pelada errada é
+// apagá-la inteira — e quem decide isso é quem jogou, não o admin sozinho.
+// ---------------------------------------------------------------------------
+
+export const deletionVoteStatusEnum = pgEnum("deletion_vote_status", [
+  "open",
+  "approved",
+  "rejected",
+]);
+
+// Uma votação por pelada: a unique é o que garante que uma rejeitada não possa
+// ser reaberta. Quórum e eleitorado são congelados na abertura, senão uma conta
+// criada durante as 48h mudaria o denominador no meio da apuração.
+export const matchDayDeletionVotes = pgTable("match_day_deletion_votes", {
+  id: serial("id").primaryKey(),
+  matchDayId: integer("match_day_id")
+    .notNull()
+    .unique()
+    .references(() => matchDays.id, { onDelete: "cascade" }),
+  reason: text("reason").notNull(),
+  status: deletionVoteStatusEnum("status").notNull().default("open"),
+  openedAt: timestamp("opened_at").notNull().defaultNow(),
+  deadlineAt: timestamp("deadline_at").notNull(),
+  eligibleCount: integer("eligible_count").notNull(),
+  requiredYes: integer("required_yes").notNull(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
+// Eleitorado congelado + o voto, no mesmo molde de rating_round_raters.
+// in_favor null = ainda não votou, e não votar conta contra.
+export const matchDayDeletionVoters = pgTable(
+  "match_day_deletion_voters",
+  {
+    voteId: integer("vote_id")
+      .notNull()
+      .references(() => matchDayDeletionVotes.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    inFavor: boolean("in_favor"),
+    votedAt: timestamp("voted_at"),
+  },
+  (t) => [primaryKey({ columns: [t.voteId, t.playerId] })],
+);
+
 export type Player = typeof players.$inferSelect;
 export type MatchDay = typeof matchDays.$inferSelect;
 export type Attendance = typeof attendances.$inferSelect;
@@ -370,4 +419,6 @@ export type Rating = typeof ratings.$inferSelect;
 export type RatingReport = typeof ratingReports.$inferSelect;
 export type SkillHistoryEntry = typeof skillHistory.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type MatchDayDeletionVote = typeof matchDayDeletionVotes.$inferSelect;
+export type MatchDayDeletionVoter = typeof matchDayDeletionVoters.$inferSelect;
 export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];

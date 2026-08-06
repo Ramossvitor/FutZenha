@@ -43,6 +43,13 @@
       "when": 1785978288875,
       "tag": "0005_eminent_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785980835686,
+      "tag": "0006_thick_zemo",
+      "breakpoints": true
     }
   ]
 }

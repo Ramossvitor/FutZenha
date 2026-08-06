@@ -12,10 +12,12 @@ import {
   teamPlayers,
   teams,
 } from "@/db/schema";
+import { getFaltamVotar, getVotacaoDaPelada } from "@/lib/deletion";
 import { formatDate, formatSkill, formatTime } from "@/lib/format";
 import { vestClass } from "@/lib/team-colors";
 import { BuscaJogador, type ItemJogador } from "./busca-jogador";
 import {
+  abrirVotacaoExclusao,
   addGoal,
   createGame,
   deleteGame,
@@ -42,6 +44,9 @@ const errorMessages: Record<string, string> = {
   "pelada-encerrada": "A pelada já foi encerrada.",
   "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
   "jogos-lancados": "Já existem jogos lançados — apague os jogos antes de re-sortear.",
+  "precisa-votacao":
+    "Pelada encerrada não se apaga direto — abra a votação de exclusão para o grupo decidir.",
+  "motivo-curto": "Explique em pelo menos 10 caracteres por que a pelada deve ser apagada.",
   "escalacao-travada":
     "A pelada já foi encerrada e a escalação não muda mais. Para corrigir, é preciso excluir a pelada — o que exige votação dos jogadores.",
   "janela-encerrada":
@@ -162,6 +167,8 @@ export default async function AdminPeladaPage({
           .orderBy(asc(players.name))
       : [];
   const teamNameById = new Map(teamList.map((t) => [t.id, t.name]));
+  const votacao = await getVotacaoDaPelada(id);
+  const faltamVotar = votacao?.status === "open" ? await getFaltamVotar(votacao.id) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -577,11 +584,68 @@ export default async function AdminPeladaPage({
       </section>
 
       <section className="rounded-xl border border-red-200 bg-white p-4 dark:border-red-900 dark:bg-neutral-900">
-        <form action={deleteMatchDay.bind(null, matchDay.id)}>
-          <button type="submit" className="text-sm text-red-600 hover:underline">
-            Excluir esta pelada (apaga presenças, times e resultados)
-          </button>
-        </form>
+        <h2 className="mb-2 font-bold text-red-700 dark:text-red-400">Excluir esta pelada</h2>
+
+        {matchDay.status !== "finished" ? (
+          <form action={deleteMatchDay.bind(null, matchDay.id)}>
+            <p className="mb-2 text-sm text-neutral-500">
+              Apaga presenças, times e resultados. Como a pelada não foi encerrada, nada dela conta
+              em ranking ou avaliação — dá para excluir direto.
+            </p>
+            <button type="submit" className="text-sm text-red-600 hover:underline">
+              Excluir agora
+            </button>
+          </form>
+        ) : votacao ? (
+          <div className="flex flex-col gap-2 text-sm">
+            <p>
+              <strong>Votação {" "}
+                {votacao.status === "open"
+                  ? "em andamento"
+                  : votacao.status === "approved"
+                    ? "aprovada"
+                    : "rejeitada"}
+              </strong>{" "}
+              — “{votacao.reason}”
+            </p>
+            <p className="text-neutral-500">
+              {votacao.sim} a favor · {votacao.nao} contra · precisa de {votacao.requiredYes} de{" "}
+              {votacao.eligibleCount}
+              {votacao.status === "open" && ` · ${votacao.horasRestantes}h restantes`}
+            </p>
+            {votacao.status === "open" && faltamVotar.length > 0 && (
+              <p className="text-neutral-500">Faltam votar: {faltamVotar.join(", ")}</p>
+            )}
+            {votacao.status === "rejected" && (
+              <p className="text-neutral-500">
+                O grupo decidiu manter. Uma pelada só pode ter uma votação, então ela fica no
+                histórico definitivamente.
+              </p>
+            )}
+          </div>
+        ) : (
+          <form action={abrirVotacaoExclusao.bind(null, matchDay.id)} className="flex flex-col gap-2">
+            <p className="text-sm text-neutral-500">
+              A pelada já foi encerrada: os gols, o V/E/D e as avaliações dela contam para todo
+              mundo. Apagar exige a aprovação de quem jogou — 85% dos votos em 48h, e quem não votar
+              conta como contra. <strong>Só existe uma votação por pelada.</strong>
+            </p>
+            <input
+              name="reason"
+              required
+              minLength={10}
+              maxLength={500}
+              placeholder="Por que esta pelada precisa ser apagada?"
+              className={inputClass}
+            />
+            <button
+              type="submit"
+              className="self-start rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
+            >
+              Abrir votação de exclusão
+            </button>
+          </form>
+        )}
       </section>
     </div>
   );

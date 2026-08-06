@@ -15,6 +15,7 @@ import {
   teamPlayers,
   teams,
 } from "@/db/schema";
+import { abrirVotacao } from "@/lib/deletion";
 import { drawTeams } from "@/lib/draw";
 import { requireAdmin } from "@/lib/require-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
@@ -63,12 +64,52 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
   revalidatePath(`/pelada/${matchDayId}`);
 }
 
+/**
+ * Apaga a pelada. Só vale para pelada não encerrada — nela não há gol, V/E/D
+ * nem avaliação de ninguém em jogo. Encerrada, quem decide é quem jogou, pela
+ * votação (ver abrirVotacaoExclusao).
+ */
 export async function deleteMatchDay(matchDayId: number) {
   await requireAdmin();
+  const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, matchDayId));
+  if (!matchDay) redirect("/admin/peladas");
+  if (matchDay.status === "finished") {
+    redirect(`/admin/peladas/${matchDayId}?erro=precisa-votacao`);
+  }
+
   await db.delete(matchDays).where(eq(matchDays.id, matchDayId));
   revalidatePath("/");
   revalidatePath("/admin/peladas");
   redirect("/admin/peladas");
+}
+
+const motivoSchema = z.string().trim().min(10, "Explique o motivo").max(500);
+
+/**
+ * Abre a votação para apagar uma pelada encerrada. Sem ninguém com conta que
+ * tenha jogado, não há quem seja afetado — aí o admin apaga direto.
+ */
+export async function abrirVotacaoExclusao(matchDayId: number, formData: FormData) {
+  await requireAdmin();
+  const parsed = motivoSchema.safeParse(formData.get("reason") ?? "");
+  if (!parsed.success) redirect(`/admin/peladas/${matchDayId}?erro=motivo-curto`);
+
+  const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, matchDayId));
+  if (!matchDay || matchDay.status !== "finished") {
+    redirect(`/admin/peladas/${matchDayId}?erro=dados-invalidos`);
+  }
+
+  const resultado = await abrirVotacao(matchDayId, parsed.data);
+  if (resultado.tipo === "sem-eleitores") {
+    await db.delete(matchDays).where(eq(matchDays.id, matchDayId));
+    revalidatePath("/");
+    revalidatePath("/admin/peladas");
+    revalidatePath("/rankings");
+    redirect("/admin/peladas?erro=excluida-sem-votacao");
+  }
+
+  revalidateMatchDay(matchDayId);
+  redirect(`/admin/peladas/${matchDayId}`);
 }
 
 // A escalação (times, jogos, quem jogou) é imutável depois do encerramento —
