@@ -85,6 +85,43 @@ export async function getPlayerRecords(year?: number, minGames = 1): Promise<Pla
     .sort((a, b) => b.winRate - a.winRate || b.gamesPlayed - a.gamesPlayed || a.name.localeCompare(b.name));
 }
 
+export type SkillRankingRow = {
+  playerId: number;
+  name: string;
+  nickname: string | null;
+  skill: number;
+  /** Variação na última rodada apurada. null = a nota nunca se moveu ainda. */
+  variacao: number | null;
+};
+
+/**
+ * Ranking de notas. Diferente das outras funções daqui, não filtra por ano nem
+ * por pelada encerrada: a nota é um estado atual do jogador, não um acumulado
+ * de temporada.
+ */
+export async function getSkillRanking(): Promise<SkillRankingRow[]> {
+  return db
+    .select({
+      playerId: players.id,
+      name: players.name,
+      nickname: players.nickname,
+      skill: players.skill,
+      variacao: sql<number | null>`(
+        select (sh.skill_after - sh.skill_before)::float8
+        from skill_history sh
+        join rating_rounds rr on rr.id = sh.round_id
+        join match_days md on md.id = rr.match_day_id
+        where sh.player_id = ${players.id}
+        order by md.date desc, rr.id desc
+        limit 1
+      )`,
+    })
+    .from(players)
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
+    .where(eq(players.active, true))
+    .orderBy(desc(players.skill), players.name);
+}
+
 export type AttendanceStat = {
   playerId: number;
   name: string;

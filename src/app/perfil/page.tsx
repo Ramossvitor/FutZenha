@@ -23,6 +23,7 @@ export default async function PerfilPage() {
   const myAttendance = attendance.perPlayer.find((a) => a.playerId === player.id)?.attended ?? 0;
 
   const statCards = [
+    { label: "Nota", value: formatSkill(player.skill) },
     { label: "Gols", value: String(myGoals) },
     { label: "Jogos", value: String(myRecord?.gamesPlayed ?? 0) },
     {
@@ -56,7 +57,7 @@ export default async function PerfilPage() {
           Meus números{" "}
           <span className="text-sm font-normal text-neutral-500">(só peladas encerradas)</span>
         </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {statCards.map((card) => (
             <div
               key={card.label}
