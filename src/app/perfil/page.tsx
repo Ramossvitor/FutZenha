@@ -70,7 +70,7 @@ export default async function PerfilPage() {
         </div>
         {!player.active && (
           <p className="text-sm text-neutral-500">
-            Você está fora das listas no momento — fala com o admin para voltar.
+            Você está fora das listas no momento — fala com o admin da plataforma para voltar.
           </p>
         )}
       </section>

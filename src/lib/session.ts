@@ -5,27 +5,27 @@ import { cookies } from "next/headers";
 import { db } from "@/db";
 import { players, users, type Player } from "@/db/schema";
 import { SESSION_COOKIE, SESSION_DURATION_MS, verifySessionToken } from "./auth";
+import { platformAdminsDoAmbiente } from "./platform-admins";
 
-export type PlayerSession = {
-  role: "player";
+// Toda sessão é de um jogador — o admin da plataforma é um jogador com flag,
+// não um papel à parte. Foi essa separação que acabou com o "um cookie = um
+// papel por vez": quem administra também marca presença, avalia e é avaliado.
+export type Session = {
   userId: number;
   username: string;
   player: Player;
+  isPlatformAdmin: boolean;
 };
 
-export type Session = { role: "admin" } | PlayerSession;
-
 // O DAL de sessão: uma consulta por request (React cache memoiza por render).
-// A sessão de player é validada no banco — user inexistente, user.active=false
-// ou token_version diferente do token ⇒ deslogado. players.active=false NÃO
+// A sessão é validada no banco — user inexistente, user.active=false ou
+// token_version diferente do token ⇒ deslogado. players.active=false NÃO
 // derruba a sessão (o perfil continua acessível; marcar presença é bloqueado
-// na action). Sessão de admin não consulta o banco.
+// na action).
 export const getSession = cache(async (): Promise<Session | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const payload = await verifySessionToken(token);
   if (!payload) return null;
-  if (payload.role === "admin") return { role: "admin" };
-  if (payload.sub === null) return null;
 
   const [row] = await db
     .select({ user: users, player: players })
@@ -34,7 +34,15 @@ export const getSession = cache(async (): Promise<Session | null> => {
     .where(eq(users.id, payload.sub));
   if (!row || !row.user.active || row.user.tokenVersion !== payload.v) return null;
 
-  return { role: "player", userId: row.user.id, username: row.user.username, player: row.player };
+  return {
+    userId: row.user.id,
+    username: row.user.username,
+    player: row.player,
+    // O `||` da env var é a chave-mestra: um update errado em is_platform_admin
+    // trancaria todo mundo do lado de fora de um banco sem shell.
+    isPlatformAdmin:
+      row.user.isPlatformAdmin || platformAdminsDoAmbiente().has(row.user.username),
+  };
 });
 
 // Só pode ser chamado de Server Action (regra do Next para escrever cookie).

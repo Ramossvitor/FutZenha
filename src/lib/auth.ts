@@ -7,10 +7,13 @@ export const SESSION_COOKIE = "futzenha_session";
 
 export const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 dias
 
+// O cookie diz apenas QUEM é, nunca o que pode. Papel não entra aqui: ele muda
+// no banco e na env var sem que o cookie saiba, e um cookie de 30 dias
+// carregando permissão só produz divergência — quem decide é o DAL
+// (src/lib/session.ts), que relê tudo a cada request.
 export type SessionPayload = {
-  sub: number | null; // users.id (null para o admin, que não tem linha em users)
-  role: "admin" | "player";
-  v: number; // users.token_version na hora do login (0 para o admin)
+  sub: number; // users.id
+  v: number; // users.token_version na hora do login
   exp: number; // epoch ms
 };
 
@@ -50,15 +53,16 @@ function base64urlDecode(data: string): string {
   return atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4));
 }
 
+// Exigir `sub` numérico é o que mata as sessões do admin de senha global, que
+// gravava `sub: null` — sem isso, `eq(users.id, null)` viraria SQL inválido no
+// DAL. Campos a mais são ignorados de propósito: os cookies em circulação ainda
+// carregam o `role: "player"` do modelo antigo (e, por um tempo, um `pa`), e
+// recusá-los deslogaria todo mundo à toa. Ignorar é seguro porque nada aqui
+// concede permissão: papel é lido do banco a cada request.
 function isSessionPayload(value: unknown): value is SessionPayload {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  return (
-    (v.sub === null || typeof v.sub === "number") &&
-    (v.role === "admin" || v.role === "player") &&
-    typeof v.v === "number" &&
-    typeof v.exp === "number"
-  );
+  return typeof v.sub === "number" && typeof v.v === "number" && typeof v.exp === "number";
 }
 
 // Exportado separado de createSessionToken para os testes forjarem exp no passado.
@@ -67,15 +71,8 @@ export async function signSessionPayload(payload: SessionPayload): Promise<strin
   return `${encoded}.${await hmac(encoded, sessionSecret())}`;
 }
 
-export async function createSessionToken(
-  data: { role: "admin" } | { role: "player"; sub: number; v: number },
-): Promise<string> {
-  const exp = Date.now() + SESSION_DURATION_MS;
-  const payload: SessionPayload =
-    data.role === "admin"
-      ? { sub: null, role: "admin", v: 0, exp }
-      : { sub: data.sub, role: "player", v: data.v, exp };
-  return signSessionPayload(payload);
+export async function createSessionToken(data: { sub: number; v: number }): Promise<string> {
+  return signSessionPayload({ sub: data.sub, v: data.v, exp: Date.now() + SESSION_DURATION_MS });
 }
 
 export async function verifySessionToken(token: string | undefined): Promise<SessionPayload | null> {
@@ -99,5 +96,8 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
     return null;
   }
   if (!isSessionPayload(payload) || payload.exp < Date.now()) return null;
-  return payload;
+  // Devolve só os campos conhecidos. Cookies em circulação ainda carregam
+  // `role` do modelo de dois papéis e `pa` do gate antigo do proxy; deixá-los
+  // atravessar convidaria alguém a lê-los como se valessem alguma coisa.
+  return { sub: payload.sub, v: payload.v, exp: payload.exp };
 }

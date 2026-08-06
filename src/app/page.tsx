@@ -78,7 +78,7 @@ export default async function HomePage() {
           </Link>
         ) : (
           <p className="rounded-xl border border-dashed border-neutral-300 p-5 text-neutral-500 dark:border-neutral-700">
-            Nenhuma pelada marcada. Cobra o admin! ⚽
+            Nenhuma pelada marcada ainda. ⚽
           </p>
         )}
       </section>

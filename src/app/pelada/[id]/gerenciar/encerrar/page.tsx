@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { gamePlayers, games, matchDays, players, teams, users } from "@/db/schema";
+import { gamePlayers, games, players, teams, users } from "@/db/schema";
 import { formatDate } from "@/lib/format";
+import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
 import { vestClass } from "@/lib/team-colors";
 import { BuscaJogador, type ItemJogador } from "../busca-jogador";
 import { confirmarEncerramento, incluirNoJogo, moverLado, removerDoJogo } from "./actions";
@@ -12,6 +13,8 @@ export const metadata = { title: "Conferir escalação" };
 
 const errorMessages: Record<string, string> = {
   "jogo-sem-time": "Todo jogo precisa de pelo menos um jogador de cada lado.",
+  "precisa-confirmar":
+    "Quem tem conta ativa e ainda não entrou nesta pelada precisa marcar a própria presença antes de ser escalado.",
 };
 
 const acaoClass =
@@ -26,16 +29,15 @@ const seloSemAcesso = (
 export default async function EncerrarPeladaPage({
   params,
   searchParams,
-}: PageProps<"/admin/peladas/[id]/encerrar">) {
+}: PageProps<"/pelada/[id]/gerenciar/encerrar">) {
   const { id: idParam } = await params;
   const { erro } = await searchParams;
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
 
-  const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, id));
-  if (!matchDay) notFound();
+  const { matchDay } = await requirePeladaAdmin(id);
   // Encerrada já não tem o que conferir — a escalação virou imutável.
-  if (matchDay.status === "finished") redirect(`/admin/peladas/${id}`);
+  if (matchDay.status === "finished") redirect(`/pelada/${id}/gerenciar`);
 
   const [gameList, teamList, elenco] = await Promise.all([
     db
@@ -84,7 +86,7 @@ export default async function EncerrarPeladaPage({
       <header className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-bold capitalize">Conferir escalação — {formatDate(matchDay.date)}</h1>
         <Link
-          href={`/admin/peladas/${id}`}
+          href={`/pelada/${id}/gerenciar`}
           className="ml-auto text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
         >
           ← Voltar

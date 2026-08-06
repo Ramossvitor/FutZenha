@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { z } from "zod";
 import { db, type Executor } from "@/db";
 import {
   gamePlayers,
@@ -30,20 +31,40 @@ async function getEleitores(matchDayId: number): Promise<number[]> {
   return linhas.map((l) => l.playerId);
 }
 
+/**
+ * A justificativa escrita para apagar uma pelada.
+ *
+ * Mora aqui, e não em cada action, porque os dois caminhos de exclusão pedem a
+ * mesma coisa: o admin da pelada ao abrir a votação e o admin da plataforma ao
+ * apagar por abuso. Duplicar deixaria os limites divergirem na primeira mudança
+ * — foi o mesmo motivo que tirou o schema do formulário de pelada de dentro das
+ * actions (ver src/lib/match-day-form.ts).
+ */
+export const motivoExclusaoSchema = z.string().trim().min(10, "Explique o motivo").max(500);
+
 export type AberturaVotacao =
   | { tipo: "votacao"; voteId: number; eleitores: number }
   /** Ninguém com conta jogou: não há quem seja afetado, o admin apaga direto. */
   | { tipo: "sem-eleitores" }
   | { tipo: "ja-existe" };
 
+// Autorização não mora aqui: quem chama é a action, que já passou pelo
+// requirePeladaAdmin. Este módulo também roda a partir do varredor de prazos
+// (src/lib/pendencias.ts), que não tem sessão nenhuma.
 export async function abrirVotacao(
   matchDayId: number,
   reason: string,
+  openedByPlayerId: number,
 ): Promise<AberturaVotacao> {
   const eleitores = await getEleitores(matchDayId);
   if (eleitores.length === 0) return { tipo: "sem-eleitores" };
 
   const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, matchDayId));
+  const [proponente] = await db
+    .select({ name: players.name, nickname: players.nickname })
+    .from(players)
+    .where(eq(players.id, openedByPlayerId));
+  const quemPropos = proponente?.nickname ?? proponente?.name ?? "O organizador";
 
   return db.transaction(async (tx) => {
     const [votacao] = await tx
@@ -51,6 +72,7 @@ export async function abrirVotacao(
       .values({
         matchDayId,
         reason,
+        openedByPlayerId,
         deadlineAt: prazoEmDias(PRAZO_VOTACAO_DIAS),
         eligibleCount: eleitores.length,
         requiredYes: votosNecessarios(eleitores.length),
@@ -71,7 +93,7 @@ export async function abrirVotacao(
         playerId,
         type: "deletion_vote_open" as const,
         title: "Votação: excluir uma pelada",
-        body: `O admin propôs apagar a pelada de ${formatDate(matchDay.date)}. Seu voto é definitivo e não votar conta como contra.`,
+        body: `${quemPropos} propôs apagar a pelada de ${formatDate(matchDay.date)}. Seu voto é definitivo e não votar conta como contra.`,
         href: `/votacao/${votacao.id}`,
         dedupeKey: `votacao:${votacao.id}:aberta`,
       })),
@@ -207,11 +229,31 @@ export async function resolverVotacao(exec: Executor, voteId: number): Promise<b
   );
 
   if (destino === "approved") {
-    await exec.delete(matchDays).where(eq(matchDays.id, votacao.matchDayId));
-    await aplicarReplay(exec, { tipo: "revisao", dedupeKey: `nota:votacao:${voteId}` });
+    await apagarPelada(exec, votacao.matchDayId, `nota:votacao:${voteId}`);
   }
 
   return true;
+}
+
+/**
+ * Apaga a pelada e recalcula a nota de todo mundo no mesmo commit.
+ *
+ * O delete leva rodada e avaliações por cascade, então o replay tem que rodar
+ * junto: sem ele, a nota de cada jogador continuaria carregando a contribuição
+ * de uma pelada que não existe mais — e como o replay é sempre do zero, não há
+ * código de desfazimento para consertar depois.
+ *
+ * Sem guard de propósito: quem autoriza é a action que chama (votação
+ * aprovada, admin da pelada ou admin da plataforma). Este módulo também roda a
+ * partir do varredor de prazos, que não tem sessão.
+ */
+export async function apagarPelada(
+  exec: Executor,
+  matchDayId: number,
+  dedupeKey: string,
+): Promise<void> {
+  await exec.delete(matchDays).where(eq(matchDays.id, matchDayId));
+  await aplicarReplay(exec, { tipo: "revisao", dedupeKey });
 }
 
 /** Resolve as votações com prazo vencido. Chamado pelo varredor. */

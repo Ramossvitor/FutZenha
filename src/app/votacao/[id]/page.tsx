@@ -30,7 +30,7 @@ export default async function VotacaoPage({ params }: PageProps<"/votacao/[id]">
       </header>
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="mb-1 text-sm font-medium text-neutral-500">Motivo do admin</h2>
+        <h2 className="mb-1 text-sm font-medium text-neutral-500">Motivo de quem propôs</h2>
         <p>“{votacao.reason}”</p>
       </section>
 

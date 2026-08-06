@@ -57,6 +57,13 @@
       "when": 1786015652247,
       "tag": "0007_flowery_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786021104274,
+      "tag": "0008_rainy_redwing",
+      "breakpoints": true
     }
   ]
 }

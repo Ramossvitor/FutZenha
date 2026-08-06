@@ -45,6 +45,14 @@ export const matchDays = pgTable("match_days", {
   location: text("location").notNull(),
   status: matchDayStatusEnum("status").notNull().default("scheduled"),
   notes: text("notes"),
+  // Quem criou a pelada é quem a administra: presenças, sorteio, placar, gols,
+  // encerramento e abertura da votação de exclusão (ver src/lib/permissions.ts).
+  // Nulo em pelada órfã — as que existiam antes deste modelo e as de criador
+  // apagado (`set null`, porque apagar jogador não pode apagar a pelada). Órfã
+  // só é administrada pelo admin da plataforma.
+  createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
+    onDelete: "set null",
+  }),
   // Quando o admin confirmou a escalação e encerrou. A partir daqui a
   // escalação é imutável, e placar e gols têm 24h de janela para correção.
   finishedAt: timestamp("finished_at"),
@@ -154,6 +162,13 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   tokenVersion: integer("token_version").notNull().default(1),
   active: boolean("active").notNull().default(true),
+  // Admin da plataforma: gerencia contas e convites, julga denúncias de nota
+  // injusta e supervisiona todas as peladas. É um jogador como qualquer outro —
+  // marca a própria presença, avalia e é avaliado (e por isso não julga denúncia
+  // de pelada que jogou, ver src/lib/permissions.ts). Ligar ou desligar vale no
+  // request seguinte, sem mexer em token_version: o cookie não carrega papel, e
+  // getSession relê esta coluna a cada request.
+  isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -303,7 +318,16 @@ export const ratingReports = pgTable(
     openedAt: timestamp("opened_at").notNull().defaultNow(),
     adminDeadlineAt: timestamp("admin_deadline_at").notNull(),
     resolvedAt: timestamp("resolved_at"),
+    // `resolved_by` diz COMO foi resolvida; `resolved_by_player_id`, QUEM
+    // resolveu. As três combinações válidas:
+    //   'admin' + id    → decisão humana identificada
+    //   'admin' + null  → decisão pela senha global, que não tinha identidade
+    //                     (linhas anteriores ao admin da plataforma)
+    //   'auto'  + null  → silêncio no prazo, resolvida pelo varredor
     resolvedBy: reportResolverEnum("resolved_by"),
+    resolvedByPlayerId: integer("resolved_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
     adminNote: text("admin_note"),
   },
   (t) => [index("rating_reports_pendentes_idx").on(t.status, t.adminDeadlineAt)],
@@ -385,6 +409,12 @@ export const matchDayDeletionVotes = pgTable("match_day_deletion_votes", {
     .references(() => matchDays.id, { onDelete: "cascade" }),
   reason: text("reason").notNull(),
   status: deletionVoteStatusEnum("status").notNull().default("open"),
+  // Quem propôs. Nulo nas votações abertas pela senha global, que não tinha
+  // identidade. Existe porque agora há um admin por pelada: "o admin propôs
+  // apagar" deixou de identificar alguém.
+  openedByPlayerId: integer("opened_by_player_id").references(() => players.id, {
+    onDelete: "set null",
+  }),
   openedAt: timestamp("opened_at").notNull().defaultNow(),
   deadlineAt: timestamp("deadline_at").notNull(),
   eligibleCount: integer("eligible_count").notNull(),

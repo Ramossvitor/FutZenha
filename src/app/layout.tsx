@@ -63,32 +63,22 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   {link.label}
                 </Link>
               ))}
-              {session?.role === "player" && (
+              {session && (
                 <>
                   <Link href="/avaliar" className="hover:underline">
                     Avaliar
                   </Link>
+                  {session.isPlatformAdmin && (
+                    <Link href="/admin" className="hover:underline">
+                      Admin
+                    </Link>
+                  )}
                   <NotificationBell playerId={session.player.id} />
                   <Link
                     href="/perfil"
                     className="rounded-full bg-emerald-700 px-3 py-1 hover:bg-emerald-600"
                   >
                     Olá, {session.player.nickname ?? session.player.name.split(" ")[0]}
-                  </Link>
-                  <form action={logout}>
-                    <button type="submit" className="text-emerald-200 hover:underline">
-                      Sair
-                    </button>
-                  </form>
-                </>
-              )}
-              {session?.role === "admin" && (
-                <>
-                  <Link
-                    href="/admin"
-                    className="rounded-full bg-emerald-700 px-3 py-1 hover:bg-emerald-600"
-                  >
-                    Admin
                   </Link>
                   <form action={logout}>
                     <button type="submit" className="text-emerald-200 hover:underline">
@@ -110,7 +100,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         </header>
         <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">{children}</main>
         <footer className="border-t border-neutral-200 py-4 text-center text-xs text-neutral-500 dark:border-neutral-800">
-          FutZenha · <Link href="/admin" className="hover:underline">admin</Link>
+          FutZenha
         </footer>
       </body>
     </html>

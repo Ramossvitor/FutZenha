@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { matchDays, ratingRoundRaters, ratingRounds, users } from "@/db/schema";
 import { formatDate } from "@/lib/format";
 import { getContextoDaDenuncia, getDenunciasAbertas } from "@/lib/reports";
+import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import { aceitarDenuncia, apurarAgora, rejeitarDenuncia } from "./actions";
 
 export const metadata = { title: "Avaliações" };
@@ -12,8 +13,9 @@ const notaClass =
   "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
 export default async function AdminAvaliacoesPage() {
+  const session = await requirePlatformAdmin();
   const [denuncias, rodadas] = await Promise.all([
-    getDenunciasAbertas(),
+    getDenunciasAbertas(session.player.id),
     db
       .select({
         id: ratingRounds.id,
@@ -40,7 +42,9 @@ export default async function AdminAvaliacoesPage() {
   // O contexto de cada denúncia: todas as notas que a pessoa recebeu naquela
   // rodada, para o admin não decidir olhando só a nota reclamada.
   const contextos = await Promise.all(
-    denuncias.map((d) => getContextoDaDenuncia(d.roundId, d.reporterPlayerId, d.ratingId)),
+    denuncias.map((d) =>
+      getContextoDaDenuncia(d.roundId, d.reporterPlayerId, d.ratingId, session.player.id),
+    ),
   );
 
   return (
@@ -87,6 +91,11 @@ export default async function AdminAvaliacoesPage() {
                     {"★".repeat(d.starsDenunciada)}
                   </strong>{" "}
                   ({d.starsDenunciada} de 5)
+                  {d.raterName && (
+                    <>
+                      , dada por <strong>{d.raterName}</strong>
+                    </>
+                  )}
                 </p>
 
                 <p className="mt-1 text-sm text-neutral-500">
@@ -103,9 +112,16 @@ export default async function AdminAvaliacoesPage() {
                       }
                     >
                       {j > 0 && " · "}
-                      {c.stars}★{c.reclamada ? " (reclamada)" : ""}
+                      {c.stars}★{c.raterName && ` (${c.raterName})`}
+                      {c.reclamada ? " — reclamada" : ""}
                     </span>
                   ))}
+                </p>
+
+                <p className="mt-1 text-xs text-neutral-500">
+                  {d.podeJulgar
+                    ? "Os nomes de quem avaliou aparecem só aqui: entre jogadores a nota continua anônima."
+                    : "Você jogou esta pelada, então não julga esta denúncia e não vê quem avaliou. Outro admin da plataforma decide — ou o prazo vence e ela é aceita automaticamente."}
                 </p>
 
                 {d.reason && (
@@ -114,36 +130,41 @@ export default async function AdminAvaliacoesPage() {
                   </p>
                 )}
 
-                <div className="mt-3 flex flex-col gap-2">
-                  <input
-                    form={`aceitar-${d.reportId}`}
-                    name="adminNote"
-                    placeholder="Observação (opcional, fica no registro)"
-                    className={notaClass}
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    <form id={`aceitar-${d.reportId}`} action={aceitarDenuncia.bind(null, d.reportId)}>
-                      <button
-                        type="submit"
-                        className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800"
+                {d.podeJulgar && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    <input
+                      form={`aceitar-${d.reportId}`}
+                      name="adminNote"
+                      placeholder="Observação (opcional, fica no registro)"
+                      className={notaClass}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <form
+                        id={`aceitar-${d.reportId}`}
+                        action={aceitarDenuncia.bind(null, d.reportId)}
                       >
-                        Descartar a nota
-                      </button>
-                    </form>
-                    <form action={rejeitarDenuncia.bind(null, d.reportId)}>
-                      <button
-                        type="submit"
-                        className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-                      >
-                        Manter — foi justa
-                      </button>
-                    </form>
+                        <button
+                          type="submit"
+                          className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800"
+                        >
+                          Descartar a nota
+                        </button>
+                      </form>
+                      <form action={rejeitarDenuncia.bind(null, d.reportId)}>
+                        <button
+                          type="submit"
+                          className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                        >
+                          Manter — foi justa
+                        </button>
+                      </form>
+                    </div>
+                    <p className="text-xs text-neutral-500">
+                      Descartar recalcula a nota de todo mundo desta pelada em diante. Sem resposta
+                      em {d.horasParaResponder}h, a denúncia é aceita automaticamente.
+                    </p>
                   </div>
-                  <p className="text-xs text-neutral-500">
-                    Descartar recalcula a nota de todo mundo desta pelada em diante. Sem resposta em{" "}
-                    {d.horasParaResponder}h, a denúncia é aceita automaticamente.
-                  </p>
-                </div>
+                )}
               </div>
             );
           })
@@ -163,7 +184,7 @@ export default async function AdminAvaliacoesPage() {
               className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
             >
               <Link
-                href={`/admin/peladas/${r.matchDayId}`}
+                href={`/pelada/${r.matchDayId}/gerenciar`}
                 className="font-medium capitalize hover:underline"
               >
                 {formatDate(r.matchDayDate)}

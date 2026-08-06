@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, gamePlayers, games, matchDays } from "@/db/schema";
+import { podeMarcarPor } from "@/lib/presenca";
 import { abrirRodada } from "@/lib/ratings-engine";
-import { requireAdmin } from "@/lib/require-admin";
+import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
 
 // A escalação só é editável enquanto a pelada não foi encerrada. Depois da
 // confirmação ela é imutável — é ela que define quem avalia quem, e mexer
@@ -18,20 +19,20 @@ async function assertEditavel(matchDayId: number, gameId: number) {
     .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
     .where(and(eq(games.id, gameId), eq(games.matchDayId, matchDayId)));
 
-  if (!row) redirect(`/admin/peladas/${matchDayId}?erro=dados-invalidos`);
+  if (!row) redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
   if (row.status === "finished") {
-    redirect(`/admin/peladas/${matchDayId}?erro=escalacao-travada`);
+    redirect(`/pelada/${matchDayId}/gerenciar?erro=escalacao-travada`);
   }
 }
 
 function revalidar(matchDayId: number) {
-  revalidatePath(`/admin/peladas/${matchDayId}/encerrar`);
-  revalidatePath(`/admin/peladas/${matchDayId}`);
+  revalidatePath(`/pelada/${matchDayId}/gerenciar/encerrar`);
+  revalidatePath(`/pelada/${matchDayId}/gerenciar`);
   revalidatePath(`/pelada/${matchDayId}`);
 }
 
 export async function moverLado(matchDayId: number, gameId: number, playerId: number) {
-  await requireAdmin();
+  await requirePeladaAdmin(matchDayId);
   await assertEditavel(matchDayId, gameId);
 
   await db
@@ -44,7 +45,7 @@ export async function moverLado(matchDayId: number, gameId: number, playerId: nu
 // Tirar do jogo não tira a presença: dá para ter ido à pelada e não ter jogado
 // aquela partida.
 export async function removerDoJogo(matchDayId: number, gameId: number, playerId: number) {
-  await requireAdmin();
+  await requirePeladaAdmin(matchDayId);
   await assertEditavel(matchDayId, gameId);
 
   await db
@@ -61,8 +62,13 @@ export async function incluirNoJogo(
   side: "A" | "B",
   playerId: number,
 ) {
-  await requireAdmin();
+  const { session } = await requirePeladaAdmin(matchDayId);
   await assertEditavel(matchDayId, gameId);
+  // Escalar marca presença junto, então vale o mesmo limite do definirPresenca:
+  // quem tem conta ativa e nunca entrou nesta pelada não é escalado por outro.
+  if (!(await podeMarcarPor(session, matchDayId, playerId))) {
+    redirect(`/pelada/${matchDayId}/gerenciar/encerrar?erro=precisa-confirmar`);
+  }
 
   await db.transaction(async (tx) => {
     await tx
@@ -84,11 +90,8 @@ export async function incluirNoJogo(
 }
 
 export async function confirmarEncerramento(matchDayId: number) {
-  await requireAdmin();
-
-  const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, matchDayId));
-  if (!matchDay) redirect("/admin/peladas");
-  if (matchDay.status === "finished") redirect(`/admin/peladas/${matchDayId}`);
+  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  if (matchDay.status === "finished") redirect(`/pelada/${matchDayId}/gerenciar`);
 
   // Um jogo sem gente dos dois lados não tem placar que faça sentido, nem
   // companheiro para avaliar.
@@ -104,12 +107,12 @@ export async function confirmarEncerramento(matchDayId: number) {
     .groupBy(games.id);
 
   if (lados.some((l) => l.ladoA === 0 || l.ladoB === 0)) {
-    redirect(`/admin/peladas/${matchDayId}/encerrar?erro=jogo-sem-time`);
+    redirect(`/pelada/${matchDayId}/gerenciar/encerrar?erro=jogo-sem-time`);
   }
 
   // Encerrar com a escalação confirmada é o gatilho da avaliação, e as duas
   // coisas têm que ser o mesmo commit: uma pelada que ficasse `finished` sem
-  // rodada seria um beco sem saída — a linha 91 impede repetir a ação, o
+  // rodada seria um beco sem saída — a checagem de `finished` acima impede repetir a ação, o
   // varredor só fecha rodada que já existe, e não existe "reabrir pelada".
   await db.transaction(async (tx) => {
     await tx
@@ -125,5 +128,5 @@ export async function confirmarEncerramento(matchDayId: number) {
   revalidatePath("/artilharia");
   revalidatePath("/rankings");
   revalidar(matchDayId);
-  redirect(`/admin/peladas/${matchDayId}`);
+  redirect(`/pelada/${matchDayId}/gerenciar`);
 }

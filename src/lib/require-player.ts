@@ -1,11 +1,12 @@
 import "server-only";
 import { redirect } from "next/navigation";
-import { getSession, type PlayerSession } from "./session";
+import { getSession, type Session } from "./session";
 
-// Equivalente do requireAdmin para páginas e actions de jogador logado.
-export async function requirePlayer(): Promise<PlayerSession> {
+// Exige um jogador logado — qualquer um. Toda sessão é de jogador desde que o
+// admin deixou de ser uma senha sem dono.
+export async function requirePlayer(): Promise<Session> {
   const session = await getSession();
-  if (!session || session.role !== "player") {
+  if (!session) {
     redirect("/login");
   }
   return session;

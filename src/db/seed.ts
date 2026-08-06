@@ -1,9 +1,9 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { companheirosPorJogador } from "../lib/lineup";
+import { companheirosPorJogador, gruposElegiveis } from "../lib/lineup";
 import { hashPassword } from "../lib/password";
 import { siteUrl } from "../lib/site-url";
 import * as schema from "./schema";
@@ -166,13 +166,17 @@ async function seedRatingRound(matchDayId: number) {
     .innerJoin(schema.games, eq(schema.gamePlayers.gameId, schema.games.id))
     .where(eq(schema.games.matchDayId, matchDayId));
 
-  const comCompanheiro = [...companheirosPorJogador(escalacao)]
-    .filter(([, conjunto]) => conjunto.size > 0)
-    .map(([playerId]) => playerId);
-  const contas = await db
+  const companheiros = companheirosPorJogador(escalacao);
+  const todasAsContas = await db
     .select({ playerId: schema.users.playerId, userId: schema.users.id })
     .from(schema.users)
-    .where(inArray(schema.users.playerId, comCompanheiro));
+    .where(inArray(schema.users.playerId, [...companheiros.keys()]));
+
+  // Mesma regra de getRatersElegiveis(): grupo de pelo menos 3 com conta ativa
+  // no mesmo lado. Duplicar a chamada aqui é o preço de o motor ser
+  // "server-only" e não carregar sob tsx — mas a regra em si vem do módulo puro.
+  const elegiveis = gruposElegiveis(companheiros, new Set(todasAsContas.map((c) => c.playerId)));
+  const contas = todasAsContas.filter((c) => elegiveis.has(c.playerId));
   if (contas.length === 0) return null;
 
   const [round] = await db
@@ -247,32 +251,62 @@ async function main() {
 
   console.log("Criando contas demo e um convite pendente...");
   const byName = new Map(inserted.map((p) => [p.name, p]));
-  await db.insert(schema.users).values([
-    {
-      playerId: byName.get("Eduardo Ramos")!.id,
-      username: "du",
-      passwordHash: await hashPassword("senha123"),
-    },
-    {
-      playerId: byName.get("Paulo Sérgio")!.id,
-      username: "ps",
-      passwordHash: await hashPassword("senha123"),
-    },
-    // Cadu joga a última pelada do mesmo lado que o PS, então a rodada de
-    // avaliação do seed nasce com dois avaliadores que se avaliam.
-    {
-      playerId: byName.get("Carlos Eduardo")!.id,
-      username: "cadu",
-      passwordHash: await hashPassword("senha123"),
-    },
-  ]);
+
+  // As contas demo vão para quatro jogadores do MESMO lado da última pelada.
+  // A avaliação exige grupo de 3 com conta (ver MIN_GRUPO_AVALIACAO): espalhar
+  // as contas por times diferentes faria o seed nascer sem rodada nenhuma.
+  const [ladoDaUltima] = await db
+    .select({ playerId: schema.gamePlayers.playerId })
+    .from(schema.gamePlayers)
+    .innerJoin(schema.games, eq(schema.gamePlayers.gameId, schema.games.id))
+    .where(eq(schema.games.matchDayId, ultimaPelada.id))
+    .limit(1);
+  const mesmoLado = await db
+    .select({ playerId: schema.gamePlayers.playerId })
+    .from(schema.gamePlayers)
+    .innerJoin(schema.games, eq(schema.gamePlayers.gameId, schema.games.id))
+    .where(
+      and(
+        eq(schema.games.matchDayId, ultimaPelada.id),
+        eq(
+          schema.gamePlayers.side,
+          sql`(select side from game_players gp join games g on g.id = gp.game_id
+               where g.match_day_id = ${ultimaPelada.id} and gp.player_id = ${ladoDaUltima.playerId}
+               limit 1)`,
+        ),
+      ),
+    )
+    .limit(4);
+
+  const usernames = ["du", "ps", "cadu", "tico"].slice(0, mesmoLado.length);
+  const senhaDemo = await hashPassword("senha123");
+  await db.insert(schema.users).values(
+    mesmoLado.slice(0, usernames.length).map((row, i) => ({
+      playerId: row.playerId,
+      username: usernames[i],
+      passwordHash: senhaDemo,
+      // O primeiro é o admin da plataforma: o painel /admin precisa de dono, e
+      // não existe mais senha global para entrar nele.
+      isPlatformAdmin: i === 0,
+    })),
+  );
+  const nomePorId = new Map(inserted.map((p) => [p.id, p.name]));
+  const demo = usernames.map((u, i) => `${u} (${nomePorId.get(mesmoLado[i].playerId)})`);
+
+  // Toda pelada precisa de um admin: sem isso, o ambiente local nasce só com
+  // peladas órfãs e não dá para exercitar o papel de admin de pelada.
+  await db
+    .update(schema.matchDays)
+    .set({ createdByPlayerId: mesmoLado[0].playerId })
+    .where(isNull(schema.matchDays.createdByPlayerId));
   const inviteToken = randomBytes(32).toString("base64url");
   await db.insert(schema.invites).values({
     token: inviteToken,
     playerId: byName.get("Rafael Torres")!.id,
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
   });
-  console.log("Logins demo: du · ps · cadu — todos com senha123");
+  console.log(`Logins demo (senha123): ${demo.join(" · ")}`);
+  console.log(`Admin da plataforma: ${usernames[0]}`);
   console.log(`Convite de teste (Rafael Torres): ${siteUrl()}/convite/${inviteToken}`);
 
   const rodada = await seedRatingRound(ultimaPelada.id);

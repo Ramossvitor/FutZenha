@@ -2,11 +2,13 @@ import { asc, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, players, users, type Invite, type Player, type User } from "@/db/schema";
 import { formatSkill } from "@/lib/format";
+import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import { siteUrl } from "@/lib/site-url";
 import {
   createInvite,
   createPlayer,
   revokeInvite,
+  setPlatformAdmin,
   setPlayerActive,
   setUserActive,
   updatePlayer,
@@ -19,6 +21,8 @@ const inputClass =
 const errorMessages: Record<string, string> = {
   "nome-duplicado": "Já existe um jogador com esse nome.",
   "dados-invalidos": "Dados inválidos — confira o nome.",
+  "auto-rebaixamento":
+    "Você não pode tirar o próprio papel de admin da plataforma — peça a outro admin.",
 };
 
 function PlayerFields({ player }: { player?: Player }) {
@@ -61,10 +65,13 @@ function AccessSection({
   player,
   user,
   pending,
+  euMesmo,
 }: {
   player: Player;
   user?: User;
   pending?: { invite: Invite; expired: boolean };
+  /** A própria conta de quem está olhando — não se rebaixa sozinho. */
+  euMesmo: boolean;
 }) {
   const invite = pending?.invite;
   const inviteUrl = invite ? `${siteUrl()}/convite/${invite.token}` : null;
@@ -88,6 +95,11 @@ function AccessSection({
         {user && !user.active && (
           <span className={`${badgeClass} bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300`}>
             conta desativada (@{user.username})
+          </span>
+        )}
+        {user?.isPlatformAdmin && (
+          <span className={`${badgeClass} bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200`}>
+            admin da plataforma
           </span>
         )}
         {inviteExpired && (
@@ -135,12 +147,33 @@ function AccessSection({
             </button>
           </form>
         )}
+        {user && !euMesmo && (
+          <form action={setPlatformAdmin.bind(null, user.id, !user.isPlatformAdmin)}>
+            <button
+              type="submit"
+              className={`text-sm hover:underline ${
+                user.isPlatformAdmin ? "text-red-600" : "text-emerald-700"
+              }`}
+            >
+              {user.isPlatformAdmin ? "Tirar admin da plataforma" : "Tornar admin da plataforma"}
+            </button>
+          </form>
+        )}
       </div>
+
+      {user?.isPlatformAdmin && (
+        <p className="text-xs text-neutral-500">
+          Mexer neste papel encerra a sessão em curso da pessoa. Quem está em{" "}
+          <code>PLATFORM_ADMIN_USERNAMES</code> continua admin mesmo assim — a env var é
+          chave-mestra e vence o banco.
+        </p>
+      )}
     </div>
   );
 }
 
 export default async function JogadoresPage({ searchParams }: PageProps<"/admin/jogadores">) {
+  const session = await requirePlatformAdmin();
   const { erro } = await searchParams;
   const [allPlayers, allUsers, pendingInvites] = await Promise.all([
     db.select().from(players).orderBy(asc(players.name)),
@@ -220,6 +253,7 @@ export default async function JogadoresPage({ searchParams }: PageProps<"/admin/
                 player={player}
                 user={userByPlayer.get(player.id)}
                 pending={inviteByPlayer.get(player.id)}
+                euMesmo={userByPlayer.get(player.id)?.id === session.userId}
               />
             </div>
           </details>

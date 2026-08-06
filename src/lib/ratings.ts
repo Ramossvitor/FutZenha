@@ -15,7 +15,7 @@ import {
   type RatingRound,
 } from "@/db/schema";
 import { ordenarAnonimo } from "./anonimato";
-import { companheirosPorJogador, type EscalacaoRow } from "./lineup";
+import { companheirosPorJogador, gruposElegiveis, type EscalacaoRow } from "./lineup";
 
 // Prazos do ciclo de avaliação, em dias. São gravados como timestamp absoluto na
 // criação de cada rodada/denúncia — mudar aqui não mexe no que já está em curso.
@@ -81,13 +81,16 @@ export async function getCompanheiros(
 export type RaterElegivel = { playerId: number; userId: number };
 
 /**
- * Quem pode avaliar numa pelada: jogou, tem conta ativa e tem pelo menos um
- * companheiro **que também tem conta ativa**. Vira o denominador congelado do
- * "todos já avaliaram".
+ * Quem pode avaliar numa pelada: jogou, tem conta ativa e dividiu o lado com
+ * gente com conta suficiente para o grupo chegar a `MIN_GRUPO_AVALIACAO`. Vira
+ * o denominador congelado do "todos já avaliaram".
  *
- * A segunda condição não é preciosismo: sem ela, alguém cujos companheiros
- * estejam todos com o convite pendente entraria como avaliador de uma lista
- * vazia, sem ter o que enviar — e a rodada nunca fecharia por completude.
+ * A condição do grupo faz dois trabalhos. O primeiro é velho: sem ela, alguém
+ * cujos companheiros estejam todos com o convite pendente entraria como
+ * avaliador de uma lista vazia, sem ter o que enviar — e a rodada nunca
+ * fecharia por completude. O segundo é o que a abertura do "qualquer um cria
+ * pelada" exigiu: com o mínimo em 2, duas contas combinadas fabricavam nota
+ * (ver src/lib/lineup.ts).
  */
 export async function getRatersElegiveis(matchDayId: number): Promise<RaterElegivel[]> {
   const companheiros = companheirosPorJogador(await getEscalacaoDaPelada(matchDayId));
@@ -100,9 +103,8 @@ export async function getRatersElegiveis(matchDayId: number): Promise<RaterElegi
     .where(and(inArray(users.playerId, jogaram), eq(users.active, true)));
 
   const comConta = new Set(contas.map((c) => c.playerId));
-  return contas.filter((c) =>
-    [...(companheiros.get(c.playerId) ?? [])].some((outro) => comConta.has(outro)),
-  );
+  const elegiveis = gruposElegiveis(companheiros, comConta);
+  return contas.filter((c) => elegiveis.has(c.playerId));
 }
 
 export type RodadaAberta = {
