@@ -118,9 +118,17 @@ async function provisionarPlatformAdmins(conn: postgres.Sql) {
       await tx`
         insert into users (player_id, username, password_hash, is_platform_admin)
         values (${playerId}, ${username}, ${senhaDescartada}, true)`;
+      // .toISOString() não é estilo. `expires_at` é `timestamp` SEM timezone, e um
+      // Date cru sai daqui declarado como `timestamptz` (o postgres.js infere 1184
+      // para Date), então o Postgres converte para a coluna usando o TimeZone da
+      // SESSÃO: numa sessão em America/Sao_Paulo o convite nasce expirando 3h mais
+      // cedo. A string vai sem tipo declarado e é gravada literalmente — que é o
+      // que o drizzle escreve no resto do app (mapToDriverValue = toISOString) e o
+      // que ele relê como UTC (mapFromDriverValue concatena "+0000").
+      const expiraEm = new Date(Date.now() + INVITE_DURATION_MS).toISOString();
       await tx`
         insert into invites (token, player_id, expires_at)
-        values (${token}, ${playerId}, ${new Date(Date.now() + INVITE_DURATION_MS)})`;
+        values (${token}, ${playerId}, ${expiraEm})`;
     });
 
     console.log(
