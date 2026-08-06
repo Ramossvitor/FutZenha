@@ -68,7 +68,10 @@ describe("signBlob/verifyBlob", () => {
 
   it("assinatura adulterada ou segredo diferente → null", async () => {
     const token = await signBlob({ sub: 1 }, SEGREDO);
-    expect(await verifyBlob(token.slice(0, -1) + "0", SEGREDO)).toBeNull();
+    // Ver o comentário em oauth-state.test.ts: "0" fixo não adultera token
+    // terminado em "0", e a assinatura é hex.
+    const adulterado = token.slice(0, -1) + (token.endsWith("0") ? "1" : "0");
+    expect(await verifyBlob(adulterado, SEGREDO)).toBeNull();
     expect(await verifyBlob(token, "outro-segredo")).toBeNull();
   });
 

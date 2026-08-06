@@ -105,7 +105,10 @@ describe("state da URL", () => {
   it("expirado ou adulterado → null", async () => {
     expect(await lerOAuthState(await assinarOAuthState({ n: "n", exp: Date.now() - 1 }))).toBeNull();
     const valido = await assinarOAuthState({ n: "n", exp: daquiAPouco() });
-    expect(await lerOAuthState(valido.slice(0, -1) + "0")).toBeNull();
+    // Trocar o último caractere por "0" fixo não adultera nada quando ele já é
+    // "0" — 1 em 16, já que a assinatura é hex.
+    const adulterado = valido.slice(0, -1) + (valido.endsWith("0") ? "1" : "0");
+    expect(await lerOAuthState(adulterado)).toBeNull();
   });
 });
 
