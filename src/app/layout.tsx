@@ -4,6 +4,7 @@ import Link from "next/link";
 import { logout } from "@/app/login/actions";
 import { getSession } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
+import { NotificationBell } from "./notification-bell";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -59,6 +60,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               ))}
               {session?.role === "player" && (
                 <>
+                  <Link href="/avaliar" className="hover:underline">
+                    Avaliar
+                  </Link>
+                  <NotificationBell playerId={session.player.id} />
                   <Link
                     href="/perfil"
                     className="rounded-full bg-emerald-700 px-3 py-1 hover:bg-emerald-600"

@@ -115,6 +115,8 @@ export type RodadaAberta = {
   matchDayDate: string;
   location: string;
   jaEnviou: boolean;
+  /** Calculado pelo Postgres: o render não pode chamar Date.now(). */
+  horasRestantes: number;
 };
 
 /** Rodadas abertas em que este jogador é um dos avaliadores esperados. */
@@ -125,6 +127,9 @@ export async function getRodadasAbertasDoJogador(playerId: number): Promise<Roda
       matchDayDate: matchDays.date,
       location: matchDays.location,
       submittedAt: ratingRoundRaters.submittedAt,
+      horasRestantes: sql<number>`greatest(0, ceil(extract(epoch from (
+        ${ratingRounds.deadlineAt} - now()
+      )) / 3600)::int)`,
     })
     .from(ratingRoundRaters)
     .innerJoin(ratingRounds, eq(ratingRoundRaters.roundId, ratingRounds.id))
@@ -137,6 +142,7 @@ export async function getRodadasAbertasDoJogador(playerId: number): Promise<Roda
     matchDayDate: r.matchDayDate,
     location: r.location,
     jaEnviou: r.submittedAt !== null,
+    horasRestantes: r.horasRestantes,
   }));
 }
 

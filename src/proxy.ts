@@ -14,7 +14,8 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (pathname.startsWith("/perfil") && !payload) {
+  const soDeJogador = ["/perfil", "/avaliar", "/notificacoes"];
+  if (soDeJogador.some((rota) => pathname.startsWith(rota)) && !payload) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -26,5 +27,5 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/perfil/:path*"],
+  matcher: ["/admin/:path*", "/perfil/:path*", "/avaliar/:path*", "/notificacoes/:path*"],
 };
