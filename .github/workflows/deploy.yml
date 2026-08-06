@@ -1,0 +1,255 @@
+name: Deploy (produção)
+
+# Único gatilho: o botão "Run workflow" na aba Actions. O deploy automático da
+# Vercel está desligado (vercel.json → git.deploymentEnabled), então este é o
+# único caminho para publicar.
+#
+# ATENÇÃO ao dropdown de branch: ele escolhe de qual ref o GitHub lê ESTE
+# ARQUIVO. O código publicado é sempre o da main, garantido pelo `ref: main` do
+# checkout — mas para testar mudanças no próprio workflow, dispare da branch
+# onde você as fez.
+on:
+  workflow_dispatch:
+
+# Dois deploys ao mesmo tempo aplicariam migrations concorrentes no mesmo banco.
+# cancel-in-progress: false — nunca abortar um deploy no meio; o segundo espera.
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) GATE — tudo que precisa estar verde antes de publicar.
+  # ---------------------------------------------------------------------------
+  gate:
+    name: Gate de qualidade
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    outputs:
+      # O commit exato que foi testado. O job de deploy publica ESTE commit,
+      # mesmo que a main ande no meio da execução.
+      sha: ${{ steps.commit.outputs.sha }}
+      assunto: ${{ steps.commit.outputs.assunto }}
+
+    # Postgres efêmero só para o dry-run das migrations. Mesma imagem e
+    # credenciais do docker-compose.yml local — o que roda aqui é o que você
+    # roda na sua máquina. A porta é 5432 porque no runner não há o conflito
+    # que levou o local para a 5433.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: futzenha
+          POSTGRES_PASSWORD: futzenha
+          POSTGRES_DB: futzenha
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U futzenha -d futzenha"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout da main
+        uses: actions/checkout@v5
+        with:
+          # É isto que garante "sempre a main", mesmo disparando de outra branch.
+          ref: main
+          fetch-depth: 1
+
+      - name: Registrar o commit testado
+        id: commit
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "assunto=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Node (via .nvmrc) + cache do npm
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # --- Gate 1/5 -----------------------------------------------------------
+      - name: Testes (vitest)
+        run: npm test
+
+      # --- Gate 2/5 -----------------------------------------------------------
+      - name: Lint (eslint)
+        run: npm run lint
+
+      # --- Gate 3/5 -----------------------------------------------------------
+      # O script é `next typegen && tsc --noEmit`, não só o tsc: next-env.d.ts é
+      # gitignored e importa .next/types/*, que só existe depois do typegen.
+      - name: Typecheck
+        run: npm run typecheck
+
+      # --- Gate 4/5 -----------------------------------------------------------
+      # Roda o MESMO script que o build da Vercel executa antes do next build.
+      # Nenhuma var VERCEL/VERCEL_ENV está setada aqui, então os gates de
+      # src/db/migrate.ts deixam passar e o script roda inteiro: migrations +
+      # provisionarPlatformAdmins + materializarPlatformAdmins.
+      #
+      # SESSION_SECRET não é necessária: o migrate importa hashPassword
+      # (node:crypto) e siteUrl (só env), nunca sessionSecret().
+      #
+      # A segunda passada prova idempotência — que é o cenário real, porque este
+      # script roda em TODO build de produção, não só quando há migration nova.
+      - name: Dry-run das migrations (Postgres limpo)
+        env:
+          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
+          PLATFORM_ADMIN_USERNAMES: ci-admin
+        run: |
+          set -euo pipefail
+          echo "::group::1ª passada (banco vazio)"
+          npm run db:migrate:prod
+          echo "::endgroup::"
+          echo "::group::2ª passada (idempotência)"
+          npm run db:migrate:prod
+          echo "::endgroup::"
+
+      # --- Gate 5/5 -----------------------------------------------------------
+      # O único passo que roda DEPOIS das migrations no build de produção — e por
+      # isso o mais importante de gatear. `npm run build` é
+      # `tsx src/db/migrate.ts && next build`: se o next build quebrar lá, o schema
+      # já avançou e o código não vai ao ar. Pega erro de prerender, que o tsc não
+      # vê. Roda `npx next build` direto, sem o migrate na frente: o banco do runner
+      # já está migrado pelo gate 4/5.
+      #
+      # SESSION_SECRET aqui só para o caso de alguma rota tocar sessionSecret() no
+      # prerender — é valor de CI, não sai daqui.
+      - name: Build de verificação
+        env:
+          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
+          SESSION_SECRET: ci-secret-nao-usado-em-producao
+        run: npx next build
+
+      # ------------------------------------------------------------------------
+      # GANCHO: novas etapas de gate entram AQUI, antes do resumo.
+      #
+      # Migration esquecida (schema editado sem gerar migration):
+      #   - run: npm run db:generate && git diff --exit-code drizzle/
+      #
+      # Outras ideias: e2e com Playwright, npm audit --audit-level=high.
+      # ------------------------------------------------------------------------
+
+      # Os valores entram por `env:`, nunca como `${{ }}` no meio do script: a
+      # interpolação acontece ANTES do bash, então um assunto de commit contendo
+      # `cmd` ou $(cmd) viraria código executado aqui. Expandir $ASSUNTO é seguro —
+      # o bash não reinterpreta o conteúdo de uma variável. Vale para toda etapa
+      # nova que imprima dado vindo do repositório.
+      - name: Resumo do gate
+        if: always()
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+          ASSUNTO: ${{ steps.commit.outputs.assunto }}
+        run: |
+          {
+            echo "## Gate de qualidade"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| commit | \`$SHA\` |"
+            echo "| assunto | $ASSUNTO |"
+            echo ""
+            echo "Verificado: vitest · eslint · typecheck · migrations em Postgres limpo (2x) · next build."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 2) DEPLOY — só roda se o gate inteiro passou.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Publicar na Vercel
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Faz o link aparecer na aba "Deployments" do repositório. Para exigir
+    # aprovação manual antes de publicar:
+    # Settings → Environments → producao → Required reviewers.
+    environment:
+      name: producao
+      url: ${{ steps.deploy.outputs.url }}
+
+    env:
+      # Substituem o diretório .vercel/ — a CLI usa estes valores como o link do
+      # projeto. É por isso que NÃO rodamos `vercel pull`, que baixaria a
+      # DATABASE_URL de produção para o disco do runner.
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      # A CLI lê o token daqui sozinha. Como env e não como `--token=` na linha de
+      # comando: flag vira argv, que qualquer processo do runner consegue ler.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+    steps:
+      - name: Checkout do commit aprovado no gate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Node (via .nvmrc)
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Instalar a CLI da Vercel
+        run: npm i -g vercel@latest
+
+      # SEM --prebuilt de propósito: o build (e portanto
+      # `tsx src/db/migrate.ts && next build`) roda na infra da Vercel, com as
+      # env vars dela. A connection string do Neon nunca chega ao GitHub.
+      #
+      # O upload respeita o .gitignore, então .env e node_modules/ ficam de fora.
+      # `vercel deploy` espera o build terminar e sai com código != 0 se ele
+      # falhar — inclusive se uma migration quebrar.
+      - name: Deploy de produção
+        id: deploy
+        env:
+          SHA: ${{ needs.gate.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          url=$(vercel deploy --prod --yes \
+            --meta githubSha="$SHA" \
+            --meta githubRunId="$RUN_ID")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployment: $url"
+
+      # Mesma regra do resumo do gate: valor por `env:`, nunca `${{ }}` solto no
+      # script. Aqui o `if` compara $OUTCOME, não a interpolação.
+      - name: Resumo do deploy
+        if: always()
+        env:
+          SHA: ${{ needs.gate.outputs.sha }}
+          OUTCOME: ${{ steps.deploy.outcome }}
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          {
+            echo "## Deploy de produção"
+            echo ""
+            if [ "$OUTCOME" = "success" ]; then
+              echo "**Publicado:** <https://futzenha.com.br>"
+              echo ""
+              echo "Deployment desta build: $URL"
+            else
+              echo "Deploy falhou. Veja o log do build no painel da Vercel."
+            fi
+            echo ""
+            echo "Commit: \`$SHA\`"
+            echo ""
+            echo "> O link de convite do admin da plataforma, quando existe, sai no **log do build da Vercel** — não aqui."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ------------------------------------------------------------------------
+      # GANCHO: pós-deploy (smoke test, notificação, tag git). Ex.:
+      #   - name: Smoke test
+      #     run: curl -fsS https://futzenha.com.br/login > /dev/null
+      # ------------------------------------------------------------------------

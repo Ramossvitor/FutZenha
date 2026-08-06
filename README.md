@@ -52,6 +52,7 @@ Acesse http://localhost:3000. O seed imprime os logins demo; o primeiro deles é
 | `npm run dev` | Dev server |
 | `npm run build` | Aplica migrations pendentes e faz o build (com type-check) |
 | `npm test` | Testes (nota, companheiros, papéis, anonimato, quórum, sorteio, sessão, senha) |
+| `npm run typecheck` | `next typegen && tsc --noEmit` — o `typegen` é obrigatório, ver a seção de deploy |
 | `npm run db:generate` | Gera migration a partir de `src/db/schema.ts` |
 | `npm run db:migrate` | Aplica migrations no banco do `DATABASE_URL` |
 | `npm run db:migrate:prod` | Aplica migrations usando a connection string direta (conserto manual) |
@@ -120,33 +121,56 @@ Enquanto a votação corre, quem propôs vê só **quantos** faltam votar — n�
 
 ## Deploy (R$ 0)
 
-Vercel Hobby + Neon free, com deploy contínuo: **`git push` na `main` aplica as migrations e publica**.
+Vercel Hobby + Neon free, domínio [futzenha.com.br](https://futzenha.com.br). **Push na `main` não publica nada** — o deploy por Git está desligado (`vercel.json` → `git.deploymentEnabled: false`) e publicar é sempre **Actions → Deploy (produção) → Run workflow**, que só chega no deploy se o gate ficar todo verde.
 
 ### Primeira vez
 
 > Não crie a env var `DATABASE_URL` à mão — a integração do Neon precisa desse nome livre para injetar.
 
-1. **Banco**: vercel.com → **Storage** → **Create Database** → **Neon** → plano Free → nome `futzenha-db`. Deixe o branching de preview desligado.
-2. **Projeto**: **Add New… → Project** → importe este repo (framework Next.js detectado). Antes de dar Deploy, adicione em Environment Variables:
-   - `SESSION_SECRET` — gere com `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
-   - `PLATFORM_ADMIN_USERNAMES` — o(s) username(s) do admin da plataforma, separados por vírgula
-   - `CRON_SECRET` — protege `/api/cron/pendencias`, que fecha as rodadas de avaliação vencidas. Gere com `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Sem ela a rota responde 503 (nunca "libera tudo"), e os prazos passam a depender só do acesso ao site.
-   - `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` — opcionais, mas sem as duas o botão "Entrar com o Google" some e só resta usuário e senha (ver o passo 7). Peça apenas os escopos `openid`/`email`/`profile`: são não-sensíveis, dispensam a verificação do Google e é por isso que o login sai de graça.
-3. **O primeiro build falha de propósito** (`[migrate] Nenhuma connection string encontrada`): a Vercel só deixa conectar o banco depois que o projeto existe.
-4. **Conectar o banco**: Project → **Storage** → **Connect Database** → `futzenha-db`, marcando Production, Preview e Development. Isso injeta `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` e as `PG*`.
-5. **Redeploy** pelo painel. O log deve mostrar `[migrate] Migrations aplicadas.`
-6. **Pegue o link do primeiro admin no log do build**: como não existe mais senha de admin, o `migrate` cria a conta de quem está em `PLATFORM_ADMIN_USERNAMES` e imprime `[migrate] Conta de admin criada para "…". Defina a senha em: https://…/convite/<token>`. Abra o link, escolha a senha, e você entra como admin da plataforma. Depois vá em `/admin`, cadastre os jogadores reais e mande os convites. **Nunca rode o seed em produção** (ele apaga tudo — e há uma trava que impede isso).
-7. **Login pelo Google** (opcional, e só depois de o domínio existir): em console.cloud.google.com → **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**, cadastre como **Authorized redirect URI** exatamente `https://SEU-DOMINIO/api/auth/google/callback` (e `http://localhost:3000/api/auth/google/callback` se for usar no local). O Google confere essa URI byte a byte, duas vezes — na ida e na troca do code —, então um `/` sobrando já reprova. Copie o client ID e o secret para as env vars do passo 2 e redeploy.
+1. **Google Cloud** (pode ser antes de tudo, já que o domínio é conhecido): console.cloud.google.com → **APIs & Services → OAuth consent screen** → External, nome do app e e-mails de contato. Em **Scopes**, apenas `openid`, `userinfo.email` e `userinfo.profile` — é o que `src/lib/google-oauth.ts` pede, são não-sensíveis, e é por isso que o login sai de graça; qualquer escopo a mais joga o app na fila de review do Google. **Publique o app** (em *Testing* são no máximo 100 usuários cadastrados um a um). Depois **Credentials → Create credentials → OAuth client ID → Web application**, com estas Authorized redirect URIs:
+   - `https://futzenha.com.br/api/auth/google/callback`
+   - `http://localhost:3000/api/auth/google/callback`
 
-`NEXT_PUBLIC_SITE_URL` não precisa ser configurada: `src/lib/site-url.ts` deriva o domínio das env vars da própria Vercel, preferindo o domínio **de produção** (estável) à URL única do deploy. É desse valor que sai a redirect URI do Google — o que também explica por que o login pelo Google não funciona em preview: lá a URL muda a cada publicação e nunca vai bater com a cadastrada. Defina a var se quiser forçar um domínio próprio.
+   O Google confere a URI byte a byte, duas vezes — na ida e na troca do code —, então um `/` sobrando já reprova. Não cadastre `www.`: o apex é canônico e `siteUrl()` nunca devolve `www`.
+2. **Banco**: vercel.com → **Storage** → **Create Database** → **Neon** → plano Free → nome `futzenha-db`. Deixe o branching de preview desligado.
+3. **Projeto**: **Add New… → Project** → importe este repo (framework Next.js detectado). Antes de dar Deploy, adicione em Environment Variables:
+
+   | Variável | Environments |
+   |---|---|
+   | `SESSION_SECRET` — `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` | Production, Preview, Development |
+   | `PLATFORM_ADMIN_USERNAMES` — username(s) do admin da plataforma, separados por vírgula, **em minúsculas** (`platformAdminsDoAmbiente()` faz `toLowerCase()`) | Production, Preview, Development |
+   | `CRON_SECRET` — `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` | Production |
+   | `NEXT_PUBLIC_SITE_URL` = `https://futzenha.com.br` | **só** Production |
+   | `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` | **só** Production |
+
+   `CRON_SECRET` protege `/api/cron/pendencias`, que fecha as rodadas de avaliação vencidas; sem ela a rota responde 503 (nunca "libera tudo") e os prazos passam a depender só do acesso ao site. As `GOOGLE_*` ficam fora de Preview de propósito: lá a URL muda a cada publicação e nunca bate com a redirect URI, então é melhor o botão sumir (`googleLoginConfigurado()` devolve `false`) do que dar erro do Google.
+4. **O primeiro build falha de propósito** (`[migrate] Nenhuma connection string encontrada`): a Vercel só deixa conectar o banco depois que o projeto existe. Se o deploy por Git já estiver desligado, pode ser que nem chegue a buildar — tudo bem, o que importa é o projeto ter sido criado.
+5. **Conectar o banco**: Project → **Storage** → **Connect Database** → `futzenha-db`, marcando Production, Preview e Development. Isso injeta `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` e as `PG*`.
+6. **Secrets do GitHub** (Settings → Secrets and variables → Actions): `VERCEL_TOKEN` (Vercel → Account Settings → Tokens), `VERCEL_PROJECT_ID` (Projeto → Settings → General) e `VERCEL_ORG_ID` (Team/Account Settings → General). Atalho para os dois IDs: `vercel link` na sua máquina e leia `.vercel/project.json`, que é gitignored.
+7. **Rode o workflow**. O log do build na Vercel deve mostrar `[migrate] Migrations aplicadas.`
+8. **Pegue o link do primeiro admin no log do build**: como não existe senha de admin, o `migrate` cria a conta de quem está em `PLATFORM_ADMIN_USERNAMES` e imprime `[migrate] Conta de admin criada para "…". Defina a senha em: https://…/convite/<token>`. Abra o link, escolha a senha, e você entra como admin da plataforma. Depois vá em `/admin`, cadastre os jogadores reais e mande os convites. **Nunca rode o seed em produção** (ele apaga tudo — e há uma trava que impede isso).
+9. **Domínio**: Vercel → Settings → Domains → `futzenha.com.br`, e `www.futzenha.com.br` como redirect para o apex. Use **os registros DNS que o painel mostrar** (os IPs da Vercel mudaram; tutoriais antigos citam `76.76.21.21`). No Registro.br, DNS → Editar Zona: um **A** no apex (campo de nome vazio ou `@`, não o domínio completo) e um **CNAME** no `www`. O certificado é emitido sozinho quando o DNS resolve.
+
+**Se perder o link do convite** (vale 7 dias e sai só no log do build): no SQL Editor do Neon, `select i.token, u.username from invites i join users u on u.player_id = i.player_id where i.expires_at > now();` e monte `https://futzenha.com.br/convite/<token>`. Se já expirou, a conta existe e o `provisionarPlatformAdmins` pula ela — acrescente um segundo username em `PLATFORM_ADMIN_USERNAMES` e rode o workflow: o build cria a conta nova e imprime um convite fresco.
+
+`NEXT_PUBLIC_SITE_URL` é a fonte da redirect URI do Google, então em produção ela é fixada em vez de derivada. Como toda var `NEXT_PUBLIC_*`, **o valor é embutido em build time**: trocar de domínio depois exige rodar o workflow de novo, não basta editar no painel. Sem ela, `src/lib/site-url.ts` cairia em `VERCEL_PROJECT_PRODUCTION_URL` — que costuma estar certo, mas "costuma" não serve para uma URI que o Google compara byte a byte.
 
 ### Lançando atualizações
 
-- **Só código**: commit e `git push origin main`. A Vercel builda e publica.
-- **Mudança de schema**: edite `src/db/schema.ts` → `npm run db:generate` → **leia o SQL gerado** → `npm run db:migrate` no banco local e teste → commit incluindo `schema.ts` **e** a pasta `drizzle/` inteira → `git push`. Nunca edite uma migration já enviada; gere uma nova.
-- **Previews de branch** buildam mas **não migram**, e apontam para o mesmo banco de produção: dado criado num preview é dado real, e um preview com schema novo quebra em runtime. Teste mudança de schema no Docker local.
+1. Commit e push na `main` (isso **não** publica nada).
+2. **Actions → Deploy (produção) → Run workflow.**
 
-Limites esperados do free tier: o Neon dorme após ~5 min sem uso, então a primeira visita do dia leva 1–3s a mais.
+O gate roda, nesta ordem: **vitest** → **eslint** → **typecheck** → **dry-run das migrations** num Postgres limpo do runner, duas vezes seguidas (a segunda prova idempotência, que é o cenário real — o script roda em todo build, não só quando há migration nova) → **`next build`**. Só no all-green o job de deploy existe. O deploy usa `vercel deploy --prod` **sem `--prebuilt`**, então o build acontece na infra da Vercel com as env vars de lá: a connection string do Neon nunca chega ao GitHub.
+
+O `next build` fecha o gate porque é a única etapa que, em produção, roda **depois** das migrations (`npm run build` é `tsx src/db/migrate.ts && next build`): sem ele, um erro de prerender só apareceria com o schema já alterado.
+
+O script `typecheck` é `next typegen && tsc --noEmit`, e o `typegen` **não é opcional**: `next-env.d.ts` é gitignored e importa `.next/types/*`, que só existe depois dele. Simplificar para `tsc --noEmit` quebra o CI.
+
+- **Mudança de schema**: edite `src/db/schema.ts` → `npm run db:generate` → **leia o SQL gerado** → `npm run db:migrate` no banco local e teste → commit incluindo `schema.ts` **e** a pasta `drizzle/` inteira → push → rode o workflow. Nunca edite uma migration já enviada; gere uma nova.
+- **Migration arriscada**: o gate roda contra um banco **vazio**, então um `ADD COLUMN ... NOT NULL` sem default passa liso lá e explode em produção. Para esses casos, crie um branch do Neon (cópia dos dados) e rode `DIRECT_DATABASE_URL=<branch> npm run db:migrate:prod` antes de disparar o workflow — é para isso que essa var existe.
+- **Rollback não desfaz migration.** Como as migrations rodam dentro do build, se o `next build` falhar depois delas o schema avança sem o código ir ao ar. O `next build` do gate cobre a maior parte disso (o mesmo erro apareceria antes, no runner), mas não o que só quebra com as env vars da Vercel — então prefira migrations aditivas.
+
+Limites esperados do free tier: o Neon dorme após ~5 min sem uso, então a primeira visita do dia leva 1–3s a mais. O cron do plano Hobby roda uma vez por dia, em **UTC** — `0 9 * * *` é 06:00 de Brasília.
 
 ## Modelo de dados (resumo)
 
