@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { ratingRoundRaters, ratingRounds, ratings } from "@/db/schema";
 import { getCompanheiros } from "@/lib/ratings";
+import { fecharSeTodosAvaliaram } from "@/lib/ratings-engine";
 import { requirePlayer } from "@/lib/require-player";
 
 export type AvaliarState = { error?: string; success?: boolean };
@@ -98,7 +99,13 @@ export async function enviarAvaliacoes(
       );
   });
 
+  // Se este era o último que faltava, a rodada fecha e as notas saem na hora —
+  // ninguém precisa esperar os 2 dias.
+  await fecharSeTodosAvaliaram(roundId);
+
   revalidatePath("/avaliar");
   revalidatePath(`/avaliar/${roundId}`);
+  revalidatePath("/perfil");
+  revalidatePath("/rankings");
   return { success: true };
 }

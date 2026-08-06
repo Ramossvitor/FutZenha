@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { logout } from "@/app/login/actions";
+import { agendarProcessamento } from "@/lib/pendencias";
 import { getSession } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
 import { NotificationBell } from "./notification-bell";
@@ -41,6 +42,10 @@ const navLinks = [
 // deliberada para mostrar quem está logado em qualquer página.
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const session = await getSession();
+  // Prazos vencidos são aplicados depois da resposta, no máximo 1× por minuto
+  // por instância. O cron diário é só a rede de segurança para quando o site
+  // fica sem tráfego.
+  agendarProcessamento();
   return (
     <html
       lang="pt-BR"
