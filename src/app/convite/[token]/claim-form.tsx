@@ -1,12 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Banner } from "@/components/ui/banner";
+import { SubmitButton } from "@/components/ui/button";
+import { Field, Input } from "@/components/ui/field";
 import { claimInvite, type ClaimState } from "./actions";
 
 const initialState: ClaimState = {};
-
-const inputClass =
-  "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
 export function ClaimForm({
   token,
@@ -18,56 +19,62 @@ export function ClaimForm({
   suggestedUsername: string;
 }) {
   const [state, formAction, pending] = useActionState(claimInvite.bind(null, token), initialState);
-  const isReset = existingUsername !== null;
+  const ehReset = existingUsername !== null;
 
   return (
-    <form action={formAction} className="flex flex-col gap-3">
-      {isReset ? (
-        <p className="text-sm">
-          Usuário: <strong>@{existingUsername}</strong>
+    <form action={formAction} className="flex flex-col gap-4">
+      {ehReset ? (
+        <p className="flex items-center gap-2 text-[13px] text-fg-2">
+          Usuário: <Badge tom="outline" caixa="normal">@{existingUsername}</Badge>
         </p>
       ) : (
-        <>
-          <label className="text-sm font-medium" htmlFor="username">
-            Nome de usuário
-          </label>
-          <input
+        <Field
+          htmlFor="username"
+          label="Nome de usuário"
+          obrigatorio
+          ajuda="2 a 20 caracteres: letras minúsculas, números, ponto, hífen ou _"
+        >
+          <Input
             id="username"
             name="username"
             defaultValue={suggestedUsername}
             required
             autoFocus
-            className={inputClass}
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="username"
           />
-          <p className="text-xs text-neutral-500">
-            2 a 20 caracteres: letras minúsculas, números, ponto, hífen ou _
-          </p>
-        </>
+        </Field>
       )}
-      <label className="text-sm font-medium" htmlFor="password">
-        {isReset ? "Nova senha" : "Senha"}
-      </label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        required
-        minLength={6}
-        autoFocus={isReset}
-        className={inputClass}
-      />
-      <label className="text-sm font-medium" htmlFor="confirm">
-        Confirmar senha
-      </label>
-      <input id="confirm" name="confirm" type="password" required minLength={6} className={inputClass} />
-      {state.error && <p className="text-sm text-red-600">{state.error}</p>}
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-emerald-700 px-4 py-2 font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
-      >
-        {pending ? "Salvando..." : isReset ? "Salvar nova senha" : "Criar conta"}
-      </button>
+
+      <Field htmlFor="password" label={ehReset ? "Nova senha" : "Senha"} obrigatorio>
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          required
+          minLength={6}
+          autoFocus={ehReset}
+          autoComplete="new-password"
+        />
+      </Field>
+
+      <Field htmlFor="confirm" label="Confirmar senha" obrigatorio>
+        <Input
+          id="confirm"
+          name="confirm"
+          type="password"
+          required
+          minLength={6}
+          autoComplete="new-password"
+        />
+      </Field>
+
+      {state.error && <Banner tom="erro">{state.error}</Banner>}
+
+      <SubmitButton tamanho="lg" pending={pending} labelPending="Salvando…" className="w-full">
+        {ehReset ? "Salvar nova senha" : "Criar conta"}
+      </SubmitButton>
     </form>
   );
 }

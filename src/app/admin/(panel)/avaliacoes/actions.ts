@@ -33,37 +33,30 @@ async function requireJulgador(reportId: number): Promise<Session> {
 }
 
 /**
- * Descarta a nota denunciada. O replay em cascata recalcula todas as rodadas a
- * partir dali — a nota de quem foi avaliado naquela pelada e em todas as
- * seguintes muda junto.
+ * Decide a denúncia — descartar a nota ou mantê-la.
+ *
+ * Uma action só, e não duas, por causa do campo de observação: um <input> só
+ * pertence a um <form>, então com dois formulários o "fica no registro" que o
+ * campo promete valia para um botão e era silenciosamente perdido no outro.
+ * Agora os dois botões enviam o mesmo formulário e a decisão vem no `value`.
+ *
+ * Descartar dispara o replay em cascata: a nota de quem foi avaliado naquela
+ * pelada, e em todas as seguintes, é recalculada. Manter não recalcula nada.
  */
-export async function aceitarDenuncia(reportId: number, formData: FormData) {
+export async function julgarDenuncia(reportId: number, formData: FormData) {
   const session = await requireJulgador(reportId);
-  const nota = formData.get("adminNote");
-  await db.transaction((tx) =>
-    resolverDenuncia(
-      tx,
-      reportId,
-      true,
-      { tipo: "admin", playerId: session.player.id },
-      typeof nota === "string" ? nota : undefined,
-    ),
-  );
-  revalidarTudo();
-  redirect("/admin/avaliacoes");
-}
 
-/** Mantém a nota: o admin analisou e considerou justa. Nada é recalculado. */
-export async function rejeitarDenuncia(reportId: number, formData: FormData) {
-  const session = await requireJulgador(reportId);
+  const decisao = formData.get("decisao");
+  if (decisao !== "aceitar" && decisao !== "rejeitar") notFound();
+
   const nota = formData.get("adminNote");
   await db.transaction((tx) =>
     resolverDenuncia(
       tx,
       reportId,
-      false,
+      decisao === "aceitar",
       { tipo: "admin", playerId: session.player.id },
-      typeof nota === "string" ? nota : undefined,
+      typeof nota === "string" && nota.trim() !== "" ? nota : undefined,
     ),
   );
   revalidarTudo();

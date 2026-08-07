@@ -35,22 +35,3 @@ export function colete(nomeDoTime: string): string {
 }
 
 export const defaultTeamNames = ["Preto", "Branco", "Verde", "Laranja", "Azul", "Vermelho"];
-
-// LEGADO — as telas antigas ainda montam o colete como pílula com o nome
-// dentro, o que exige uma cor de texto. O design novo separa as duas coisas
-// (retângulo de cor + rótulo ao lado), então isto morre junto com a reescrita
-// da tela da pelada. Não use em código novo.
-const colorMap: Record<string, string> = {
-  preto: "bg-neutral-900 text-white",
-  branco: "bg-white text-neutral-900 border border-neutral-300",
-  verde: "bg-emerald-600 text-white",
-  azul: "bg-blue-600 text-white",
-  vermelho: "bg-red-600 text-white",
-  laranja: "bg-orange-500 text-white",
-  amarelo: "bg-yellow-400 text-neutral-900",
-};
-
-/** @deprecated Use `colete()`. Removido quando a tela da pelada for reescrita. */
-export function vestClass(teamName: string): string {
-  return colorMap[teamName.trim().toLowerCase()] ?? "bg-neutral-500 text-white";
-}

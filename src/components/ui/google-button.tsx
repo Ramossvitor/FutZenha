@@ -7,7 +7,7 @@ import { cx } from "@/lib/cx";
 // O único lugar do app com cor fora dos tokens, e de propósito: são as cores de
 // marca do Google, que as diretrizes dele não deixam restilizar. `light-dark()`
 // resolve pelo `color-scheme` que o globals.css já declara no :root, então o
-// botão acompanha o tema sem variante `dark:`.
+// botão acompanha o tema sem precisar de variante por tema.
 const chrome: CSSProperties = {
   backgroundColor: "light-dark(#FFFFFF, #131314)",
   color: "light-dark(#1F1F1F, #E3E3E3)",

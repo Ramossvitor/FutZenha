@@ -1,25 +1,27 @@
 import type { Metadata } from "next";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { Banner } from "@/components/ui/banner";
+import { LinkButton } from "@/components/ui/button";
+import { CartaoDeEntrada } from "@/components/ui/cartao-de-entrada";
+import { GoogleButton } from "@/components/ui/google-button";
 import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
 import { mensagemDeErro } from "@/lib/erros-login";
 import { sugerirUsername } from "@/lib/username";
-import { GoogleButton } from "@/components/ui/google-button";
 import { ClaimForm } from "./claim-form";
 
 export const metadata: Metadata = { title: "Convite" };
 
-const cardClass =
-  "mx-auto mt-16 w-full max-w-sm rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900";
-
-function InvalidInvite() {
+function ConviteInvalido() {
   return (
-    <div className={cardClass}>
-      <h1 className="mb-2 text-xl font-bold">Convite inválido ou expirado</h1>
-      <p className="text-sm text-neutral-600 dark:text-neutral-400">
-        Fala com quem te convidou para gerar outro link.
-      </p>
-    </div>
+    <CartaoDeEntrada
+      titulo="Convite inválido ou expirado"
+      descricao="Ele pode ter vencido ou já ter sido usado. Fala com quem te convidou para gerar outro link."
+    >
+      <LinkButton href="/login" variante="secondary" className="w-full">
+        Ir para o login
+      </LinkButton>
+    </CartaoDeEntrada>
   );
 }
 
@@ -36,30 +38,26 @@ export default async function ConvitePage({
   const [invite] = await db
     .select()
     .from(invites)
-    .where(and(eq(invites.token, token), isNull(invites.usedAt), gt(invites.expiresAt, sql`now()`)));
-  if (!invite) {
-    return <InvalidInvite />;
-  }
+    .where(
+      and(eq(invites.token, token), isNull(invites.usedAt), gt(invites.expiresAt, sql`now()`)),
+    );
+  if (!invite) return <ConviteInvalido />;
 
   const [player] = await db.select().from(players).where(eq(players.id, invite.playerId));
-  if (!player || !player.active) return <InvalidInvite />;
+  if (!player || !player.active) return <ConviteInvalido />;
   const [user] = await db.select().from(users).where(eq(users.playerId, invite.playerId));
   const erroMensagem = mensagemDeErro(erro, esperado);
 
-  const cabecalho = (
+  const titulo = invite.email
+    ? "Entrar com o Google"
+    : user
+      ? "Redefinir senha"
+      : "Criar sua conta";
+
+  const descricao = (
     <>
-      <h1 className="mb-2 text-xl font-bold">
-        {invite.email ? "Entrar com o Google" : user ? "Redefinir senha" : "Criar sua conta"}
-      </h1>
-      <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-400">
-        Convite para <strong>{player.name}</strong>
-        {player.nickname ? ` (“${player.nickname}”)` : ""}.
-      </p>
-      {erroMensagem && (
-        <p className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {erroMensagem}
-        </p>
-      )}
+      Convite para <strong className="text-fg">{player.name}</strong>
+      {player.nickname ? ` (“${player.nickname}”)` : ""}.
     </>
   );
 
@@ -67,25 +65,29 @@ export default async function ConvitePage({
   // formulário de senha nem aparece, e a action recusaria de todo jeito.
   if (invite.email) {
     return (
-      <div className={cardClass}>
-        {cabecalho}
-        <GoogleButton href={`/api/auth/google?convite=${encodeURIComponent(invite.token)}`} />
-        <p className="mt-4 text-xs text-neutral-500">
-          Use a conta <strong>{invite.email}</strong>. Entrar com outra não vai funcionar — se o
-          endereço estiver errado, fala com quem te convidou.
-        </p>
-      </div>
+      <CartaoDeEntrada titulo={titulo} descricao={descricao}>
+        <div className="flex flex-col gap-3">
+          {erroMensagem && <Banner tom="erro">{erroMensagem}</Banner>}
+          <GoogleButton href={`/api/auth/google?convite=${encodeURIComponent(invite.token)}`} />
+          <p className="text-[12px] leading-[1.45] text-fg-4">
+            Use a conta <strong className="text-fg-2">{invite.email}</strong>. Entrar com outra não
+            vai funcionar — se o endereço estiver errado, fala com quem te convidou.
+          </p>
+        </div>
+      </CartaoDeEntrada>
     );
   }
 
   return (
-    <div className={cardClass}>
-      {cabecalho}
-      <ClaimForm
-        token={invite.token}
-        existingUsername={user?.username ?? null}
-        suggestedUsername={sugerirUsername(player.name, player.nickname)}
-      />
-    </div>
+    <CartaoDeEntrada titulo={titulo} descricao={descricao}>
+      <div className="flex flex-col gap-3">
+        {erroMensagem && <Banner tom="erro">{erroMensagem}</Banner>}
+        <ClaimForm
+          token={invite.token}
+          existingUsername={user?.username ?? null}
+          suggestedUsername={sugerirUsername(player.name, player.nickname)}
+        />
+      </div>
+    </CartaoDeEntrada>
   );
 }
