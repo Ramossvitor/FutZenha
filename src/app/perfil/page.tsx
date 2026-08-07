@@ -8,7 +8,7 @@ import { googleLoginConfigurado } from "@/lib/google-oauth";
 import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
-import { GoogleButton } from "../google-button";
+import { GoogleButton } from "@/components/ui/google-button";
 import { ChangePasswordForm } from "./change-password-form";
 import { DenunciarForm } from "./denunciar-form";
 

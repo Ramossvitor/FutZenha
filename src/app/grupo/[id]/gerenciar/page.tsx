@@ -3,7 +3,7 @@ import { and, asc, eq, notInArray } from "drizzle-orm";
 import { db } from "@/db";
 import { players, users } from "@/db/schema";
 import { BuscaJogador, type ItemJogador } from "@/app/pelada/[id]/gerenciar/busca-jogador";
-import { CopyButton } from "@/app/admin/(panel)/jogadores/copy-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   contarPeladas,
   convitesEnviados,

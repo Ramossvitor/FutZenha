@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { mensagemDeErro } from "@/lib/erros-login";
 import { googleLoginConfigurado } from "@/lib/google-oauth";
 import { getSession } from "@/lib/session";
-import { GoogleButton } from "../google-button";
+import { GoogleButton } from "@/components/ui/google-button";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Entrar" };

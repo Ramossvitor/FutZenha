@@ -14,7 +14,7 @@ import {
   teams,
   users,
 } from "@/db/schema";
-import { CopyButton } from "@/app/admin/(panel)/jogadores/copy-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { getFaltamVotar, getVotacaoDaPelada } from "@/lib/deletion";
 import { formatDate, formatSkill, formatTime } from "@/lib/format";
 import { requirePeladaAdmin } from "@/lib/require-pelada-admin";

@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
 import { mensagemDeErro } from "@/lib/erros-login";
 import { sugerirUsername } from "@/lib/username";
-import { GoogleButton } from "../../google-button";
+import { GoogleButton } from "@/components/ui/google-button";
 import { ClaimForm } from "./claim-form";
 
 export const metadata: Metadata = { title: "Convite" };
