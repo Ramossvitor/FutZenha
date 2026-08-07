@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { GRUPO_COOKIE } from "@/lib/grupo-atual";
 import { destinoSeguro } from "@/lib/oauth-state";
 import { DUMMY_HASH, verifyPassword } from "@/lib/password";
 import { setSessionCookie } from "@/lib/session";
@@ -48,5 +49,9 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
 export async function logout() {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
+  // O grupo em que a pessoa navegava sai junto: num aparelho compartilhado,
+  // quem entrar depois começaria vendo o nome do grupo — e as peladas — de
+  // quem saiu.
+  store.delete(GRUPO_COOKIE);
   redirect("/");
 }

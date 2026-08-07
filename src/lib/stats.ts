@@ -155,6 +155,7 @@ export async function getSkillRanking(e: EscopoStats = {}): Promise<SkillRanking
 export type AttendanceStat = {
   playerId: number;
   name: string;
+  nickname: string | null;
   attended: number;
 };
 
@@ -167,10 +168,14 @@ export async function getAttendanceStats(e: EscopoStats = {}): Promise<{
     .from(matchDays)
     .where(escopo(e));
 
+  // `nickname` entra aqui para igualar as outras quatro consultas de stats:
+  // sem ele, a linha de presença era a única do produto que mostrava o nome de
+  // batismo enquanto o resto do app chama a pessoa pelo apelido.
   const perPlayer = await db
     .select({
       playerId: players.id,
       name: players.name,
+      nickname: players.nickname,
       attended: sql<number>`count(*)::int`,
     })
     .from(attendances)
@@ -178,7 +183,7 @@ export async function getAttendanceStats(e: EscopoStats = {}): Promise<{
     .innerJoin(players, eq(attendances.playerId, players.id))
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
     .where(and(eq(attendances.status, "in"), escopo(e)))
-    .groupBy(players.id, players.name)
+    .groupBy(players.id, players.name, players.nickname)
     .orderBy(desc(sql`count(*)`), players.name);
 
   return { totalDays, perPlayer };

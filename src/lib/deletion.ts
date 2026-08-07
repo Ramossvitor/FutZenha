@@ -15,7 +15,13 @@ import { formatDate } from "./format";
 import { notificar } from "./notifications";
 import { prazoEmDias } from "./ratings";
 import { aplicarReplay } from "./ratings-engine";
-import { avaliarVotacao, placar, PRAZO_VOTACAO_DIAS, votosNecessarios } from "./votacao";
+import {
+  avaliarVotacao,
+  placar,
+  PRAZO_VOTACAO_DIAS,
+  votosNecessarios,
+  type PlacarVotacao,
+} from "./votacao";
 
 /**
  * Quem vota: jogou a pelada e tem conta ativa. São os afetados — a exclusão
@@ -331,21 +337,39 @@ export async function getVotacao(
 
 export type VotacaoAberta = {
   voteId: number;
+  matchDayId: number;
   matchDayDate: string;
+  groupId: number | null;
+  reason: string;
   horasRestantes: number;
   jaVotei: boolean;
+  placar: PlacarVotacao;
 };
 
-/** Votações abertas em que este jogador é eleitor. */
+/**
+ * Votações abertas em que este jogador é eleitor.
+ *
+ * O `from` é `matchDayDeletionVoters` filtrado pelo playerId, e é isso que
+ * mantém a privacidade: só quem tem linha de eleitor recebe resultado, que é
+ * exatamente o mesmo público que `getVotacao` já autoriza a ver o placar. Quem
+ * propôs a votação mas não jogou continua sem enxergar nada. Trocar este `from`
+ * por `matchDayDeletionVotes` abriria o placar para qualquer um.
+ */
 export async function getVotacoesAbertasDoJogador(playerId: number): Promise<VotacaoAberta[]> {
-  return db
+  const linhas = await db
     .select({
       voteId: matchDayDeletionVotes.id,
+      matchDayId: matchDayDeletionVotes.matchDayId,
       matchDayDate: matchDays.date,
+      groupId: matchDays.groupId,
+      reason: matchDayDeletionVotes.reason,
+      eligibleCount: matchDayDeletionVotes.eligibleCount,
       horasRestantes: sql<number>`greatest(0, ceil(extract(epoch from (
         ${matchDayDeletionVotes.deadlineAt} - now()
       )) / 3600)::int)`,
       jaVotei: sql<boolean>`${matchDayDeletionVoters.inFavor} is not null`,
+      sim: sql<number>`(select count(*) filter (where in_favor) from match_day_deletion_voters where vote_id = ${matchDayDeletionVotes.id})::int`,
+      nao: sql<number>`(select count(*) filter (where in_favor = false) from match_day_deletion_voters where vote_id = ${matchDayDeletionVotes.id})::int`,
     })
     .from(matchDayDeletionVoters)
     .innerJoin(
@@ -360,10 +384,49 @@ export async function getVotacoesAbertasDoJogador(playerId: number): Promise<Vot
       ),
     )
     .orderBy(asc(matchDayDeletionVotes.deadlineAt));
+
+  return linhas.map(({ eligibleCount, sim, nao, ...resto }) => ({
+    ...resto,
+    placar: placar(eligibleCount, sim, nao),
+  }));
 }
 
-/** A votação de uma pelada, para o painel do admin. */
-export async function getVotacaoDaPelada(matchDayId: number) {
+/**
+ * A votação de uma pelada, para o painel de quem gerencia.
+ *
+ * União discriminada de propósito: enquanto a votação está aberta, `sim` e
+ * `nao` **não existem no tipo**.
+ *
+ * O motivo é que o placar parcial desanonimiza. Quem gerencia atualiza a página
+ * duas vezes, vê o contador andar de 4 para 5 e sabe exatamente como votou a
+ * pessoa que entrou no meio — num voto que a regra promete definitivo e
+ * secreto. Deixar os campos existirem e confiar num `status === "open"` dentro
+ * do JSX é frágil: qualquer refactor futuro reintroduz o vazamento sem que
+ * nada acuse. Do jeito que está, o compilador não deixa.
+ *
+ * Aberta, o painel mostra só quantos faltam votar (`getFaltamVotar().length`).
+ */
+export type VotacaoDaPelada =
+  | {
+      status: "open";
+      id: number;
+      reason: string;
+      eligibleCount: number;
+      requiredYes: number;
+      horasRestantes: number;
+    }
+  | {
+      status: "approved" | "rejected";
+      id: number;
+      reason: string;
+      eligibleCount: number;
+      requiredYes: number;
+      horasRestantes: number;
+      sim: number;
+      nao: number;
+    };
+
+export async function getVotacaoDaPelada(matchDayId: number): Promise<VotacaoDaPelada | null> {
   const [votacao] = await db
     .select({
       id: matchDayDeletionVotes.id,
@@ -379,7 +442,13 @@ export async function getVotacaoDaPelada(matchDayId: number) {
     })
     .from(matchDayDeletionVotes)
     .where(eq(matchDayDeletionVotes.matchDayId, matchDayId));
-  return votacao ?? null;
+  if (!votacao) return null;
+
+  const { sim, nao, status, ...comum } = votacao;
+  // O descarte é aqui, no servidor. O placar de uma votação aberta nem chega
+  // a sair desta função.
+  if (status === "open") return { ...comum, status };
+  return { ...comum, status, sim, nao };
 }
 
 /** Nomes de quem ainda não votou, para o admin cobrar. */
