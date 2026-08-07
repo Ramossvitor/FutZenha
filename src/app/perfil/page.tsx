@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import { eq } from "drizzle-orm";
+import { logout } from "@/app/login/actions";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/card";
+import { HairlineList, HairlineRow, HairlineRowLink } from "@/components/ui/hairline-list";
+import { IconeSeta } from "@/components/ui/icons";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { contarNaoLidas } from "@/lib/notifications";
 import { mensagemDeErro } from "@/lib/erros-login";
 import { formatDate, formatSkill } from "@/lib/format";
 import { googleLoginConfigurado } from "@/lib/google-oauth";
@@ -19,11 +26,12 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
   const { player } = session;
   const { erro } = await searchParams;
 
-  const [scorers, records, attendance, rodadas, [conta]] = await Promise.all([
+  const [scorers, records, attendance, rodadas, naoLidas, [conta]] = await Promise.all([
     getTopScorers(),
     getPlayerRecords(),
     getAttendanceStats(),
     getEstrelasRecebidas(player.id),
+    contarNaoLidas(player.id),
     db
       .select({ email: users.email, googleSub: users.googleSub, passwordHash: users.passwordHash })
       .from(users)
@@ -188,6 +196,55 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
           <ChangePasswordForm />
         </section>
       )}
+
+      {/* No celular não há barra lateral, e o cabeçalho novo só tem o chip do
+          grupo, o sino e o avatar. Então é aqui que moram as portas que não
+          couberam nas quatro abas — inclusive o Sair. */}
+      <section className="flex flex-col gap-2.5">
+        <Eyebrow>Sua conta</Eyebrow>
+        <HairlineList as="ul">
+          <li>
+            <HairlineRowLink href="/notificacoes">
+              <span className="flex-1">Avisos</span>
+              {naoLidas > 0 && <Badge tom="danger">{naoLidas > 9 ? "9+" : naoLidas}</Badge>}
+              <IconeSeta className="size-4 text-fg-dim" />
+            </HairlineRowLink>
+          </li>
+          <li>
+            <HairlineRowLink href="/avaliar">
+              <span className="flex-1">Avaliações abertas</span>
+              <IconeSeta className="size-4 text-fg-dim" />
+            </HairlineRowLink>
+          </li>
+          <li>
+            <HairlineRowLink href="/grupos">
+              <span className="flex-1">Meus grupos</span>
+              <IconeSeta className="size-4 text-fg-dim" />
+            </HairlineRowLink>
+          </li>
+          {session.isPlatformAdmin && (
+            <li>
+              <HairlineRowLink href="/admin">
+                <span className="flex-1">Plataforma</span>
+                <Badge tom="warn">admin</Badge>
+                <IconeSeta className="size-4 text-fg-dim" />
+              </HairlineRowLink>
+            </li>
+          )}
+          <HairlineRow as="li">
+            <form action={logout} className="flex-1">
+              <Button
+                type="submit"
+                variante="ghost"
+                tamanho="sm"
+                className="-mx-3 w-full justify-start text-danger-ink"
+              >
+                Sair
+              </Button>
+            </form>
+          </HairlineRow>
+        </HairlineList>
+      </section>
     </div>
   );
 }
