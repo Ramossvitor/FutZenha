@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { BannerDaQuery } from "@/components/ui/banner";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
@@ -57,7 +57,10 @@ export default async function EncerrarPeladaPage({
         userId: users.id,
       })
       .from(players)
-      .leftJoin(users, eq(users.playerId, players.id))
+      // A mesma condição do getRatersElegiveis: conta desativada não avalia nem
+      // é avaliada. Sem o users.active aqui, o checklist contava a conta
+      // desativada como ativa e prometia uma rodada que o servidor não abre.
+      .leftJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
       .where(eq(players.active, true))
       .orderBy(asc(players.name)),
   ]);
@@ -86,9 +89,11 @@ export default async function EncerrarPeladaPage({
   // o que ele promete é o que vai acontecer de fato no encerramento.
   const comConta = new Set(elenco.filter((p) => p.userId !== null).map((p) => p.id));
   const avaliaveis = gruposElegiveis(companheirosPorJogador(escalacao), comConta);
-  const escaladosSemConta = [
-    ...new Set(escalacao.map((e) => e.playerId).filter((pid) => !comConta.has(pid))),
-  ].map((pid) => jogadorPorId.get(pid)?.nickname ?? jogadorPorId.get(pid)?.name ?? "alguém");
+  const escalados = new Set(escalacao.map((e) => e.playerId));
+  const escaladosComConta = [...escalados].filter((pid) => comConta.has(pid));
+  const escaladosSemConta = [...escalados]
+    .filter((pid) => !comConta.has(pid))
+    .map((pid) => jogadorPorId.get(pid)?.nickname ?? jogadorPorId.get(pid)?.name ?? "alguém");
 
   const checklist = montarChecklist({
     // TODOS os jogos, inclusive os sem nenhuma linha de escalação: são
@@ -99,6 +104,7 @@ export default async function EncerrarPeladaPage({
       ladoB: escalacao.filter((e) => e.gameId === g.id && e.side === "B").length,
     })),
     avaliaveis: avaliaveis.size,
+    comContaEmCampo: escaladosComConta.length,
     semConta: escaladosSemConta,
   });
 

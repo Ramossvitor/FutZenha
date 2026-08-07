@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
-import { Button, SubmitButton } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader, PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Estrelas } from "@/components/ui/estrelas";
@@ -170,14 +170,19 @@ export default async function AdminAvaliacoesPage() {
                         >
                           Descartar a nota
                         </PendingButton>
-                        <Button
-                          type="submit"
+                        {/* Também PendingButton: useFormStatus tem escopo de
+                            formulário, então com um Button cru este aqui
+                            continuava clicável enquanto o descarte estava em
+                            voo — e reenviava o mesmo form com a decisão
+                            oposta. */}
+                        <PendingButton
                           name="decisao"
                           value="rejeitar"
                           variante="secondary"
+                          labelPending="Registrando…"
                         >
                           Manter — foi justa
-                        </Button>
+                        </PendingButton>
                       </div>
                       <p className="text-[12px] leading-[1.45] text-fg-4">
                         Descartar recalcula a nota de todo mundo desta pelada em diante. Sem

@@ -18,6 +18,8 @@ import {
   ZonaDePerigoDoGrupo,
 } from "./secoes";
 
+export const metadata = { title: "Gerenciar grupo" };
+
 export default async function GerenciarGrupoPage({
   params,
   searchParams,

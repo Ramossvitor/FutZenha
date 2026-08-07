@@ -65,11 +65,19 @@ export function EstrelasInput({
   name,
   legenda,
   valorPadrao,
+  aoEscolher,
   className,
 }: {
   name: string;
   legenda: string;
   valorPadrao?: number;
+  /**
+   * Avisa quem está por cima que uma nota foi escolhida.
+   *
+   * O preenchimento continua sendo CSS puro e o rádio continua não-controlado —
+   * isto existe só para a tela poder contar quantas notas já foram dadas.
+   */
+  aoEscolher?: (nota: number) => void;
   className?: string;
 }) {
   return (
@@ -88,6 +96,7 @@ export function EstrelasInput({
             value={n}
             defaultChecked={valorPadrao === n}
             required
+            onChange={aoEscolher && (() => aoEscolher(n))}
             className="peer sr-only"
           />
           <label

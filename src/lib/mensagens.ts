@@ -92,11 +92,19 @@ export const MENSAGENS: Record<string, string> = {
  *
  * O parâmetro chega como `string | string[] | undefined` porque é isso que o
  * `searchParams` do Next entrega; qualquer coisa que não seja string vira null.
+ *
+ * O `Object.hasOwn` não é preciosismo: o slug vem da query string e os dois
+ * dicionários são object literals, então `MENSAGENS["toString"]` devolve a
+ * função do Object.prototype. Com indexação crua, `?erro=toString` fazia esta
+ * função devolver uma função — o `??` não pega, o tipo de retorno mente, e o
+ * Banner tenta renderizar isso dentro de um Server Component, o que estoura a
+ * serialização e derruba a página inteira.
  */
 export function resolverMensagem(
   slug: string | string[] | undefined,
   locais?: Record<string, string>,
 ): string | null {
   if (typeof slug !== "string") return null;
-  return locais?.[slug] ?? MENSAGENS[slug] ?? null;
+  if (locais && Object.hasOwn(locais, slug)) return locais[slug];
+  return Object.hasOwn(MENSAGENS, slug) ? MENSAGENS[slug] : null;
 }

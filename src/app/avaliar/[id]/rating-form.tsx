@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
@@ -35,7 +35,18 @@ export function RatingForm({
     initialState,
   );
 
-  const feitas = companheiros.filter((c) => c.estrelasAtuais !== undefined).length;
+  // O estado existe só para a barra de progresso: os rádios seguem
+  // não-controlados e é o `name` deles que o servidor lê. Derivar `feitas` das
+  // props deixava a barra parada em zero durante a avaliação inteira, que é
+  // justamente quando ela serve para alguma coisa.
+  const [notas, setNotas] = useState<Record<number, number>>(() => {
+    const inicial: Record<number, number> = {};
+    for (const c of companheiros) {
+      if (c.estrelasAtuais !== undefined) inicial[c.playerId] = c.estrelasAtuais;
+    }
+    return inicial;
+  });
+  const feitas = Object.keys(notas).length;
 
   return (
     <form action={formAction} className="flex flex-col gap-2.5">
@@ -62,6 +73,7 @@ export function RatingForm({
             name={`estrelas-${c.playerId}`}
             legenda={`Nota de ${c.rotulo}`}
             valorPadrao={c.estrelasAtuais}
+            aoEscolher={(nota) => setNotas((atual) => ({ ...atual, [c.playerId]: nota }))}
           />
         </Card>
       ))}

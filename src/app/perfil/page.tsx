@@ -16,6 +16,7 @@ import { users } from "@/db/schema";
 import { ERROS_LOGIN } from "@/lib/erros-login";
 import { googleLoginConfigurado } from "@/lib/google-oauth";
 import { contarNaoLidas } from "@/lib/notifications";
+import { posicoes } from "@/lib/posicao";
 import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
@@ -45,7 +46,11 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
   const meuRetro = records.find((r) => r.playerId === player.id);
   const minhasPresencas =
     attendance.perPlayer.find((a) => a.playerId === player.id)?.attended ?? 0;
-  const posicaoArtilharia = scorers.findIndex((s) => s.playerId === player.id) + 1;
+  // `índice + 1` diria 2º para o segundo de dois artilheiros empatados, e a aba
+  // de artilharia — que usa posicoes() — diria 1º para os dois.
+  const indiceArtilharia = scorers.findIndex((s) => s.playerId === player.id);
+  const posicaoArtilharia =
+    indiceArtilharia < 0 ? 0 : posicoes(scorers, (s) => s.total)[indiceArtilharia];
 
   return (
     <div className="flex flex-col gap-7">

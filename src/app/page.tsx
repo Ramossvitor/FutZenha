@@ -19,6 +19,7 @@ import { attendances, games, matchDays, players, teams } from "@/db/schema";
 import { getVotacoesAbertasDoJogador } from "@/lib/deletion";
 import { formatDateShort, formatTime, todayISO } from "@/lib/format";
 import { getGrupoAtual } from "@/lib/grupo-atual";
+import { STATUS_PELADA } from "@/lib/match-day-form";
 import { posicoes } from "@/lib/posicao";
 import { getRodadasAbertasDoJogador } from "@/lib/ratings";
 import { getSession } from "@/lib/session";
@@ -174,7 +175,7 @@ export default async function HomePage() {
 
       <Section
         titulo="Próxima pelada"
-        acao={nextMatch ? <Badge tom="accent">{nextMatch.status === "scheduled" ? "marcada" : "times sorteados"}</Badge> : undefined}
+        acao={nextMatch ? <Badge tom="accent">{STATUS_PELADA[nextMatch.status]}</Badge> : undefined}
       >
         {nextMatch ? (
           <Card>

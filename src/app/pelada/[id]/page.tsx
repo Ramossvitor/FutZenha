@@ -11,7 +11,16 @@ import { IconeCadeado, IconeLuva } from "@/components/ui/icons";
 import { Nota } from "@/components/ui/nota";
 import { VestChip } from "@/components/ui/vest";
 import { db } from "@/db";
-import { attendances, games, goals, matchDays, players, teamPlayers, teams } from "@/db/schema";
+import {
+  attendances,
+  gamePlayers,
+  games,
+  goals,
+  matchDays,
+  players,
+  teamPlayers,
+  teams,
+} from "@/db/schema";
 import { formatDate, formatSkill, formatTime } from "@/lib/format";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { STATUS_PELADA } from "@/lib/match-day-form";
@@ -88,9 +97,40 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
             ),
           )
       : [];
+  // De que lado cada um jogou, POR JOGO. Não dá para sair do team_players do
+  // sorteio como saía antes: incluirNoJogo põe alguém do lado oposto sem tocar
+  // no colete da pelada, e quem chegou atrasado e foi escalado direto num jogo
+  // nem tem linha de sorteio — o gol dele saía com o chip cinza de colete
+  // desconhecido. game_players é a fonte que o resto do app já trata como
+  // autoridade sobre escalação (ver gerenciar/dados.ts e encerrar/page.tsx).
+  const escalacao =
+    gameList.length > 0
+      ? await db
+          .select({
+            gameId: gamePlayers.gameId,
+            playerId: gamePlayers.playerId,
+            side: gamePlayers.side,
+          })
+          .from(gamePlayers)
+          .where(
+            inArray(
+              gamePlayers.gameId,
+              gameList.map((g) => g.id),
+            ),
+          )
+      : [];
   const nomeDoTime = new Map(teamList.map((t) => [t.id, t.name]));
-  const timeDoJogador = new Map(
-    teamMembers.map((m) => [m.playerId, nomeDoTime.get(m.teamId) ?? ""]),
+  const jogoPorId = new Map(gameList.map((g) => [g.id, g]));
+  // Chave `jogo:jogador` porque a mesma pessoa pode trocar de lado entre jogos.
+  // Quem marcou gol sem linha de escalação fica de fora do mapa e cai no colete
+  // neutro do VestChip — melhor um chip cinza honesto do que chutar um lado.
+  const timeNoJogo = new Map(
+    escalacao.map((e) => {
+      const jogo = jogoPorId.get(e.gameId);
+      const teamId = e.side === "A" ? jogo?.teamAId : jogo?.teamBId;
+      const nome = teamId === undefined ? undefined : nomeDoTime.get(teamId);
+      return [`${e.gameId}:${e.playerId}`, nome ?? ""];
+    }),
   );
 
   const podeMarcar = matchDay.status === "scheduled";
@@ -252,9 +292,13 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
                     <ul className="mt-3 flex flex-col gap-1.5 border-t border-line-soft pt-2.5">
                       {gols.map((g, i) => (
                         <li key={i} className="flex items-center gap-2">
-                          {/* A cor é a do colete de quem marcou — é o que
-                              permite ler de relance para que lado foi o gol. */}
-                          <VestChip time={timeDoJogador.get(g.playerId) ?? ""} tamanho="sm" />
+                          {/* A cor é a do colete do lado em que a pessoa jogou
+                              NESTE jogo — é o que permite ler de relance para
+                              que lado foi o gol. */}
+                          <VestChip
+                            time={timeNoJogo.get(`${game.id}:${g.playerId}`) ?? ""}
+                            tamanho="sm"
+                          />
                           <span className="flex-1 truncate text-[12.5px] text-fg-2">
                             {g.nickname ?? g.playerName}
                           </span>

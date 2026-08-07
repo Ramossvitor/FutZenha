@@ -616,7 +616,7 @@ export function ZonaDePerigo({ pelada }: { pelada: PainelDaPelada }) {
               {votacao.status === "open" ? (
                 <p className="text-[13px] text-fg-3">
                   Faltam {faltamVotar} de {votacao.eligibleCount} votarem · precisa de{" "}
-                  {votacao.requiredYes} sim · {votacao.horasRestantes}h restantes
+                  {votacao.requiredYes} sim · <Prazo horas={votacao.horasRestantes} />
                 </p>
               ) : (
                 <p className="text-[13px] text-fg-3">
