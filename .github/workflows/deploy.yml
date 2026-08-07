@@ -77,6 +77,15 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      # Guard-rail que faltou aqui uma vez. O lock chegou na main com uma aresta
+      # peerOptional inválida (vite pedia esbuild ^0.27||^0.28 e enxergava a
+      # 0.25.12 da raiz): o npm 11 tolerava, o npm 10 do runner tentava consertar
+      # criando 27 posições que o lock não tinha, e o `npm ci` morria com
+      # "Missing: esbuild@0.28.1" — mensagem que omite o CAMINHO e por isso
+      # parecia mentira. `npm ls` acusa a aresta inválida em qualquer versão.
+      - name: Lock íntegro (nenhuma aresta inválida)
+        run: npm ls --all > /dev/null
+
       # --- Gate 1/5 -----------------------------------------------------------
       - name: Testes (vitest)
         run: npm test
