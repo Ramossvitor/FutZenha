@@ -63,13 +63,13 @@ export function AvatarPilha({
           key={`${nome}-${i}`}
           nome={nome}
           tamanho="sm"
-          className="-ml-2 ring-2 ring-surface first:ml-0"
+          className="-ml-1.5 ring-2 ring-surface first:ml-0"
         />
       ))}
       {resto > 0 && (
         <span
           aria-hidden
-          className="-ml-2 inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 font-display text-[10px] font-bold text-fg-3 ring-2 ring-surface"
+          className="-ml-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 font-display text-[10px] font-bold text-fg-3 ring-2 ring-surface"
         >
           +{resto}
         </span>

@@ -1,148 +1,327 @@
 import Link from "next/link";
 import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
+import { setMyAttendance } from "@/app/pelada/[id]/actions";
+import { VotarForm } from "@/app/votacao/[id]/votar-form";
+import { AvatarPilha } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { LinkButton, SubmitButton } from "@/components/ui/button";
+import { Card, Section, SectionLink } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
+import { IconeAlerta, IconeSeta } from "@/components/ui/icons";
+import { BarraDaVotacao } from "@/components/ui/meter";
+import { Podium } from "@/components/ui/podium";
+import { Prazo } from "@/components/ui/prazo";
+import { VestChip } from "@/components/ui/vest";
+import { db } from "@/db";
+import { attendances, games, matchDays, players, teams } from "@/db/schema";
+import { getVotacoesAbertasDoJogador } from "@/lib/deletion";
+import { formatDateShort, formatTime, todayISO } from "@/lib/format";
+import { getGrupoAtual } from "@/lib/grupo-atual";
+import { posicoes } from "@/lib/posicao";
+import { getRodadasAbertasDoJogador } from "@/lib/ratings";
+import { getSession } from "@/lib/session";
 import { getTopScorers } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
-import { db } from "@/db";
-import { attendances, games, matchDays, teams } from "@/db/schema";
-import { formatDate, formatTime, todayISO } from "@/lib/format";
+
+const DIA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+/** O bloco de data do design: dia da semana, número grande, mês. */
+function BlocoDeData({ data }: { data: string }) {
+  // Meio-dia pelo mesmo motivo do format.ts: `date` do Postgres não tem fuso, e
+  // meia-noite desliza um dia para trás em fuso negativo.
+  const d = new Date(`${data}T12:00:00`);
+  return (
+    <div className="flex shrink-0 flex-col items-center rounded-ctl border border-line bg-surface-2 px-3 py-2">
+      <span className="font-display text-[10px] font-extrabold tracking-[.12em] text-accent-ink uppercase">
+        {DIA[d.getDay()]}
+      </span>
+      <span
+        className="font-display text-[30px] leading-none font-black font-stretch-125% text-fg"
+        data-num
+      >
+        {String(d.getDate()).padStart(2, "0")}
+      </span>
+      <span className="font-display text-[10px] font-bold tracking-[.1em] text-fg-4 uppercase">
+        {MES[d.getMonth()]}
+      </span>
+    </div>
+  );
+}
 
 export default async function HomePage() {
+  const session = await getSession();
+  const grupo = await getGrupoAtual();
+  const escopoDoGrupo = grupo ? eq(matchDays.groupId, grupo.id) : undefined;
+
   const [nextMatch] = await db
     .select()
     .from(matchDays)
-    .where(and(gte(matchDays.date, todayISO()), ne(matchDays.status, "finished")))
+    .where(
+      and(gte(matchDays.date, todayISO()), ne(matchDays.status, "finished"), escopoDoGrupo),
+    )
     .orderBy(asc(matchDays.date), asc(matchDays.id))
     .limit(1);
 
-  const confirmedCount = nextMatch
-    ? (
-        await db
-          .select()
-          .from(attendances)
-          .where(and(eq(attendances.matchDayId, nextMatch.id), eq(attendances.status, "in")))
-      ).length
-    : 0;
+  const presencas = nextMatch
+    ? await db
+        .select({ status: attendances.status, name: players.name, nickname: players.nickname, playerId: players.id })
+        .from(attendances)
+        .innerJoin(players, eq(attendances.playerId, players.id))
+        .where(eq(attendances.matchDayId, nextMatch.id))
+    : [];
+  const confirmados = presencas.filter((p) => p.status === "in");
+  const minhaPresenca = session
+    ? presencas.find((p) => p.playerId === session.player.id)?.status
+    : undefined;
 
   const recentDays = await db
     .select()
     .from(matchDays)
-    .where(eq(matchDays.status, "finished"))
+    .where(and(eq(matchDays.status, "finished"), escopoDoGrupo))
     .orderBy(desc(matchDays.date), desc(matchDays.id))
     .limit(3);
-  const recentGames = recentDays.length
-    ? await db
-        .select()
-        .from(games)
-        .where(
-          inArray(
-            games.matchDayId,
-            recentDays.map((d) => d.id),
-          ),
-        )
-        .orderBy(asc(games.sortOrder))
-    : [];
-  const teamRows = recentDays.length
-    ? await db
-        .select()
-        .from(teams)
-        .where(
-          inArray(
-            teams.matchDayId,
-            recentDays.map((d) => d.id),
-          ),
-        )
-    : [];
-  const teamNameById = new Map(teamRows.map((t) => [t.id, t.name]));
+  const ids = recentDays.map((d) => d.id);
+  const [recentGames, teamRows] = ids.length
+    ? await Promise.all([
+        db.select().from(games).where(inArray(games.matchDayId, ids)).orderBy(asc(games.sortOrder)),
+        db.select().from(teams).where(inArray(teams.matchDayId, ids)),
+      ])
+    : [[], []];
+  const nomeDoTime = new Map(teamRows.map((t) => [t.id, t.name]));
 
-  const topScorers = (await getTopScorers()).slice(0, 3);
+  const artilheiros = (await getTopScorers({ groupId: grupo?.id })).slice(0, 3);
+  const posDoPodio = posicoes(artilheiros, (a) => a.total);
+
+  // As pendências são pessoais e independem do grupo escolhido: uma avaliação
+  // com prazo correndo não pode sumir da tela só porque a pessoa trocou de
+  // contexto — é justamente o que ela não pode perder.
+  const [rodadas, votacoes] = session
+    ? await Promise.all([
+        getRodadasAbertasDoJogador(session.player.id),
+        getVotacoesAbertasDoJogador(session.player.id),
+      ])
+    : [[], []];
+  const rodadaPendente = rodadas.find((r) => !r.jaEnviou);
+  const votacaoPendente = votacoes.find((v) => !v.jaVotei && v.horasRestantes > 0);
 
   return (
-    <div className="flex flex-col gap-8">
-      <section>
-        <h1 className="mb-3 text-2xl font-bold">Próxima pelada</h1>
+    <div className="flex flex-col gap-7">
+      {rodadaPendente && (
+        <Link
+          href={`/avaliar/${rodadaPendente.round.id}`}
+          className="-mx-4 flex items-center gap-3 bg-accent px-4 py-3 text-on-accent transition-colors hover:bg-accent-hover lg:mx-0 lg:rounded-card"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-[16px] leading-[1.2] font-black font-stretch-112%">
+              Avalia a rapaziada
+            </span>
+            <span className="block truncate font-display text-[11px] font-bold opacity-75">
+              pelada de {formatDateShort(rodadaPendente.matchDayDate)} · {rodadaPendente.location}
+            </span>
+          </span>
+          <Prazo horas={rodadaPendente.horasRestantes} sobre="accent" />
+          <IconeSeta className="size-5 shrink-0" />
+        </Link>
+      )}
+
+      {votacaoPendente && (
+        <Card className="border-danger-line bg-danger-tint p-4">
+          <div className="flex items-start gap-2.5">
+            <IconeAlerta className="mt-0.5 size-5 shrink-0 text-danger" />
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[15px] leading-[1.25] font-extrabold font-stretch-112% text-fg">
+                Querem apagar a pelada de {formatDateShort(votacaoPendente.matchDayDate)}
+              </p>
+              <p className="mt-1 text-[13px] leading-[1.45] text-fg-2">
+                {votacaoPendente.reason}
+              </p>
+              <p className="mt-1 text-[13px] leading-[1.45] text-fg-2">
+                Não votar conta como <strong className="text-fg">contra</strong>.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-col gap-1.5">
+            <BarraDaVotacao
+              sim={votacaoPendente.placar.sim}
+              nao={votacaoPendente.placar.nao}
+              elegiveis={votacaoPendente.placar.elegiveis}
+            />
+            <div className="flex flex-wrap justify-between gap-x-3 font-display text-[10px] font-bold tracking-[.08em] uppercase">
+              <span className="text-accent-ink">{votacaoPendente.placar.sim} a favor</span>
+              <span className="text-danger-ink">{votacaoPendente.placar.nao} contra</span>
+              <span className="text-fg-4">
+                precisa de {votacaoPendente.placar.necessarios} de{" "}
+                {votacaoPendente.placar.elegiveis}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <VotarForm voteId={votacaoPendente.voteId} />
+          </div>
+
+          <div className="mt-2.5 flex items-center gap-2">
+            <Prazo horas={votacaoPendente.horasRestantes} />
+            <span className="text-[11.5px] text-fg-3">O voto é definitivo.</span>
+          </div>
+        </Card>
+      )}
+
+      <Section
+        titulo="Próxima pelada"
+        acao={nextMatch ? <Badge tom="accent">{nextMatch.status === "scheduled" ? "marcada" : "times sorteados"}</Badge> : undefined}
+      >
         {nextMatch ? (
-          <Link
-            href={`/pelada/${nextMatch.id}`}
-            className="block rounded-xl border-2 border-emerald-600 bg-white p-5 shadow-sm hover:bg-emerald-50 dark:bg-neutral-900 dark:hover:bg-neutral-800"
-          >
-            <p className="text-xl font-bold capitalize">{formatDate(nextMatch.date)}</p>
-            <p className="text-neutral-500">
-              {formatTime(nextMatch.startTime) && <>{formatTime(nextMatch.startTime)} · </>}
-              {nextMatch.location}
-            </p>
-            <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-              {confirmedCount} confirmado{confirmedCount === 1 ? "" : "s"} — toca aqui para
-              confirmar presença →
-            </p>
-          </Link>
+          <Card>
+            <Link href={`/pelada/${nextMatch.id}`} className="block p-4 hover:bg-surface-2">
+              <div className="flex items-start gap-3.5">
+                <BlocoDeData data={nextMatch.date} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-[19px] leading-[1.15] font-extrabold font-stretch-112% text-fg">
+                    {formatTime(nextMatch.startTime) && <>{formatTime(nextMatch.startTime)} · </>}
+                    {nextMatch.location}
+                  </p>
+                  {nextMatch.notes && (
+                    <p className="mt-1 text-[13px] leading-[1.45] text-fg-3">{nextMatch.notes}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center gap-2.5 border-t border-line pt-3.5">
+                <span
+                  className="font-display text-[24px] leading-none font-black font-stretch-125% text-fg"
+                  data-num
+                >
+                  {confirmados.length}
+                </span>
+                <span className="font-display text-[11px] leading-[1.25] font-bold tracking-[.08em] text-fg-3 uppercase">
+                  {confirmados.length === 1 ? "confirmado" : "confirmados"}
+                </span>
+                <span className="flex-1" />
+                <AvatarPilha nomes={confirmados.map((c) => c.nickname ?? c.name)} />
+              </div>
+            </Link>
+
+            {/* Presença própria só existe antes do sorteio — depois dele, quem
+                mexe é quem organiza. É a mesma regra da página da pelada. */}
+            {session && nextMatch.status === "scheduled" && (
+              <div className="flex border-t border-line">
+                <form action={setMyAttendance.bind(null, nextMatch.id, "in")} className="flex-1">
+                  <SubmitButton
+                    variante={minhaPresenca === "in" ? "primary" : "ghost"}
+                    tamanho="lg"
+                    className="w-full rounded-none rounded-bl-card border-0 border-r border-line"
+                  >
+                    Vou
+                  </SubmitButton>
+                </form>
+                <form action={setMyAttendance.bind(null, nextMatch.id, "out")} className="flex-1">
+                  <SubmitButton
+                    variante={minhaPresenca === "out" ? "danger" : "ghost"}
+                    tamanho="lg"
+                    className="w-full rounded-none rounded-br-card border-0"
+                  >
+                    Fora
+                  </SubmitButton>
+                </form>
+              </div>
+            )}
+
+            {!session && nextMatch.status === "scheduled" && (
+              <div className="border-t border-line px-4 py-3">
+                <Link
+                  href={`/login?next=/pelada/${nextMatch.id}`}
+                  className="text-[13px] font-semibold text-accent-ink hover:underline"
+                >
+                  Entre na sua conta para confirmar presença
+                </Link>
+              </div>
+            )}
+          </Card>
         ) : (
-          <p className="rounded-xl border border-dashed border-neutral-300 p-5 text-neutral-500 dark:border-neutral-700">
-            Nenhuma pelada marcada ainda. ⚽
-          </p>
+          <EmptyState
+            titulo="Nenhuma pelada marcada"
+            descricao={
+              grupo
+                ? "Ninguém marcou nada neste grupo ainda."
+                : "Ninguém marcou nada ainda. Quem organiza é quem marca."
+            }
+            acao={
+              session ? (
+                <LinkButton href="/peladas/nova" variante="primary" tamanho="sm">
+                  Marcar pelada
+                </LinkButton>
+              ) : undefined
+            }
+          />
         )}
-      </section>
+      </Section>
 
       {recentDays.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-lg font-bold">Últimos resultados</h2>
-          <div className="flex flex-col gap-2">
+        <Section titulo="Últimos resultados" acao={<SectionLink href="/peladas">Ver todas</SectionLink>}>
+          <HairlineList as="ul">
             {recentDays.map((day) => {
               const dayGames = recentGames.filter((g) => g.matchDayId === day.id);
               return (
-                <Link
-                  key={day.id}
-                  href={`/pelada/${day.id}`}
-                  className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm hover:border-emerald-600 dark:border-neutral-800 dark:bg-neutral-900"
-                >
-                  <p className="font-medium capitalize">{formatDate(day.date)}</p>
-                  {dayGames.length > 0 && (
-                    <p className="text-sm text-neutral-500">
-                      {dayGames
-                        .map(
-                          (g) =>
-                            `${teamNameById.get(g.teamAId)} ${g.scoreA}×${g.scoreB} ${teamNameById.get(g.teamBId)}`,
-                        )
-                        .join(" · ")}
-                    </p>
-                  )}
-                </Link>
+                <li key={day.id}>
+                  <HairlineRowLink href={`/pelada/${day.id}`} className="items-start">
+                    <span className="w-11 shrink-0 pt-0.5 font-display text-[11px] font-bold text-fg-4">
+                      {formatDateShort(day.date).slice(0, 5)}
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      {dayGames.length === 0 && (
+                        <span className="text-[13px] text-fg-4">sem jogo lançado</span>
+                      )}
+                      {dayGames.map((g) => (
+                        <span key={g.id} className="flex items-center gap-1.5">
+                          <VestChip time={nomeDoTime.get(g.teamAId) ?? ""} tamanho="sm" />
+                          <span
+                            className="font-display text-[14px] font-extrabold font-stretch-112% text-fg"
+                            data-num
+                          >
+                            {g.scoreA} × {g.scoreB}
+                          </span>
+                          <VestChip time={nomeDoTime.get(g.teamBId) ?? ""} tamanho="sm" />
+                          <span className="truncate text-[12px] text-fg-4">
+                            {nomeDoTime.get(g.teamAId)} × {nomeDoTime.get(g.teamBId)}
+                          </span>
+                        </span>
+                      ))}
+                    </span>
+                  </HairlineRowLink>
+                </li>
               );
             })}
-          </div>
-          <Link
-            href="/peladas"
-            className="mt-2 inline-block text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-          >
-            Ver todas as peladas →
-          </Link>
-        </section>
+          </HairlineList>
+        </Section>
       )}
 
-      {topScorers.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-lg font-bold">Artilharia</h2>
-          <ol className="flex flex-col gap-1">
-            {topScorers.map((scorer, i) => (
-              <li
-                key={scorer.name}
-                className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900"
-              >
-                <span className="text-lg">{["🥇", "🥈", "🥉"][i]}</span>
-                <span className="font-medium">{scorer.name}</span>
-                <span className="ml-auto text-sm text-neutral-500">
-                  {scorer.total} gol{scorer.total === 1 ? "" : "s"}
-                </span>
-              </li>
-            ))}
-          </ol>
-          <Link
-            href="/artilharia"
-            className="mt-2 inline-block text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-          >
-            Ranking completo →
+      {artilheiros.length > 0 && (
+        <Section
+          titulo="Pódio da artilharia"
+          acao={<SectionLink href="/rankings?aba=artilharia">Ranking</SectionLink>}
+        >
+          <Podium
+            itens={artilheiros.map((a, i) => ({
+              posicao: posDoPodio[i],
+              nome: a.nickname ?? a.name,
+              valor: a.total,
+            }))}
+          />
+        </Section>
+      )}
+
+      {grupo && (
+        <p className="text-center text-[12px] text-fg-4">
+          Você está vendo <strong className="text-fg-3">{grupo.name}</strong>.{" "}
+          <Link href="/grupos" className="text-accent-ink hover:underline">
+            Trocar de grupo
           </Link>
-        </section>
+        </p>
       )}
     </div>
   );

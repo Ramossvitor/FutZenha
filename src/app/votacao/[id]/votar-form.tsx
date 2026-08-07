@@ -1,10 +1,20 @@
 "use client";
 
 import { useActionState } from "react";
+import { Banner } from "@/components/ui/banner";
+import { SubmitButton } from "@/components/ui/button";
 import { votar, type VotarState } from "./actions";
 
 const initialState: VotarState = {};
 
+/**
+ * Os dois votos, em formulários que competem.
+ *
+ * São dois `useActionState` porque cada botão manda um valor diferente para a
+ * mesma action, e o `pending` de um precisa desabilitar o outro — votar é
+ * definitivo, e um duplo clique atrapalhado não pode registrar o contrário do
+ * que a pessoa quis.
+ */
 export function VotarForm({ voteId }: { voteId: number }) {
   const [state, formAction, pending] = useActionState(votar.bind(null, voteId, true), initialState);
   const [stateNao, formActionNao, pendingNao] = useActionState(
@@ -12,30 +22,35 @@ export function VotarForm({ voteId }: { voteId: number }) {
     initialState,
   );
   const erro = state.error ?? stateNao.error;
+  const ocupado = pending || pendingNao;
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
-        <form action={formAction}>
-          <button
-            type="submit"
-            disabled={pending || pendingNao}
-            className="rounded-lg bg-red-700 px-4 py-2 font-medium text-white hover:bg-red-800 disabled:opacity-60"
+      <div className="flex gap-2">
+        <form action={formActionNao} className="flex-1">
+          <SubmitButton
+            variante="secondary"
+            disabled={ocupado}
+            pending={pendingNao}
+            labelPending="Registrando…"
+            className="w-full"
           >
-            {pending ? "Registrando..." : "Sim, apagar a pelada"}
-          </button>
+            Manter
+          </SubmitButton>
         </form>
-        <form action={formActionNao}>
-          <button
-            type="submit"
-            disabled={pending || pendingNao}
-            className="rounded-lg border border-neutral-300 px-4 py-2 font-medium hover:bg-neutral-100 disabled:opacity-60 dark:border-neutral-700 dark:hover:bg-neutral-800"
+        <form action={formAction} className="flex-1">
+          <SubmitButton
+            variante="danger"
+            disabled={ocupado}
+            pending={pending}
+            labelPending="Registrando…"
+            className="w-full"
           >
-            {pendingNao ? "Registrando..." : "Não, manter"}
-          </button>
+            Sim, apagar
+          </SubmitButton>
         </form>
       </div>
-      {erro && <p className="text-sm text-red-600">{erro}</p>}
+      {erro && <Banner tom="erro">{erro}</Banner>}
     </div>
   );
 }
