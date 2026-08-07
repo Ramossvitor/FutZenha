@@ -70,7 +70,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
 
           <div className="flex min-w-0 flex-1 flex-col">
             <TopBar session={session} grupo={grupo} naoLidas={naoLidas} />
-            <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 lg:px-8 lg:py-8">
+            {/* 3xl no celular e no tablet, 5xl a partir do desktop: a tela de
+                encerrar tem um trilho de 20rem ao lado do conteúdo, e em 768px
+                sobrava menos de 26rem para os dois lados do jogo. */}
+            <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 lg:max-w-5xl lg:px-8 lg:py-8">
               {children}
             </main>
             <TabBar session={session} />

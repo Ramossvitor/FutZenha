@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/field";
+import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 
 // Os botões de cada linha vêm prontos do servidor como ReactNode — é assim que
 // as Server Actions continuam sendo <form> normais e nenhuma regra do domínio
@@ -34,36 +37,40 @@ export function BuscaJogador({
       )
     : itens;
 
-  if (itens.length === 0) return <p className="text-sm text-neutral-500">{vazio}</p>;
+  if (itens.length === 0) return <EmptyState titulo={vazio} />;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       {/* Com poucos nomes a busca só atrapalha. */}
       {itens.length > 8 && (
-        <input
+        <Input
           type="search"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder={`Buscar entre ${itens.length} jogadores...`}
-          className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+          placeholder={`Buscar entre ${itens.length} jogadores…`}
+          aria-label="Buscar jogador"
         />
       )}
 
       {filtrados.length === 0 ? (
-        <p className="text-sm text-neutral-500">{semResultado}</p>
+        <EmptyState titulo={semResultado} />
       ) : (
-        <ul className="flex flex-col gap-1">
+        <HairlineList as="ul">
           {filtrados.map((item) => (
-            <li key={item.id} className="flex flex-wrap items-center gap-2 py-1">
-              <span>{item.nome}</span>
-              {item.apelido && (
-                <span className="text-sm text-neutral-500">“{item.apelido}”</span>
-              )}
+            <HairlineRow as="li" key={item.id}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-display text-[14px] font-bold text-fg">
+                  {item.apelido ?? item.nome}
+                </span>
+                {item.apelido && (
+                  <span className="block truncate text-[11.5px] text-fg-4">{item.nome}</span>
+                )}
+              </span>
               {item.selos}
-              <span className="ml-auto flex gap-1">{item.acoes}</span>
-            </li>
+              <span className="ml-auto flex shrink-0 gap-1.5">{item.acoes}</span>
+            </HairlineRow>
           ))}
-        </ul>
+        </HairlineList>
       )}
     </div>
   );

@@ -1,30 +1,32 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
+import { Badge } from "@/components/ui/badge";
+import { BannerDaQuery } from "@/components/ui/banner";
+import { LinkButton, SubmitButton } from "@/components/ui/button";
+import { Card, CardBody, CardHeader, Eyebrow, PageHeader } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
+import { IconeAlerta, IconeCheck, IconeLuva } from "@/components/ui/icons";
+import { PendingButton } from "@/components/ui/pending-button";
+import { VestChip } from "@/components/ui/vest";
 import { db } from "@/db";
 import { gamePlayers, games, players, teams, users } from "@/db/schema";
+import { cx } from "@/lib/cx";
+import { montarChecklist } from "@/lib/encerramento";
 import { formatDate } from "@/lib/format";
+import { companheirosPorJogador, gruposElegiveis } from "@/lib/lineup";
 import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
-import { vestClass } from "@/lib/team-colors";
 import { BuscaJogador, type ItemJogador } from "../busca-jogador";
 import { confirmarEncerramento, incluirNoJogo, moverLado, removerDoJogo } from "./actions";
 
 export const metadata = { title: "Conferir escalação" };
 
-const errorMessages: Record<string, string> = {
-  "jogo-sem-time": "Todo jogo precisa de pelo menos um jogador de cada lado.",
+const LOCAIS = {
   "precisa-confirmar":
     "Quem tem conta ativa e ainda não entrou nesta pelada precisa marcar a própria presença antes de ser escalado.",
 };
 
-const acaoClass =
-  "rounded-lg border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
-
-const seloSemAcesso = (
-  <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
-    sem acesso
-  </span>
-);
+const SEM_ACESSO = <Badge tom="dashed">não avalia</Badge>;
 
 export default async function EncerrarPeladaPage({
   params,
@@ -78,161 +80,282 @@ export default async function EncerrarPeladaPage({
       : [];
 
   const jogadorPorId = new Map(elenco.map((p) => [p.id, p]));
-  const teamNameById = new Map(teamList.map((t) => [t.id, t.name]));
-  const errorMessage = typeof erro === "string" ? errorMessages[erro] : undefined;
+  const nomeDoTime = new Map(teamList.map((t) => [t.id, t.name]));
+
+  // O checklist usa as mesmas funções puras que decidem quem avalia quem, então
+  // o que ele promete é o que vai acontecer de fato no encerramento.
+  const comConta = new Set(elenco.filter((p) => p.userId !== null).map((p) => p.id));
+  const avaliaveis = gruposElegiveis(companheirosPorJogador(escalacao), comConta);
+  const escaladosSemConta = [
+    ...new Set(escalacao.map((e) => e.playerId).filter((pid) => !comConta.has(pid))),
+  ].map((pid) => jogadorPorId.get(pid)?.nickname ?? jogadorPorId.get(pid)?.name ?? "alguém");
+
+  const checklist = montarChecklist({
+    // TODOS os jogos, inclusive os sem nenhuma linha de escalação: são
+    // justamente eles que travam o encerramento no servidor.
+    jogos: gameList.map((g, i) => ({
+      ordem: i + 1,
+      ladoA: escalacao.filter((e) => e.gameId === g.id && e.side === "A").length,
+      ladoB: escalacao.filter((e) => e.gameId === g.id && e.side === "B").length,
+    })),
+    avaliaveis: avaliaveis.size,
+    semConta: escaladosSemConta,
+  });
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-bold capitalize">Conferir escalação — {formatDate(matchDay.date)}</h1>
-        <Link
-          href={`/pelada/${id}/gerenciar`}
-          className="ml-auto text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-        >
-          ← Voltar
-        </Link>
-      </header>
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
+      <div className="flex min-w-0 flex-1 flex-col gap-6">
+        <PageHeader
+          titulo="Conferir escalação e encerrar"
+          selos={<Badge tom="warn">{formatDate(matchDay.date)}</Badge>}
+          descricao="Última chance de acertar quem jogou de que lado. Depois de encerrar, a escalação não muda mais — e é ela que define quem avalia quem."
+          acao={
+            <LinkButton href={`/pelada/${id}/gerenciar`} variante="secondary" tamanho="sm">
+              Voltar
+            </LinkButton>
+          }
+        />
 
-      <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-        Confira quem jogou em cada time. <strong>Depois de encerrar, a escalação não pode mais
-        ser alterada</strong> — é ela que define quem avalia quem. Placar e gols ainda poderão ser
-        corrigidos por 24h. Corrigir uma escalação errada depois disso só excluindo a pelada, o que
-        exige votação dos jogadores.
-      </p>
+        <BannerDaQuery erro={erro} locais={LOCAIS} />
 
-      {errorMessage && (
-        <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {errorMessage}
-        </p>
-      )}
+        {gameList.length === 0 && (
+          <EmptyState
+            titulo="Nenhum jogo lançado"
+            descricao="Dá para encerrar assim, mas não haverá avaliação — não há escalação para dizer quem jogou com quem."
+          />
+        )}
 
-      {gameList.length === 0 && (
-        <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          Nenhum jogo lançado nesta pelada. Encerrar sem jogos é possível, mas não haverá
-          avaliação — não há escalação para dizer quem jogou com quem.
-        </p>
-      )}
+        {gameList.map((game, i) => {
+          const doJogo = escalacao.filter((e) => e.gameId === game.id);
+          const fora = elenco.filter((p) => !doJogo.some((e) => e.playerId === p.id));
+          const lado = (side: "A" | "B") =>
+            doJogo
+              .filter((e) => e.side === side)
+              .map((e) => jogadorPorId.get(e.playerId))
+              .filter((p) => p !== undefined)
+              .sort((a, b) => a.name.localeCompare(b.name));
 
-      {gameList.map((game, i) => {
-        const doJogo = escalacao.filter((e) => e.gameId === game.id);
-        const fora = elenco.filter((p) => !doJogo.some((e) => e.playerId === p.id));
+          return (
+            <Card key={game.id}>
+              <CardHeader>
+                <Eyebrow>jogo {i + 1}</Eyebrow>
+                <span className="flex flex-1 items-center gap-2">
+                  <VestChip time={nomeDoTime.get(game.teamAId) ?? ""} tamanho="sm" />
+                  <span className="font-display text-[13px] font-bold text-fg-2">
+                    {nomeDoTime.get(game.teamAId)}
+                  </span>
+                  <span className="font-display text-[15px] font-black text-fg" data-num>
+                    {game.scoreA} × {game.scoreB}
+                  </span>
+                  <VestChip time={nomeDoTime.get(game.teamBId) ?? ""} tamanho="sm" />
+                  <span className="font-display text-[13px] font-bold text-fg-2">
+                    {nomeDoTime.get(game.teamBId)}
+                  </span>
+                </span>
+              </CardHeader>
 
-        const lado = (side: "A" | "B") =>
-          doJogo
-            .filter((e) => e.side === side)
-            .map((e) => jogadorPorId.get(e.playerId))
-            .filter((p) => p !== undefined)
-            .sort((a, b) => a.name.localeCompare(b.name));
+              {/* Dois lados lado a lado no desktop, empilhados no celular — é a
+                  tela que mais ganha com largura. */}
+              <div className="grid sm:grid-cols-2">
+                {(["A", "B"] as const).map((side) => {
+                  const membros = lado(side);
+                  const nome = nomeDoTime.get(side === "A" ? game.teamAId : game.teamBId) ?? "";
+                  return (
+                    <div
+                      key={side}
+                      className={cx(
+                        "flex flex-col gap-2 p-4",
+                        side === "A" && "sm:border-r sm:border-line",
+                      )}
+                    >
+                      <div className="flex items-center gap-2 border-b border-line-soft pb-2">
+                        <VestChip time={nome} />
+                        <span className="flex-1 font-display text-[15px] font-extrabold font-stretch-112% text-fg">
+                          {nome}
+                        </span>
+                        <span className="font-display text-[11px] font-bold text-fg-4">
+                          {membros.length} em campo
+                        </span>
+                      </div>
 
-        return (
-          <section
-            key={game.id}
-            className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-          >
-            <h2 className="mb-3 flex flex-wrap items-center gap-2 font-bold">
-              <span className="text-xs font-normal text-neutral-400">Jogo {i + 1}</span>
-              <span className={`inline-block rounded-full px-3 py-1 text-sm ${vestClass(teamNameById.get(game.teamAId) ?? "")}`}>
-                {teamNameById.get(game.teamAId)}
-              </span>
-              <span className="text-neutral-400">
-                {game.scoreA} × {game.scoreB}
-              </span>
-              <span className={`inline-block rounded-full px-3 py-1 text-sm ${vestClass(teamNameById.get(game.teamBId) ?? "")}`}>
-                {teamNameById.get(game.teamBId)}
-              </span>
-            </h2>
+                      {membros.length === 0 ? (
+                        <p className="flex items-center gap-1.5 text-[13px] font-semibold text-danger-ink">
+                          <IconeAlerta className="size-4" />
+                          Nenhum jogador deste lado.
+                        </p>
+                      ) : (
+                        <ul className="flex flex-col gap-1">
+                          {membros.map((p) => (
+                            <li key={p.id} className="flex items-center gap-2 py-1">
+                              {p.isGoalkeeper && (
+                                <span title="goleiro">
+                                  <IconeLuva className="size-4 shrink-0 text-warn-ink" />
+                                  <span className="sr-only">goleiro</span>
+                                </span>
+                              )}
+                              <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
+                                {p.nickname ?? p.name}
+                              </span>
+                              {!p.userId && SEM_ACESSO}
+                              <span className="flex shrink-0 gap-1">
+                                <form action={moverLado.bind(null, id, game.id, p.id)}>
+                                  <SubmitButton
+                                    variante="secondary"
+                                    tamanho="sm"
+                                    title="Trocar de lado"
+                                  >
+                                    {side === "A" ? "Mover →" : "← Mover"}
+                                  </SubmitButton>
+                                </form>
+                                <form action={removerDoJogo.bind(null, id, game.id, p.id)}>
+                                  <SubmitButton
+                                    variante="danger-outline"
+                                    tamanho="sm"
+                                    title="Não jogou esta partida"
+                                  >
+                                    Não jogou
+                                  </SubmitButton>
+                                </form>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {(["A", "B"] as const).map((side) => {
-                const membros = lado(side);
-                return (
-                  <div key={side}>
-                    <h3 className="mb-1 text-sm font-medium text-neutral-500">
-                      {teamNameById.get(side === "A" ? game.teamAId : game.teamBId)} ({membros.length})
-                    </h3>
-                    {membros.length === 0 && (
-                      <p className="text-sm text-red-600">Nenhum jogador deste lado.</p>
-                    )}
-                    <ul className="flex flex-col gap-1 text-sm">
-                      {membros.map((p) => (
-                        <li key={p.id} className="flex items-center gap-2">
-                          <span>
-                            {p.isGoalkeeper ? "🧤 " : ""}
-                            {p.name}
-                          </span>
-                          {!p.userId && seloSemAcesso}
-                          <span className="ml-auto flex gap-1">
-                            <form action={moverLado.bind(null, id, game.id, p.id)}>
-                              <button type="submit" className={acaoClass} title="Trocar de time">
-                                {side === "A" ? "→" : "←"}
-                              </button>
-                            </form>
-                            <form action={removerDoJogo.bind(null, id, game.id, p.id)}>
-                              <button
-                                type="submit"
-                                className="rounded-lg border border-red-300 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
-                                title="Não jogou esta partida"
+              <details className="border-t border-line">
+                <summary className="cursor-pointer px-4 py-3 font-display text-[12px] font-bold tracking-[.06em] text-accent-ink uppercase">
+                  + Incluir alguém neste jogo ({fora.length} fora)
+                </summary>
+                <div className="flex flex-col gap-2 px-4 pb-4">
+                  <p className="text-[12px] text-fg-4">
+                    Escalar aqui marca a presença do jogador na pelada automaticamente.
+                  </p>
+                  <BuscaJogador
+                    vazio="Todo o elenco já está escalado neste jogo."
+                    itens={fora.map(
+                      (p): ItemJogador => ({
+                        id: p.id,
+                        nome: p.name,
+                        apelido: p.nickname,
+                        selos: p.userId ? undefined : SEM_ACESSO,
+                        acoes: (
+                          <>
+                            {(["A", "B"] as const).map((side) => (
+                              <form
+                                key={side}
+                                action={incluirNoJogo.bind(null, id, game.id, side, p.id)}
                               >
-                                ×
-                              </button>
-                            </form>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              })}
-            </div>
+                                <SubmitButton variante="secondary" tamanho="sm">
+                                  +{" "}
+                                  {nomeDoTime.get(side === "A" ? game.teamAId : game.teamBId)}
+                                </SubmitButton>
+                              </form>
+                            ))}
+                          </>
+                        ),
+                      }),
+                    )}
+                  />
+                </div>
+              </details>
+            </Card>
+          );
+        })}
+      </div>
 
-            <details className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
-              <summary className="cursor-pointer text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                Incluir alguém neste jogo ({fora.length} fora)
-              </summary>
-              <p className="mt-2 mb-2 text-xs text-neutral-500">
-                Escalar aqui marca a presença do jogador na pelada automaticamente.
-              </p>
-              <BuscaJogador
-                vazio="Todo o elenco já está escalado neste jogo."
-                itens={fora.map(
-                  (p): ItemJogador => ({
-                    id: p.id,
-                    nome: p.name,
-                    apelido: p.nickname,
-                    selos: p.userId ? undefined : seloSemAcesso,
-                    acoes: (
-                      <>
-                        {(["A", "B"] as const).map((side) => (
-                          <form key={side} action={incluirNoJogo.bind(null, id, game.id, side, p.id)}>
-                            <button type="submit" className={acaoClass}>
-                              + {teamNameById.get(side === "A" ? game.teamAId : game.teamBId)}
-                            </button>
-                          </form>
-                        ))}
-                      </>
-                    ),
-                  }),
-                )}
-              />
-            </details>
-          </section>
-        );
-      })}
+      {/* Trilho fixo no desktop; no celular vira o fim da página. Nada de
+          hairline em volta: `sticky` não funciona dentro de overflow-hidden. */}
+      <aside className="flex w-full flex-col gap-4 lg:sticky lg:top-6 lg:w-[20rem] lg:shrink-0">
+        <div>
+          <Eyebrow>antes de encerrar</Eyebrow>
+          <HairlineList as="ul" className="mt-2">
+            {checklist.itens.map((item) => (
+              <HairlineRow as="li" key={item.chave} className="items-start">
+                <span
+                  className={cx(
+                    "mt-0.5 flex size-[18px] shrink-0 items-center justify-center rounded-selo border",
+                    item.tom === "ok" && "border-accent-line bg-accent-tint text-accent-ink",
+                    item.tom === "alerta" && "border-danger-line bg-danger-tint text-danger-ink",
+                    item.tom === "neutro" && "border-line bg-surface-2 text-fg-4",
+                  )}
+                >
+                  {item.tom === "ok" ? (
+                    <IconeCheck className="size-3" />
+                  ) : item.tom === "alerta" ? (
+                    <IconeAlerta className="size-3" />
+                  ) : (
+                    <span aria-hidden className="size-1 rounded-full bg-current" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={cx(
+                      "block font-display text-[13.5px] leading-[1.3] font-bold",
+                      item.tom === "alerta" ? "text-danger-ink" : "text-fg",
+                    )}
+                  >
+                    {item.titulo}
+                  </span>
+                  <span className="mt-0.5 block text-[11.5px] leading-[1.4] text-fg-4">
+                    {item.detalhe}
+                  </span>
+                </span>
+              </HairlineRow>
+            ))}
+          </HairlineList>
+        </div>
 
-      <section className="rounded-xl border border-emerald-300 bg-white p-4 shadow-sm dark:border-emerald-800 dark:bg-neutral-900">
-        <form action={confirmarEncerramento.bind(null, id)}>
-          <p className="mb-3 text-sm text-neutral-600 dark:text-neutral-300">
-            Encerrar trava a escalação, faz os resultados contarem na artilharia, nos rankings e na
-            presença, e abre a rodada de avaliação para quem jogou.
-          </p>
-          <button
-            type="submit"
-            className="rounded-lg bg-emerald-700 px-4 py-2 font-medium text-white hover:bg-emerald-800"
+        <Card className="border-danger-line bg-danger-tint">
+          <CardBody className="flex flex-col gap-2">
+            <span className="flex items-center gap-2">
+              <IconeAlerta className="size-5 shrink-0 text-danger" />
+              <span className="font-display text-[14.5px] font-black font-stretch-112% tracking-[.02em] text-danger-ink uppercase">
+                Porta de mão única
+              </span>
+            </span>
+            <ul className="flex flex-col gap-1.5">
+              {[
+                "A escalação congela pra sempre. Quem jogou de que lado não muda mais.",
+                "Os números entram nos rankings na hora.",
+                "A rodada de avaliação abre e o relógio de 2 dias começa a correr.",
+                "Placar e gols ainda dão pra corrigir por 24h. Depois disso, só apagando a pelada — e aí precisa de votação.",
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-2">
+                  <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-danger" />
+                  <span className="text-[12.5px] leading-[1.45] text-fg-2">{t}</span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+
+        <form action={confirmarEncerramento.bind(null, id)} className="flex flex-col gap-2">
+          {/* Irreversível: um duplo clique atrapalhado não pode encerrar duas
+              vezes enquanto a primeira ainda está a caminho. */}
+          <PendingButton
+            variante="danger"
+            tamanho="lg"
+            labelPending="Encerrando…"
+            disabled={!checklist.podeEncerrar}
+            className="w-full"
           >
-            Confirmar escalação e encerrar
-          </button>
+            Encerrar a pelada
+          </PendingButton>
+          {!checklist.podeEncerrar && (
+            <p className="text-center text-[11.5px] leading-[1.45] text-danger-ink">
+              Tem jogo com um lado vazio. Corrige acima para poder encerrar.
+            </p>
+          )}
+          <p className="text-center text-[11.5px] leading-[1.45] text-fg-4">
+            Ao encerrar, os números entram nos rankings e a rodada de avaliação abre para{" "}
+            {avaliaveis.size} {avaliaveis.size === 1 ? "pessoa" : "pessoas"}.
+          </p>
         </form>
-      </section>
+      </aside>
     </div>
   );
 }
