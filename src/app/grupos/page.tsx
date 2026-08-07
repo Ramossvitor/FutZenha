@@ -1,40 +1,32 @@
-import Link from "next/link";
+import { responderConvite } from "@/app/grupo/[id]/actions";
+import { Badge } from "@/components/ui/badge";
+import { BannerDaQuery } from "@/components/ui/banner";
+import { Button, LinkButton, SubmitButton } from "@/components/ui/button";
+import { Card, Eyebrow, PageHeader, Section } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Field, Input } from "@/components/ui/field";
+import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
+import { IconeCheck, IconeSeta } from "@/components/ui/icons";
+import { Nota } from "@/components/ui/nota";
+import { getGrupoAtual } from "@/lib/grupo-atual";
 import { convitesPendentes, listarGruposPublicos, listarMeusGrupos } from "@/lib/grupos";
 import { papelLabel } from "@/lib/grupos-permissions";
 import { requirePlayer } from "@/lib/require-player";
-import { responderConvite } from "@/app/grupo/[id]/actions";
+import { trocarGrupo } from "./actions";
 
 export const metadata = { title: "Grupos" };
 export const dynamic = "force-dynamic";
-
-const inputClass =
-  "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
-
-const errorMessages: Record<string, string> = {
-  "convite-invalido": "Esse convite não está mais disponível.",
-  // Vem de src/app/convite-grupo/[token]/actions.ts. Sem esta entrada, quem
-  // clicava num link vencido do WhatsApp caía aqui sem explicação nenhuma.
-  "link-invalido":
-    "Esse link do grupo não vale mais — ele expirou, foi revogado ou já bateu o limite de usos. Peça um novo a quem administra o grupo.",
-};
-
-const okMessages: Record<string, string> = {
-  "convite-recusado": "Convite recusado.",
-  saiu: "Você saiu do grupo.",
-  "grupo-excluido": "Grupo excluído.",
-};
 
 export default async function GruposPage({ searchParams }: PageProps<"/grupos">) {
   const session = await requirePlayer();
   const { busca, erro, ok } = await searchParams;
   const termo = typeof busca === "string" ? busca : "";
-  const mensagemErro = typeof erro === "string" ? errorMessages[erro] : undefined;
-  const mensagemOk = typeof ok === "string" ? okMessages[ok] : undefined;
 
-  const [meus, convites, publicos] = await Promise.all([
+  const [meus, convites, publicos, atual] = await Promise.all([
     listarMeusGrupos(session.player.id),
     convitesPendentes(session.player.id),
     listarGruposPublicos(termo),
+    getGrupoAtual(),
   ]);
 
   // Grupo de que já participo não precisa aparecer em "descobrir".
@@ -42,140 +34,212 @@ export default async function GruposPage({ searchParams }: PageProps<"/grupos">)
   const paraDescobrir = publicos.filter((g) => !meusIds.has(g.id));
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Grupos</h1>
-        <Link
-          href="/grupos/novo"
-          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
-        >
-          Criar grupo
-        </Link>
-      </div>
+    <div className="flex flex-col gap-7">
+      <PageHeader
+        titulo={<>Boa, {session.player.nickname ?? session.player.name.split(" ")[0]}</>}
+        descricao="Escolhe onde você vai jogar. O grupo escolhido filtra o início, as peladas e os rankings."
+        acao={
+          <LinkButton href="/grupos/novo" variante="secondary" tamanho="sm">
+            Criar grupo
+          </LinkButton>
+        }
+      />
 
-      {mensagemErro && (
-        <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {mensagemErro}
-        </p>
-      )}
-      {mensagemOk && (
-        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-          {mensagemOk}
-        </p>
-      )}
+      <BannerDaQuery erro={erro} ok={ok} />
+
+      {/* A nota aparece uma vez só, e fora dos cards, porque ela é uma só: o
+          banco guarda um `players.skill` por pessoa, não um por grupo. Repetir
+          o mesmo número dentro de cada card daria a entender que ele muda de um
+          para o outro — e essa foi uma decisão explícita do projeto, não uma
+          simplificação. */}
+      <Card className="flex items-center gap-4 p-4">
+        <div className="flex-1">
+          <Eyebrow>Sua nota</Eyebrow>
+          <p className="mt-1 text-[13px] leading-[1.45] text-fg-3">
+            Uma só, somando todas as peladas que você jogou — em qualquer grupo.
+          </p>
+        </div>
+        <Nota valor={session.player.skill} tamanho="xl" />
+      </Card>
 
       {convites.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-lg font-bold">Convites para você</h2>
-          {convites.map((c) => (
-            <div
-              key={c.id}
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-950"
-            >
-              <div className="flex-1">
-                <p className="font-medium">{c.groupName}</p>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  {c.convidadoPor ? `Convite de ${c.convidadoPor}` : "Você foi convidado"}
-                  {c.groupDescription && ` · ${c.groupDescription}`}
-                </p>
-              </div>
-              <form action={responderConvite.bind(null, c.groupId, c.id, true)}>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
-                >
-                  Aceitar
-                </button>
-              </form>
-              <form action={responderConvite.bind(null, c.groupId, c.id, false)}>
-                <button
-                  type="submit"
-                  className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-                >
-                  Recusar
-                </button>
-              </form>
-            </div>
-          ))}
-        </section>
+        <Section titulo="Chamaram você">
+          <div className="flex flex-col gap-2">
+            {convites.map((c) => (
+              <Card key={c.id} className="border-warn-line bg-warn-tint p-4">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-[16px] font-extrabold font-stretch-112% text-fg">
+                      {c.groupName}
+                    </p>
+                    <p className="text-[13px] leading-[1.45] text-fg-2">
+                      {c.convidadoPor ? `Convite de ${c.convidadoPor}` : "Você foi convidado"}
+                      {c.groupDescription && ` · ${c.groupDescription}`}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <form action={responderConvite.bind(null, c.groupId, c.id, true)}>
+                      <SubmitButton tamanho="sm">Aceitar</SubmitButton>
+                    </form>
+                    <form action={responderConvite.bind(null, c.groupId, c.id, false)}>
+                      <SubmitButton variante="secondary" tamanho="sm">
+                        Recusar
+                      </SubmitButton>
+                    </form>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </Section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-bold">Meus grupos</h2>
-        {meus.length === 0 && (
-          <p className="text-neutral-500">
-            Você ainda não está em nenhum grupo. Crie o seu ou procure um público abaixo.
-          </p>
-        )}
-        {meus.map((g) => (
-          <Link
-            key={g.id}
-            href={`/grupo/${g.id}`}
-            className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm hover:border-emerald-600 dark:border-neutral-800 dark:bg-neutral-900"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold">{g.name}</span>
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
-                {papelLabel[g.papel]}
-              </span>
-              {g.visibility === "private" && (
-                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-                  privado
-                </span>
-              )}
-              <span className="ml-auto text-sm text-neutral-500">
-                {g.membros} {g.membros === 1 ? "membro" : "membros"}
-              </span>
-            </div>
-            {g.description && (
-              <p className="text-sm text-neutral-500">{g.description}</p>
-            )}
-          </Link>
-        ))}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-bold">Descobrir grupos</h2>
-        <form action="/grupos" className="flex flex-wrap gap-2">
-          <input
-            name="busca"
-            defaultValue={termo}
-            placeholder="Buscar por nome"
-            className={`${inputClass} flex-1`}
+      <Section titulo="Onde você joga">
+        <div className="flex flex-col gap-2">
+          {/* O contexto sem grupo precisa ser uma escolha visível, e não a
+              ausência de escolha: pelada avulsa (sem grupo) é como o produto
+              funcionava antes, e só aparece aqui. */}
+          <CartaoDeContexto
+            ativo={atual === null}
+            titulo="Todas as peladas"
+            meta="Tudo junto, inclusive as peladas sem grupo"
+            groupId={null}
           />
-          <button
-            type="submit"
-            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
+
+          {meus.map((g) => (
+            <CartaoDeContexto
+              key={g.id}
+              ativo={atual?.id === g.id}
+              titulo={g.name}
+              meta={`${papelLabel[g.papel]} · ${g.membros} ${g.membros === 1 ? "pessoa" : "pessoas"}`}
+              descricao={g.description}
+              privado={g.visibility === "private"}
+              groupId={g.id}
+            />
+          ))}
+
+          {meus.length === 0 && (
+            <EmptyState
+              titulo="Você ainda não está em nenhum grupo"
+              descricao="Grupo se entra por convite ou pelo link que mandam no zap. Se ninguém te chamou ainda, dá para criar o seu."
+              acao={
+                <LinkButton href="/grupos/novo" variante="primary" tamanho="sm">
+                  Criar um grupo
+                </LinkButton>
+              }
+            />
+          )}
+        </div>
+      </Section>
+
+      <Section titulo="Descobrir">
+        <form action="/grupos" className="flex items-end gap-2">
+          <Field htmlFor="busca" label="Procurar grupo público" className="flex-1">
+            <Input id="busca" name="busca" defaultValue={termo} placeholder="Nome do grupo" />
+          </Field>
+          <Button type="submit" variante="secondary">
             Buscar
-          </button>
+          </Button>
         </form>
-        {paraDescobrir.length === 0 && (
-          <p className="text-neutral-500">
-            {termo ? "Nenhum grupo público com esse nome." : "Nenhum grupo público por enquanto."}
-          </p>
-        )}
-        {paraDescobrir.map((g) => (
-          <Link
-            key={g.id}
-            href={`/grupo/${g.id}`}
-            className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm hover:border-emerald-600 dark:border-neutral-800 dark:bg-neutral-900"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold">{g.name}</span>
-              {g.joinPolicy === "open" && (
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
-                  entrada livre
+
+        <HairlineList
+          as="ul"
+          vazio={
+            <EmptyState
+              titulo={termo ? "Nenhum grupo com esse nome" : "Nenhum grupo público por enquanto"}
+              descricao={
+                termo
+                  ? "Só aparecem aqui os grupos marcados como públicos."
+                  : "Grupo privado não aparece na busca — para entrar num, é por convite."
+              }
+            />
+          }
+        >
+          {paraDescobrir.map((g) => (
+            <li key={g.id}>
+              <HairlineRowLink href={`/grupo/${g.id}`}>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display font-bold text-fg">{g.name}</span>
+                  {g.description && (
+                    <span className="block truncate text-[12.5px] text-fg-4">{g.description}</span>
+                  )}
                 </span>
-              )}
-              <span className="ml-auto text-sm text-neutral-500">
-                {g.membros} {g.membros === 1 ? "membro" : "membros"}
-              </span>
-            </div>
-            {g.description && <p className="text-sm text-neutral-500">{g.description}</p>}
-          </Link>
-        ))}
-      </section>
+                {g.joinPolicy === "open" && <Badge tom="accent">entrada livre</Badge>}
+                <span className="text-[12px] text-fg-4">
+                  {g.membros} {g.membros === 1 ? "pessoa" : "pessoas"}
+                </span>
+                <IconeSeta className="size-4 text-fg-dim" />
+              </HairlineRowLink>
+            </li>
+          ))}
+        </HairlineList>
+      </Section>
     </div>
+  );
+}
+
+/**
+ * Um destino de contexto. O corpo do cartão é o botão que troca o grupo e leva
+ * ao início; a página do grupo fica num link à parte, embaixo, para os dois
+ * alvos não brigarem pelo mesmo toque.
+ */
+function CartaoDeContexto({
+  ativo,
+  titulo,
+  meta,
+  descricao,
+  privado = false,
+  groupId,
+}: {
+  ativo: boolean;
+  titulo: string;
+  meta: string;
+  descricao?: string | null;
+  privado?: boolean;
+  groupId: number | null;
+}) {
+  return (
+    <Card className={ativo ? "border-accent-edge" : undefined}>
+      <form action={trocarGrupo.bind(null, groupId, "inicio")}>
+        <button
+          type="submit"
+          className="flex w-full items-center gap-3 rounded-t-card px-4 py-3.5 text-left transition-colors hover:bg-surface-2"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-display text-[18px] leading-[1.2] font-extrabold font-stretch-112% text-fg">
+                {titulo}
+              </span>
+              {privado && <Badge tom="outline">privado</Badge>}
+              {ativo && (
+                <Badge tom="accent" ponto>
+                  aqui
+                </Badge>
+              )}
+            </span>
+            <span className="mt-0.5 block text-[12.5px] text-fg-3">{meta}</span>
+            {descricao && (
+              <span className="mt-0.5 block truncate text-[12.5px] text-fg-4">{descricao}</span>
+            )}
+          </span>
+          {ativo ? (
+            <IconeCheck className="size-5 shrink-0 text-accent-ink" />
+          ) : (
+            <IconeSeta className="size-4 shrink-0 text-fg-dim" />
+          )}
+        </button>
+      </form>
+
+      {groupId !== null && (
+        <div className="border-t border-line px-4 py-2">
+          <HairlineRowLink
+            href={`/grupo/${groupId}`}
+            className="-mx-4 -my-2 bg-transparent text-[12.5px] text-accent-ink hover:bg-transparent hover:underline"
+          >
+            Ver a página do grupo
+          </HairlineRowLink>
+        </div>
+      )}
+    </Card>
   );
 }
