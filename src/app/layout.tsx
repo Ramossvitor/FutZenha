@@ -1,22 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { logout } from "@/app/login/actions";
 import { agendarProcessamento } from "@/lib/pendencias";
 import { getSession } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
+import { archivo, instrumentSans } from "./fonts";
 import { NotificationBell } from "./notification-bell";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
@@ -50,9 +40,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="pt-BR"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${archivo.variable} ${instrumentSans.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+      {/* Sem bg/text aqui: vem do @layer base do globals.css, que já troca com
+          o tema sem precisar de variante `dark:`. */}
+      <body className="flex min-h-full flex-col">
         <header className="bg-emerald-800 text-white">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
             <Link href="/" className="text-lg font-black tracking-tight">

@@ -1,26 +1,384 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   FutZenha — placar de várzea noturno
+
+   Camada 1: variáveis de runtime, que trocam com o tema.
+   Camada 2: @theme inline, que as transforma em utilitário do Tailwind.
+
+   Nenhum componente pode usar `dark:` nem cor crua do Tailwind. Se uma cor
+   não tem token aqui, ela não existe.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   TEMA CLARO (padrão)
+
+   O design só entregou o escuro; o claro é derivado mantendo o papel de cada
+   token. Os valores passaram por auditoria de contraste — ver o comentário do
+   accent-edge, que é o único que não é óbvio.
+   -------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light dark;
+
+  /* superfícies */
+  --canvas:      #F4F6F2;
+  --surface:     #FFFFFF;
+  --surface-2:   #ECEFE8;
+  --nav:         #FFFFFF;
+  --pit:         #E6EAE1;
+
+  /* linhas */
+  --line-soft:   #E7EBE2;
+  --line:        #DCE2D6;
+  --line-strong: #C6CFBE;
+  --line-hover:  #AAB5A2;
+  --dash:        #C6CFBE;
+
+  /* texto — fg-dim só em ≥24px ou ícone; fg-faint nunca em texto */
+  --fg:          #0E1310;
+  --fg-2:        #4A544D;
+  --fg-3:        #545E57;
+  --fg-4:        #636D66;
+  --fg-dim:      #8A938D;
+  --fg-faint:    #AAB2AC;
+
+  /* accent (lime). No claro o lime se parte em dois papéis: `accent` é
+     preenchimento (com texto quase preto em cima) e `accent-ink` é texto/link
+     sobre canvas — lime puro como texto no branco dá 1,4:1. No escuro os dois
+     são o mesmo valor, e é isso que dispensa a variante `dark:`. */
+  --accent:      #B8EF2A;
+  --accent-hover:#C7F84F;
+  --accent-ink:  #457200;
+  --accent-edge: #6E9509;
+  --accent-tint: #F1FBD9;
+  --accent-line: #C3E36F;
+  --on-accent:   #0B0E0D;
+
+  /* warn (âmbar) */
+  --warn:        #C07A00;
+  --warn-ink:    #945D00;
+  --warn-tint:   #FFF6E3;
+  --warn-line:   #F0D9A6;
+  --on-warn:     #0B0E0D;
+
+  /* danger (vermelho) */
+  --danger:      #CE2F16;
+  --danger-hover:#B82B13;
+  --danger-ink:  #C22F16;
+  --danger-tint: #FDECE8;
+  --danger-line: #F5C4B8;
+  --on-danger:   #FFFFFF;
+
+  /* inverso e foco */
+  --inverse:     #0E1310;
+  --on-inverse:  #F4F6F2;
+  --ring:        #457200;
+
+  /* coletes — o preenchimento É a cor da camisa e não muda entre temas.
+     Quem carrega o contraste contra a superfície é a borda, que muda. */
+  --vest-preto:    #15181A;  --vest-preto-line:    #4A5257;
+  --vest-branco:   #E8EDEA;  --vest-branco-line:   #849089;
+  --vest-verde:    #16A868;  --vest-verde-line:    #0E8E56;
+  --vest-laranja:  #F2740F;  --vest-laranja-line:  #D8600A;
+  --vest-azul:     #2F6FE0;  --vest-azul-line:     #2F6FE0;
+  --vest-vermelho: #D9342A;  --vest-vermelho-line: #D9342A;
+  --vest-amarelo:  #F5C518;  --vest-amarelo-line:  #B08800;
+
+  /* raios */
+  --r-selo:  3px;
+  --r-ctl:   6px;
+  --r-card: 10px;
+  --r-sheet: 22px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
+/* --------------------------------------------------------------------------
+   TEMA ESCURO — por preferência do sistema
+   -------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --canvas:      #0B0E0D;
+    --surface:     #101413;
+    --surface-2:   #141917;
+    --nav:         #0D110F;
+    --pit:         #070908;
+
+    --line-soft:   #1A1F1D;
+    --line:        #1F2523;
+    --line-strong: #2A312E;
+    --line-hover:  #3D4744;
+    --dash:        #333C38;
+
+    --fg:          #EDF2EF;
+    --fg-2:        #9AA7A1;
+    --fg-3:        #7E8B85;
+    --fg-4:        #76837D;
+    --fg-dim:      #5E6A65;
+    --fg-faint:    #4E5A55;
+
+    --accent:      #CDFF3A;
+    --accent-hover:#DBFF6B;
+    --accent-ink:  #CDFF3A;
+    --accent-edge: #CDFF3A;
+    --accent-tint: #1A2110;
+    --accent-line: #3C4A22;
+    --on-accent:   #070908;
+
+    --warn:        #FFB020;
+    --warn-ink:    #FFB020;
+    --warn-tint:   #231B0E;
+    --warn-line:   #4A3D1C;
+    --on-warn:     #070908;
+
+    --danger:      #FF4B2B;
+    --danger-hover:#FF6449;
+    --danger-ink:  #FF7A5E;
+    --danger-tint: #1E100C;
+    --danger-line: #4A241C;
+    --on-danger:   #070908;
+
+    --inverse:     #EDF2EF;
+    --on-inverse:  #070908;
+    --ring:        #CDFF3A;
+
+    --vest-preto-line:    #5C666B;
+    --vest-branco-line:   #E8EDEA;
+    --vest-verde-line:    #1FD183;
+    --vest-laranja-line:  #FF9038;
+    --vest-azul-line:     #4E8CF5;
+    --vest-vermelho-line: #F2564A;
+    --vest-amarelo-line:  #FFD84D;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* --------------------------------------------------------------------------
+   Override por atributo — vence a media query nos DOIS sentidos, porque
+   `:root[data-theme]` tem especificidade 0,2,0 contra os 0,1,0 do `:root`.
+
+   Existe só para o dia em que houver um seletor de tema: o layout lê um cookie
+   e cospe <html data-theme="dark">. Sem cookie, o atributo sai `undefined`, o
+   React omite, e a preferência do sistema volta a mandar.
+   -------------------------------------------------------------------------- */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --canvas:#F4F6F2; --surface:#FFFFFF; --surface-2:#ECEFE8; --nav:#FFFFFF; --pit:#E6EAE1;
+  --line-soft:#E7EBE2; --line:#DCE2D6; --line-strong:#C6CFBE; --line-hover:#AAB5A2; --dash:#C6CFBE;
+  --fg:#0E1310; --fg-2:#4A544D; --fg-3:#545E57; --fg-4:#636D66; --fg-dim:#8A938D; --fg-faint:#AAB2AC;
+  --accent:#B8EF2A; --accent-hover:#C7F84F; --accent-ink:#457200; --accent-edge:#6E9509;
+  --accent-tint:#F1FBD9; --accent-line:#C3E36F; --on-accent:#0B0E0D;
+  --warn:#C07A00; --warn-ink:#945D00; --warn-tint:#FFF6E3; --warn-line:#F0D9A6; --on-warn:#0B0E0D;
+  --danger:#CE2F16; --danger-hover:#B82B13; --danger-ink:#C22F16;
+  --danger-tint:#FDECE8; --danger-line:#F5C4B8; --on-danger:#FFFFFF;
+  --inverse:#0E1310; --on-inverse:#F4F6F2; --ring:#457200;
+  --vest-preto-line:#4A5257; --vest-branco-line:#849089; --vest-verde-line:#0E8E56;
+  --vest-laranja-line:#D8600A; --vest-azul-line:#2F6FE0; --vest-vermelho-line:#D9342A;
+  --vest-amarelo-line:#B08800;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas:#0B0E0D; --surface:#101413; --surface-2:#141917; --nav:#0D110F; --pit:#070908;
+  --line-soft:#1A1F1D; --line:#1F2523; --line-strong:#2A312E; --line-hover:#3D4744; --dash:#333C38;
+  --fg:#EDF2EF; --fg-2:#9AA7A1; --fg-3:#7E8B85; --fg-4:#76837D; --fg-dim:#5E6A65; --fg-faint:#4E5A55;
+  --accent:#CDFF3A; --accent-hover:#DBFF6B; --accent-ink:#CDFF3A; --accent-edge:#CDFF3A;
+  --accent-tint:#1A2110; --accent-line:#3C4A22; --on-accent:#070908;
+  --warn:#FFB020; --warn-ink:#FFB020; --warn-tint:#231B0E; --warn-line:#4A3D1C; --on-warn:#070908;
+  --danger:#FF4B2B; --danger-hover:#FF6449; --danger-ink:#FF7A5E;
+  --danger-tint:#1E100C; --danger-line:#4A241C; --on-danger:#070908;
+  --inverse:#EDF2EF; --on-inverse:#070908; --ring:#CDFF3A;
+  --vest-preto-line:#5C666B; --vest-branco-line:#E8EDEA; --vest-verde-line:#1FD183;
+  --vest-laranja-line:#FF9038; --vest-azul-line:#4E8CF5; --vest-vermelho-line:#F2564A;
+  --vest-amarelo-line:#FFD84D;
+}
+
+/* --------------------------------------------------------------------------
+   @theme inline — gera os utilitários.
+
+   O `inline` é obrigatório: sem ele o Tailwind copia o valor JÁ RESOLVIDO para
+   dentro de cada utilitário, e `bg-surface` congela na cor do tema claro. Com
+   `inline`, o utilitário sai como `background-color: var(--surface)` e segue a
+   variável em runtime — que é o que faz um único jogo de classes servir aos
+   dois temas, sem uma linha de `dark:`.
+   -------------------------------------------------------------------------- */
+@theme inline {
+  /* O fallback dentro do var() não é decoração: `var(--x)` sem fallback, com
+     --x inexistente, invalida a declaração inteira e a fonte cai no default do
+     browser em vez de cair na pilha de sistema. */
+  --font-sans:    var(--font-instrument-sans, ui-sans-serif), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-archivo, ui-sans-serif), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:    ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-canvas:      var(--canvas);
+  --color-surface:     var(--surface);
+  --color-surface-2:   var(--surface-2);
+  --color-nav:         var(--nav);
+  --color-pit:         var(--pit);
+
+  --color-line-soft:   var(--line-soft);
+  --color-line:        var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-line-hover:  var(--line-hover);
+  --color-dash:        var(--dash);
+
+  --color-fg:          var(--fg);
+  --color-fg-2:        var(--fg-2);
+  --color-fg-3:        var(--fg-3);
+  --color-fg-4:        var(--fg-4);
+  --color-fg-dim:      var(--fg-dim);
+  --color-fg-faint:    var(--fg-faint);
+
+  --color-accent:       var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink:   var(--accent-ink);
+  --color-accent-edge:  var(--accent-edge);
+  --color-accent-tint:  var(--accent-tint);
+  --color-accent-line:  var(--accent-line);
+  --color-on-accent:    var(--on-accent);
+
+  --color-warn:      var(--warn);
+  --color-warn-ink:  var(--warn-ink);
+  --color-warn-tint: var(--warn-tint);
+  --color-warn-line: var(--warn-line);
+  --color-on-warn:   var(--on-warn);
+
+  --color-danger:       var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-ink:   var(--danger-ink);
+  --color-danger-tint:  var(--danger-tint);
+  --color-danger-line:  var(--danger-line);
+  --color-on-danger:    var(--on-danger);
+
+  --color-inverse:    var(--inverse);
+  --color-on-inverse: var(--on-inverse);
+  --color-ring:       var(--ring);
+
+  --color-vest-preto:         var(--vest-preto);
+  --color-vest-preto-line:    var(--vest-preto-line);
+  --color-vest-branco:        var(--vest-branco);
+  --color-vest-branco-line:   var(--vest-branco-line);
+  --color-vest-verde:         var(--vest-verde);
+  --color-vest-verde-line:    var(--vest-verde-line);
+  --color-vest-laranja:       var(--vest-laranja);
+  --color-vest-laranja-line:  var(--vest-laranja-line);
+  --color-vest-azul:          var(--vest-azul);
+  --color-vest-azul-line:     var(--vest-azul-line);
+  --color-vest-vermelho:      var(--vest-vermelho);
+  --color-vest-vermelho-line: var(--vest-vermelho-line);
+  --color-vest-amarelo:       var(--vest-amarelo);
+  --color-vest-amarelo-line:  var(--vest-amarelo-line);
+
+  /* rounded-selo / rounded-ctl / rounded-card / rounded-sheet */
+  --radius-selo:  var(--r-selo);
+  --radius-ctl:   var(--r-ctl);
+  --radius-card:  var(--r-card);
+  --radius-sheet: var(--r-sheet);
+
+  /* animate-urg / animate-flood */
+  --animate-urg:   urg 1.15s ease-in-out infinite;
+  --animate-flood: flood .45s cubic-bezier(.22,.61,.36,1) both;
+}
+
+/* --------------------------------------------------------------------------
+   Animações.
+   urg   — pulso do relógio único quando faltam menos de 6h.
+   flood — a barra enchendo até o valor (quórum, progresso da avaliação).
+   -------------------------------------------------------------------------- */
+@keyframes urg {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .35; }
+}
+
+@keyframes flood {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  /* Sem o pulso, o prazo urgente não pode ficar parado no meio do keyframe —
+     ele congelaria a 35% de opacidade e viraria o texto mais apagado da tela
+     justamente quando é o mais importante. */
+  .animate-urg { opacity: 1 !important; }
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+@layer base {
+  body {
+    background-color: var(--canvas);
+    color: var(--fg);
+  }
+
+  ::selection {
+    background-color: var(--accent);
+    color: var(--on-accent);
+  }
+
+  /* O app é <form> + Server Action de ponta a ponta: teclado é caminho de
+     primeira classe, não acessório. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Título em pt-BR é longo e deixa palavra órfã fácil no mobile. */
+  :where(h1, h2, h3) {
+    text-wrap: balance;
+  }
+
+  :where(table, [data-num]) {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Utilitários próprios.
+
+   Critério para existir aqui: a string tem 4+ propriedades E se repete em 5+
+   telas. Abaixo disso, compõe com Tailwind puro — os passos de largura do
+   Archivo, por exemplo, já são `font-stretch-87%` / `-112%` / `-125%` de
+   fábrica no Tailwind 4.3.
+   -------------------------------------------------------------------------- */
+
+/* Rótulo de seção. */
+@utility eyebrow {
+  font-family: var(--font-archivo, ui-sans-serif), system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  font-stretch: 100%;
+  letter-spacing: .14em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--fg-4);
+}
+
+/* A nota — assinatura visual do produto. O tamanho fica de fora de propósito:
+   a mesma nota aparece a 64px no perfil e a 22px numa linha de ranking. Aqui
+   mora só o que é invariante. A cor partida (inteiro/decimal) é markup, não
+   CSS — ver o componente Nota. */
+@utility nota {
+  font-family: var(--font-archivo, ui-sans-serif), system-ui, sans-serif;
+  font-weight: 900;
+  font-stretch: 125%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  line-height: .86;
+}
+
+/* Lista com separadores de 1px sem usar border-bottom: o gap deixa o fundo do
+   contêiner aparecer entre os filhos. Os filhos levam `bg-surface` explícito
+   de propósito, para que uma linha destacada possa trocar por bg-accent-tint
+   sem briga de especificidade. */
+@utility hairline {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background-color: var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  overflow: hidden;
 }
