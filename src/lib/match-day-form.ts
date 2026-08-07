@@ -1,4 +1,20 @@
 import { z } from "zod";
+import type { matchDayStatusEnum } from "@/db/schema";
+
+export type StatusPelada = (typeof matchDayStatusEnum.enumValues)[number];
+
+/**
+ * O rótulo de cada estado da pelada.
+ *
+ * Havia três cópias disto espalhadas — duas capitalizadas e a de
+ * /admin/peladas em caixa baixa —, então a mesma pelada aparecia como "Times
+ * sorteados" numa tela e "times sorteados" na outra.
+ */
+export const STATUS_PELADA: Record<StatusPelada, string> = {
+  scheduled: "Marcada",
+  teams_drawn: "Times sorteados",
+  finished: "Encerrada",
+};
 
 // Compartilhado entre criar (/peladas/nova) e editar (/pelada/[id]/gerenciar):
 // os dois formulários têm os mesmos campos, e duplicar o schema deixaria as

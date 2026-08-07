@@ -35,10 +35,16 @@ export default async function proxy(request: NextRequest) {
   // para casar por prefixo como as outras.
   const gerenciarPelada = /^\/pelada\/[^/]+\/gerenciar(\/|$)/;
   const gerenciarGrupo = /^\/grupo\/[^/]+\/gerenciar(\/|$)/;
+  // O ranking do grupo entra pelo mesmo motivo do /convite-grupo: é link que
+  // corre no WhatsApp e quase sempre é aberto por alguém deslogado. O guard da
+  // página (requireGrupoMembro) manda para /login sem `next`, então sem esta
+  // linha a pessoa faz login e cai na home, longe do que foi ver.
+  const rankingDoGrupo = /^\/grupo\/[^/]+\/ranking$/;
   const exigeLogin =
     prefixos.some((rota) => pathname.startsWith(rota)) ||
     gerenciarPelada.test(pathname) ||
-    gerenciarGrupo.test(pathname);
+    gerenciarGrupo.test(pathname) ||
+    rankingDoGrupo.test(pathname);
 
   if (exigeLogin && !payload) {
     const url = request.nextUrl.clone();
@@ -73,5 +79,6 @@ export const config = {
     "/pelada/:id/gerenciar/:path*",
     "/grupo/:id/gerenciar",
     "/grupo/:id/gerenciar/:path*",
+    "/grupo/:id/ranking",
   ],
 };

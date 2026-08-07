@@ -1,6 +1,13 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, desc, eq, inArray } from "drizzle-orm";
+import { Badge } from "@/components/ui/badge";
+import { BannerDaQuery } from "@/components/ui/banner";
+import { LinkButton, SubmitButton } from "@/components/ui/button";
+import { PageHeader, Section } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { HairlineList, HairlineRow, HairlineRowLink } from "@/components/ui/hairline-list";
+import { VestChip } from "@/components/ui/vest";
+import { STATUS_PELADA } from "@/lib/match-day-form";
 import { db } from "@/db";
 import { games, matchDays, teams } from "@/db/schema";
 import { formatDate, formatDateShort, formatTime } from "@/lib/format";
@@ -12,18 +19,6 @@ import { cancelarPedido, entrarNoGrupo, pedirEntrada, sairDoGrupo } from "./acti
 
 export const dynamic = "force-dynamic";
 
-
-const errorMessages: Record<string, string> = {
-  "entrada-fechada": "Este grupo não está aceitando entradas agora.",
-  "admin-precisa-transferir":
-    "Você administra o grupo. Transfira a administração para outra pessoa antes de sair.",
-};
-
-const okMessages: Record<string, string> = {
-  entrou: "Pronto, você está no grupo.",
-  "pedido-enviado": "Pedido enviado. O administrador vai decidir.",
-  "pedido-cancelado": "Pedido cancelado.",
-};
 
 /**
  * O título repete a checagem de visibilidade, e não é redundância.
@@ -68,8 +63,6 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
   if (!Number.isInteger(groupId)) notFound();
 
   const { erro, ok } = await searchParams;
-  const mensagemErro = typeof erro === "string" ? errorMessages[erro] : undefined;
-  const mensagemOk = typeof ok === "string" ? okMessages[ok] : undefined;
 
   const grupo = await getGrupo(groupId);
   if (!grupo) notFound();
@@ -118,163 +111,154 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
   const podeGerenciar = podeCriarPelada || session?.isPlatformAdmin === true;
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold">{grupo.name}</h1>
-          {papel && (
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
-              {papelLabel[papel]}
-            </span>
-          )}
-          {grupo.visibility === "private" && (
-            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-              privado
-            </span>
-          )}
-        </div>
-        {grupo.description && <p className="text-sm text-neutral-500">{grupo.description}</p>}
-
-        <div className="flex flex-wrap items-center gap-2">
-          {papel && (
-            <Link
-              href={`/grupo/${groupId}/ranking`}
-              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-            >
-              Ranking do grupo
-            </Link>
-          )}
-          {podeCriarPelada && (
-            <Link
-              href={`/peladas/nova?grupo=${groupId}`}
-              className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
-            >
+    <div className="flex flex-col gap-7">
+      <PageHeader
+        titulo={grupo.name}
+        selos={
+          <>
+            {papel && <Badge tom="accent">{papelLabel[papel]}</Badge>}
+            {grupo.visibility === "private" && <Badge tom="outline">privado</Badge>}
+            {grupo.joinPolicy === "open" && grupo.visibility === "public" && (
+              <Badge tom="outline">entrada livre</Badge>
+            )}
+          </>
+        }
+        descricao={grupo.description}
+        acao={
+          podeCriarPelada ? (
+            <LinkButton href={`/peladas/nova?grupo=${groupId}`} tamanho="sm">
               Marcar pelada
-            </Link>
-          )}
-          {podeGerenciar && (
-            <Link
-              href={`/grupo/${groupId}/gerenciar`}
-              className="rounded-lg border border-amber-400 px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
-            >
-              Gerenciar
-            </Link>
-          )}
-          {session && entrada === "entra-direto" && (
+            </LinkButton>
+          ) : session && entrada === "entra-direto" ? (
             <form action={entrarNoGrupo.bind(null, groupId)}>
-              <button
-                type="submit"
-                className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
-              >
-                Entrar no grupo
-              </button>
+              <SubmitButton tamanho="sm">Entrar no grupo</SubmitButton>
             </form>
-          )}
-          {session && entrada === "pede-entrada" && !pedido && (
+          ) : session && entrada === "pede-entrada" && !pedido ? (
             <form action={pedirEntrada.bind(null, groupId)}>
-              <button
-                type="submit"
-                className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
-              >
-                Pedir para entrar
-              </button>
+              <SubmitButton tamanho="sm">Pedir para entrar</SubmitButton>
             </form>
-          )}
-          {session && entrada === "pede-entrada" && pedido && (
-            <form action={cancelarPedido.bind(null, groupId)} className="flex items-center gap-2">
-              <span className="text-sm text-neutral-500">Pedido aguardando aprovação.</span>
-              <button type="submit" className="text-sm text-neutral-500 hover:underline">
-                Cancelar
-              </button>
-            </form>
-          )}
-          {papel && papel !== "admin" && (
-            <form action={sairDoGrupo.bind(null, groupId)} className="ml-auto">
-              <button type="submit" className="text-sm text-neutral-500 hover:underline">
-                Sair do grupo
-              </button>
-            </form>
-          )}
-        </div>
-      </header>
+          ) : undefined
+        }
+      />
 
-      {mensagemErro && (
-        <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {mensagemErro}
-        </p>
-      )}
-      {mensagemOk && (
-        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-          {mensagemOk}
-        </p>
-      )}
+      <BannerDaQuery erro={erro} ok={ok} />
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-bold">Peladas do grupo</h2>
-        {days.length === 0 && <p className="text-neutral-500">Nenhuma pelada marcada ainda.</p>}
-        {days.map((day) => {
-          const dayGames = gameRows.filter((g) => g.matchDayId === day.id);
-          const euGerencio = ator !== null && podeGerenciarPelada(ator, day, papel);
-          return (
-            <Link
-              key={day.id}
-              href={`/pelada/${day.id}`}
-              className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm hover:border-emerald-600 dark:border-neutral-800 dark:bg-neutral-900"
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-bold capitalize">{formatDate(day.date)}</span>
-                <span className="text-sm text-neutral-500">{formatDateShort(day.date)}</span>
-                {euGerencio && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                    você gerencia
+      <div className="flex flex-wrap items-center gap-2">
+        {papel && (
+          <LinkButton href={`/grupo/${groupId}/ranking`} variante="secondary" tamanho="sm">
+            Ranking do grupo
+          </LinkButton>
+        )}
+        {podeGerenciar && (
+          <LinkButton href={`/grupo/${groupId}/gerenciar`} variante="secondary" tamanho="sm">
+            Gerenciar
+          </LinkButton>
+        )}
+        {session && entrada === "pede-entrada" && pedido && (
+          <form action={cancelarPedido.bind(null, groupId)} className="flex items-center gap-2">
+            <Badge tom="warn">pedido aguardando</Badge>
+            <SubmitButton variante="ghost" tamanho="sm">
+              Cancelar pedido
+            </SubmitButton>
+          </form>
+        )}
+        {/* O admin não sai: sairia deixando o grupo sem ninguém no comando.
+            Transferir primeiro é a regra que a action aplica. */}
+        {papel && papel !== "admin" && (
+          <form action={sairDoGrupo.bind(null, groupId)} className="ml-auto">
+            <SubmitButton variante="ghost" tamanho="sm" className="text-danger-ink">
+              Sair do grupo
+            </SubmitButton>
+          </form>
+        )}
+      </div>
+
+      <Section titulo="Peladas do grupo">
+        <HairlineList
+          as="ul"
+          vazio={
+            <EmptyState
+              titulo="Nenhuma pelada marcada"
+              descricao={
+                podeCriarPelada
+                  ? "Marque a primeira e ela aparece aqui."
+                  : "Quem organiza é quem marca."
+              }
+            />
+          }
+        >
+          {days.map((day) => {
+            const dayGames = gameRows.filter((g) => g.matchDayId === day.id);
+            const euGerencio = ator !== null && podeGerenciarPelada(ator, day, papel);
+            return (
+              <li key={day.id}>
+                <HairlineRowLink href={`/pelada/${day.id}`} className="items-start">
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-display text-[15px] font-bold text-fg capitalize">
+                        {formatDate(day.date)}
+                      </span>
+                      <span className="font-display text-[12px] font-semibold text-fg-4" data-num>
+                        {formatDateShort(day.date)}
+                      </span>
+                      {euGerencio && <Badge tom="warn">você gerencia</Badge>}
+                      <Badge tom={day.status === "finished" ? "neutral" : "accent"}>
+                        {STATUS_PELADA[day.status]}
+                      </Badge>
+                    </span>
+                    <span className="mt-0.5 block text-[13px] text-fg-3">
+                      {formatTime(day.startTime) && <>{formatTime(day.startTime)} · </>}
+                      {day.location}
+                    </span>
+                    {dayGames.length > 0 && (
+                      <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {dayGames.map((g) => (
+                          <span key={g.id} className="flex items-center gap-1.5">
+                            <VestChip time={teamNameById.get(g.teamAId) ?? ""} tamanho="sm" />
+                            <span
+                              className="font-display text-[13px] font-extrabold font-stretch-112% text-fg-2"
+                              data-num
+                            >
+                              {g.scoreA} × {g.scoreB}
+                            </span>
+                            <VestChip time={teamNameById.get(g.teamBId) ?? ""} tamanho="sm" />
+                          </span>
+                        ))}
+                      </span>
+                    )}
                   </span>
-                )}
-                {day.status !== "finished" && (
-                  <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
-                    {day.status === "scheduled" ? "marcada" : "times sorteados"}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-neutral-500">
-                {formatTime(day.startTime) && <>{formatTime(day.startTime)} · </>}
-                {day.location}
-              </p>
-              {dayGames.length > 0 && (
-                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                  {dayGames
-                    .map(
-                      (g) =>
-                        `${teamNameById.get(g.teamAId)} ${g.scoreA}×${g.scoreB} ${teamNameById.get(g.teamBId)}`,
-                    )
-                    .join(" · ")}
-                </p>
-              )}
-            </Link>
-          );
-        })}
-      </section>
+                </HairlineRowLink>
+              </li>
+            );
+          })}
+        </HairlineList>
+      </Section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-bold">
-          Membros <span className="text-sm font-normal text-neutral-500">({membros.length})</span>
-        </h2>
-        <ul className="flex flex-col gap-1">
+      <Section
+        titulo="Membros"
+        acao={
+          <span className="font-display text-[11px] font-bold tracking-[.08em] text-fg-4 uppercase">
+            {membros.length} {membros.length === 1 ? "pessoa" : "pessoas"}
+          </span>
+        }
+      >
+        <HairlineList as="ul">
           {membros.map((m) => (
-            <li
-              key={m.playerId}
-              className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-800 dark:bg-neutral-900"
-            >
-              <span className="font-medium">{m.name}</span>
-              {m.nickname && <span className="text-neutral-500">“{m.nickname}”</span>}
-              {m.papel !== "member" && (
-                <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
-                  {papelLabel[m.papel]}
+            <HairlineRow as="li" key={m.playerId}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-display text-[14px] font-bold text-fg">
+                  {m.nickname ?? m.name}
                 </span>
-              )}
-            </li>
+                {m.nickname && (
+                  <span className="block truncate text-[11.5px] text-fg-4">{m.name}</span>
+                )}
+              </span>
+              {!m.temConta && <Badge tom="dashed">sem conta</Badge>}
+              {m.papel !== "member" && <Badge tom="accent">{papelLabel[m.papel]}</Badge>}
+            </HairlineRow>
           ))}
-        </ul>
-      </section>
+        </HairlineList>
+      </Section>
     </div>
   );
 }

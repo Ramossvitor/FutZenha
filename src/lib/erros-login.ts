@@ -28,14 +28,21 @@ export const ERROS_LOGIN: Record<string, string> = {
 // forma, e só ela, que aceitamos de volta.
 const ESPERADO_MASCARADO = /^.{0,2}•••@[^\s@]{1,80}$/;
 
-/** A mensagem, já com o e-mail esperado quando o erro carrega um. */
+/**
+ * A mensagem, já com o e-mail esperado quando o erro carrega um.
+ *
+ * O `Object.hasOwn` é o mesmo cuidado do resolverMensagem: `erro` vem da query
+ * string e `ERROS_LOGIN` é um object literal, então `?erro=toString` devolvia a
+ * função do Object.prototype — truthy, escapava do `if` e ia parar dentro do
+ * Banner, que é Server Component e estoura ao serializar.
+ */
 export function mensagemDeErro(
   erro: string | string[] | undefined,
   esperado?: string | string[],
 ): string | null {
   if (typeof erro !== "string") return null;
+  if (!Object.hasOwn(ERROS_LOGIN, erro)) return null;
   const mensagem = ERROS_LOGIN[erro];
-  if (!mensagem) return null;
   if (
     erro === "email-nao-confere" &&
     typeof esperado === "string" &&

@@ -1,11 +1,41 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Button, SubmitButton } from "@/components/ui/button";
+import { Card, PageHeader } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { IconeAlerta, IconeBola, IconeGrafico, IconeGrupo } from "@/components/ui/icons";
+import { cx } from "@/lib/cx";
 import { formatDateShort } from "@/lib/format";
 import { listarNotificacoes } from "@/lib/notifications";
 import { requirePlayer } from "@/lib/require-player";
 import { marcarComoLida, marcarTodasComoLidas } from "./actions";
+import type { notificationTypeEnum } from "@/db/schema";
 
-export const metadata: Metadata = { title: "Notificações" };
+type TipoDeAviso = (typeof notificationTypeEnum.enumValues)[number];
+
+/**
+ * O ícone por família de aviso. São 11 tipos e cinco famílias — o que importa
+ * de relance é a natureza do aviso, não o tipo exato.
+ *
+ * `rating_round_closed` está declarado no enum mas nunca é emitido: o
+ * fechamento avisa por skill_changed. Fica mapeado mesmo assim, porque um
+ * `undefined` aqui quebraria a linha.
+ */
+const ICONE: Record<TipoDeAviso, { icone: React.ReactNode; cor: string }> = {
+  rating_round_open: { icone: <IconeBola />, cor: "text-accent-ink" },
+  rating_round_closed: { icone: <IconeBola />, cor: "text-accent-ink" },
+  skill_changed: { icone: <IconeGrafico />, cor: "text-accent-ink" },
+  skill_recalculated: { icone: <IconeGrafico />, cor: "text-fg-3" },
+  rating_report_resolved: { icone: <IconeAlerta />, cor: "text-warn-ink" },
+  deletion_vote_open: { icone: <IconeAlerta />, cor: "text-danger-ink" },
+  deletion_vote_resolved: { icone: <IconeAlerta />, cor: "text-fg-3" },
+  group_invitation: { icone: <IconeGrupo />, cor: "text-accent-ink" },
+  group_join_request: { icone: <IconeGrupo />, cor: "text-warn-ink" },
+  group_join_request_resolved: { icone: <IconeGrupo />, cor: "text-fg-3" },
+  group_role_changed: { icone: <IconeGrupo />, cor: "text-fg-3" },
+};
+
+export const metadata: Metadata = { title: "Avisos" };
 
 export default async function NotificacoesPage() {
   const session = await requirePlayer();
@@ -13,63 +43,92 @@ export default async function NotificacoesPage() {
   const naoLidas = notificacoes.filter((n) => n.readAt === null).length;
 
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-bold">Notificações</h1>
-        {naoLidas > 0 && (
-          <form action={marcarTodasComoLidas} className="ml-auto">
-            <button type="submit" className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">
-              Marcar todas como lidas
-            </button>
-          </form>
-        )}
-      </header>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        titulo="Avisos"
+        descricao={
+          naoLidas > 0
+            ? `${naoLidas} ${naoLidas === 1 ? "não lido" : "não lidos"}.`
+            : "Tudo em dia."
+        }
+        acao={
+          naoLidas > 0 ? (
+            <form action={marcarTodasComoLidas}>
+              <SubmitButton variante="secondary" tamanho="sm">
+                Marcar todas como lidas
+              </SubmitButton>
+            </form>
+          ) : undefined
+        }
+      />
 
       {notificacoes.length === 0 ? (
-        <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          Nada por aqui ainda.
-        </p>
+        <EmptyState
+          titulo="Nada por aqui ainda"
+          descricao="Aviso de avaliação aberta, de nota que mudou, de convite e de votação chega aqui."
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {notificacoes.map((n) => {
+            const naoLida = n.readAt === null;
+            const { icone, cor } = ICONE[n.type];
             const conteudo = (
               <>
-                <div className="flex flex-wrap items-center gap-2">
-                  {n.readAt === null && (
-                    <span className="size-2 shrink-0 rounded-full bg-emerald-600" aria-hidden />
-                  )}
-                  <span className="font-medium">{n.title}</span>
-                  <span className="ml-auto text-xs text-neutral-400">
-                    {formatDateShort(n.createdAt.toISOString().slice(0, 10))}
+                <span className={cx("mt-0.5 block size-[18px] shrink-0", cor)}>{icone}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span
+                      className={cx(
+                        "font-display text-[14px] leading-[1.3]",
+                        naoLida ? "font-extrabold text-fg" : "font-semibold text-fg-2",
+                      )}
+                    >
+                      {n.title}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[11px] text-fg-4" data-num>
+                      {formatDateShort(n.createdAt.toISOString().slice(0, 10))}
+                    </span>
                   </span>
-                </div>
-                {n.body && <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">{n.body}</p>}
+                  {n.body && (
+                    <span className="mt-0.5 block text-[13px] leading-[1.45] text-fg-3">
+                      {n.body}
+                    </span>
+                  )}
+                </span>
               </>
             );
 
             return (
-              <li
-                key={n.id}
-                className={`rounded-xl border p-4 shadow-sm ${
-                  n.readAt === null
-                    ? "border-emerald-300 bg-white dark:border-emerald-800 dark:bg-neutral-900"
-                    : "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
-                }`}
-              >
-                {n.href ? (
-                  <Link href={n.href} className="block hover:underline">
-                    {conteudo}
-                  </Link>
-                ) : (
-                  conteudo
-                )}
-                {n.readAt === null && (
-                  <form action={marcarComoLida.bind(null, n.id)} className="mt-2">
-                    <button type="submit" className="text-xs text-neutral-500 hover:underline">
-                      marcar como lida
-                    </button>
-                  </form>
-                )}
+              <li key={n.id}>
+                <Card
+                  className={cx(
+                    "overflow-hidden",
+                    naoLida && "border-accent-line bg-accent-tint",
+                  )}
+                >
+                  {n.href ? (
+                    <Link href={n.href} className="flex gap-2.5 p-3.5 hover:bg-surface-2">
+                      {conteudo}
+                    </Link>
+                  ) : (
+                    <div className="flex gap-2.5 p-3.5">{conteudo}</div>
+                  )}
+                  {naoLida && (
+                    <form
+                      action={marcarComoLida.bind(null, n.id)}
+                      className="border-t border-line"
+                    >
+                      <Button
+                        type="submit"
+                        variante="ghost"
+                        tamanho="sm"
+                        className="w-full justify-center rounded-none"
+                      >
+                        Marcar como lida
+                      </Button>
+                    </form>
+                  )}
+                </Card>
               </li>
             );
           })}

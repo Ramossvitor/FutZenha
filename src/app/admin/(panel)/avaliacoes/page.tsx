@@ -1,16 +1,23 @@
 import Link from "next/link";
 import { asc, desc, eq, sql } from "drizzle-orm";
+import { Badge } from "@/components/ui/badge";
+import { SubmitButton } from "@/components/ui/button";
+import { Card, CardBody, CardHeader, PageHeader, Section } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Estrelas } from "@/components/ui/estrelas";
+import { Field, Input } from "@/components/ui/field";
+import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
+import { PendingButton } from "@/components/ui/pending-button";
+import { Prazo } from "@/components/ui/prazo";
 import { db } from "@/db";
 import { matchDays, ratingRoundRaters, ratingRounds, users } from "@/db/schema";
+import { cx } from "@/lib/cx";
 import { formatDate } from "@/lib/format";
 import { getContextoDaDenuncia, getDenunciasAbertas } from "@/lib/reports";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
-import { aceitarDenuncia, apurarAgora, rejeitarDenuncia } from "./actions";
+import { apurarAgora, julgarDenuncia } from "./actions";
 
 export const metadata = { title: "Avaliações" };
-
-const notaClass =
-  "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-emerald-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
 export default async function AdminAvaliacoesPage() {
   const session = await requirePlatformAdmin();
@@ -48,174 +55,184 @@ export default async function AdminAvaliacoesPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Avaliações</h1>
+    <div className="flex flex-col gap-7">
+      <PageHeader
+        titulo="Avaliações"
+        descricao="As rodadas em andamento e as denúncias de nota injusta que dependem de julgamento."
+      />
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-bold">
-          Denúncias abertas{" "}
-          <span className="text-sm font-normal text-neutral-500">({denuncias.length})</span>
-        </h2>
-
+      <Section
+        titulo="Denúncias abertas"
+        acao={
+          <span className="font-display text-[11px] font-bold tracking-[.08em] text-fg-4 uppercase">
+            {denuncias.length}
+          </span>
+        }
+      >
         {denuncias.length === 0 ? (
-          <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            Nada para julgar agora.
-          </p>
+          <EmptyState
+            titulo="Nada para julgar"
+            descricao="Quando alguém contestar uma nota, ela aparece aqui com prazo de 3 dias."
+          />
         ) : (
           denuncias.map((d, i) => {
             const contexto = contextos[i];
             return (
-              <div
-                key={d.reportId}
-                className="rounded-xl border border-amber-300 bg-white p-4 shadow-sm dark:border-amber-800 dark:bg-neutral-900"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{d.reporterName}</span>
-                  <span className="text-sm text-neutral-500 capitalize">
-                    {formatDate(d.matchDayDate)}
-                  </span>
-                  <span
-                    className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
-                      d.horasParaResponder <= 12
-                        ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
-                        : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
-                    }`}
-                  >
-                    {d.horasParaResponder}h para responder
-                  </span>
-                </div>
-
-                <p className="mt-2 text-sm">
-                  Contesta a nota de{" "}
-                  <strong className="text-amber-600 dark:text-amber-400">
-                    {"★".repeat(d.starsDenunciada)}
-                  </strong>{" "}
-                  ({d.starsDenunciada} de 5)
-                  {d.raterName && (
-                    <>
-                      , dada por <strong>{d.raterName}</strong>
-                    </>
-                  )}
-                </p>
-
-                <p className="mt-1 text-sm text-neutral-500">
-                  Todas as notas que recebeu nessa pelada:{" "}
-                  {contexto.map((c, j) => (
-                    <span
-                      key={j}
-                      className={
-                        c.reclamada
-                          ? "font-bold text-amber-600 dark:text-amber-400"
-                          : c.descartada
-                            ? "text-neutral-400 line-through"
-                            : ""
-                      }
-                    >
-                      {j > 0 && " · "}
-                      {c.stars}★{c.raterName && ` (${c.raterName})`}
-                      {c.reclamada ? " — reclamada" : ""}
+              <Card key={d.reportId} className="border-warn-line">
+                <CardHeader className="border-warn-line bg-warn-tint">
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-display text-[14px] font-bold text-fg">
+                      {d.reporterName}
                     </span>
-                  ))}
-                </p>
+                    <span className="block text-[12px] text-fg-3 capitalize">
+                      {formatDate(d.matchDayDate)}
+                    </span>
+                  </span>
+                  <Prazo horas={d.horasParaResponder} prefixo="responder" />
+                </CardHeader>
 
-                <p className="mt-1 text-xs text-neutral-500">
-                  {d.podeJulgar
-                    ? "Os nomes de quem avaliou aparecem só aqui: entre jogadores a nota continua anônima."
-                    : "Você jogou esta pelada, então não julga esta denúncia e não vê quem avaliou. Outro admin da plataforma decide — ou o prazo vence e ela é aceita automaticamente."}
-                </p>
-
-                {d.reason && (
-                  <p className="mt-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm dark:bg-neutral-800">
-                    “{d.reason}”
+                <CardBody className="flex flex-col gap-3">
+                  <p className="flex flex-wrap items-center gap-2 text-[13px] text-fg-2">
+                    Contesta a nota de
+                    <Estrelas valor={d.starsDenunciada} />
+                    <span>({d.starsDenunciada} de 5)</span>
+                    {d.raterName && (
+                      <span>
+                        dada por <strong className="text-fg">{d.raterName}</strong>
+                      </span>
+                    )}
                   </p>
-                )}
 
-                {d.podeJulgar && (
-                  <div className="mt-3 flex flex-col gap-2">
-                    <input
-                      form={`aceitar-${d.reportId}`}
-                      name="adminNote"
-                      placeholder="Observação (opcional, fica no registro)"
-                      className={notaClass}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <form
-                        id={`aceitar-${d.reportId}`}
-                        action={aceitarDenuncia.bind(null, d.reportId)}
+                  <div>
+                    <p className="mb-1 text-[12px] text-fg-4">
+                      Todas as notas que ela recebeu nessa pelada:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {contexto.map((c, j) => (
+                        <span
+                          key={j}
+                          className={cx(
+                            "inline-flex items-center gap-1 rounded-selo border px-1.5 py-0.5 font-display text-[11.5px] font-bold",
+                            c.reclamada
+                              ? "border-warn-line bg-warn-tint text-warn-ink"
+                              : c.descartada
+                                ? "border-line bg-surface-2 text-fg-dim line-through"
+                                : "border-line bg-surface-2 text-fg-2",
+                          )}
+                        >
+                          {c.stars}/5{c.raterName && ` · ${c.raterName}`}
+                          {c.reclamada && " · reclamada"}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="text-[12px] leading-[1.45] text-fg-4">
+                    {d.podeJulgar
+                      ? "Os nomes de quem avaliou aparecem só aqui: entre jogadores a nota continua anônima."
+                      : "Você jogou esta pelada, então não julga esta denúncia e não vê quem avaliou. Outro admin decide — ou o prazo vence e ela é aceita automaticamente."}
+                  </p>
+
+                  {d.reason && (
+                    <p className="rounded-ctl bg-surface-2 px-3 py-2 text-[13px] leading-[1.5] text-fg-2">
+                      “{d.reason}”
+                    </p>
+                  )}
+
+                  {d.podeJulgar && (
+                    /* Um formulário só, com a decisão no `value` do botão: com
+                       dois formulários, o campo de observação pertencia a um
+                       deles e era perdido em silêncio no outro. */
+                    <form
+                      action={julgarDenuncia.bind(null, d.reportId)}
+                      className="flex flex-col gap-3 border-t border-line pt-3"
+                    >
+                      <Field
+                        htmlFor={`nota-${d.reportId}`}
+                        label="Observação"
+                        ajuda="Opcional. Fica no registro da denúncia, seja qual for a decisão."
                       >
-                        <button
-                          type="submit"
-                          className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800"
+                        <Input
+                          id={`nota-${d.reportId}`}
+                          name="adminNote"
+                          maxLength={500}
+                          placeholder="O que pesou na decisão"
+                        />
+                      </Field>
+                      <div className="flex flex-wrap gap-2">
+                        {/* Descartar recalcula a nota de todo mundo desta
+                            pelada em diante: não tem desfazer. */}
+                        <PendingButton
+                          name="decisao"
+                          value="aceitar"
+                          variante="danger"
+                          labelPending="Descartando…"
                         >
                           Descartar a nota
-                        </button>
-                      </form>
-                      <form action={rejeitarDenuncia.bind(null, d.reportId)}>
-                        <button
-                          type="submit"
-                          className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                        </PendingButton>
+                        {/* Também PendingButton: useFormStatus tem escopo de
+                            formulário, então com um Button cru este aqui
+                            continuava clicável enquanto o descarte estava em
+                            voo — e reenviava o mesmo form com a decisão
+                            oposta. */}
+                        <PendingButton
+                          name="decisao"
+                          value="rejeitar"
+                          variante="secondary"
+                          labelPending="Registrando…"
                         >
                           Manter — foi justa
-                        </button>
-                      </form>
-                    </div>
-                    <p className="text-xs text-neutral-500">
-                      Descartar recalcula a nota de todo mundo desta pelada em diante. Sem resposta
-                      em {d.horasParaResponder}h, a denúncia é aceita automaticamente.
-                    </p>
-                  </div>
-                )}
-              </div>
+                        </PendingButton>
+                      </div>
+                      <p className="text-[12px] leading-[1.45] text-fg-4">
+                        Descartar recalcula a nota de todo mundo desta pelada em diante. Sem
+                        resposta em {d.horasParaResponder}h, a denúncia é aceita automaticamente.
+                      </p>
+                    </form>
+                  )}
+                </CardBody>
+              </Card>
             );
           })
         )}
-      </section>
+      </Section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-bold">Rodadas</h2>
-        {rodadas.length === 0 ? (
-          <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            Nenhuma rodada ainda. Encerrar uma pelada abre a primeira.
-          </p>
-        ) : (
-          rodadas.map((r) => (
-            <div
-              key={r.id}
-              className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-            >
+      <Section titulo="Rodadas">
+        <HairlineList
+          as="ul"
+          vazio={
+            <EmptyState
+              titulo="Nenhuma rodada ainda"
+              descricao="Encerrar uma pelada abre a primeira."
+            />
+          }
+        >
+          {rodadas.map((r) => (
+            <HairlineRow as="li" key={r.id}>
               <Link
                 href={`/pelada/${r.matchDayId}/gerenciar`}
-                className="font-medium capitalize hover:underline"
+                className="font-display text-[14px] font-bold text-fg capitalize hover:underline"
               >
                 {formatDate(r.matchDayDate)}
               </Link>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                  r.status === "open"
-                    ? "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
-                    : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
-                }`}
-              >
+              <Badge tom={r.status === "open" ? "warn" : "neutral"}>
                 {r.status === "open" ? "aberta" : r.status === "closed" ? "apurada" : "cancelada"}
-              </span>
-              <span className="text-sm text-neutral-500">
+              </Badge>
+              <span className="text-[12.5px] text-fg-3">
                 {r.total - r.pendentes} de {r.total} avaliaram
-                {r.status === "open" && ` · ${r.horasRestantes}h restantes`}
               </span>
+              {r.status === "open" && <Prazo horas={r.horasRestantes} />}
               {r.status === "open" && (
                 <form action={apurarAgora.bind(null, r.id)} className="ml-auto">
-                  <button
-                    type="submit"
-                    className="rounded-lg border border-neutral-300 px-3 py-1 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-                  >
+                  <SubmitButton variante="secondary" tamanho="sm">
                     Apurar agora
-                  </button>
+                  </SubmitButton>
                 </form>
               )}
-            </div>
-          ))
-        )}
-      </section>
+            </HairlineRow>
+          ))}
+        </HairlineList>
+      </Section>
     </div>
   );
 }

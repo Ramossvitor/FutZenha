@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { VotarState } from "@/components/ui/votar-form";
 import { registrarVoto } from "@/lib/deletion";
 import { requirePlayer } from "@/lib/require-player";
 
@@ -10,8 +11,6 @@ const mensagens = {
   "nao-elegivel": "Você não jogou esta pelada, então não vota nela.",
   encerrada: "Esta votação já foi encerrada.",
 } as const;
-
-export type VotarState = { error?: string; success?: boolean };
 
 // A assinatura recebe o estado anterior porque é chamada via useActionState;
 // aqui ele não é usado, já que o resultado depende só do banco.

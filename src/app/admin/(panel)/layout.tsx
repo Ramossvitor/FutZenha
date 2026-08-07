@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { logout } from "@/app/login/actions";
+import { Badge } from "@/components/ui/badge";
+import { IconeCadeado } from "@/components/ui/icons";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 
 const adminLinks = [
-  { href: "/admin", label: "Dashboard" },
+  { href: "/admin", label: "Visão geral" },
   { href: "/admin/jogadores", label: "Jogadores" },
   { href: "/admin/peladas", label: "Supervisão" },
   { href: "/admin/avaliacoes", label: "Avaliações" },
@@ -12,25 +13,31 @@ const adminLinks = [
 // O guard aqui é rede, não garantia: layout não re-renderiza a cada navegação
 // client-side dentro do próprio layout, então cada página repete o seu. Como
 // getSession é memoizado por request, o par custa uma consulta só.
-export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   await requirePlatformAdmin();
 
   return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm dark:border-amber-700 dark:bg-amber-950">
-        <span className="font-bold text-amber-800 dark:text-amber-300">Plataforma</span>
-        <nav className="flex flex-wrap gap-3">
+    <div className="flex flex-col gap-6">
+      {/* A marcação é sóbria de propósito: uma faixa discreta que diz "você
+          está mexendo no que é de todo mundo", sem virar um segundo produto
+          com identidade própria. O Sair não fica aqui — mora no perfil e na
+          lateral, iguais aos do resto do app. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-warn-line bg-warn-tint px-3.5 py-2.5">
+        <span className="flex items-center gap-2">
+          <IconeCadeado className="size-4 text-warn-ink" />
+          <Badge tom="warn">Plataforma</Badge>
+        </span>
+        <nav aria-label="Painel da plataforma" className="flex flex-wrap gap-x-4 gap-y-1">
           {adminLinks.map((link) => (
-            <Link key={link.href} href={link.href} className="font-medium hover:underline">
+            <Link
+              key={link.href}
+              href={link.href}
+              className="font-display text-[12.5px] font-semibold text-warn-ink hover:underline"
+            >
               {link.label}
             </Link>
           ))}
         </nav>
-        <form action={logout} className="ml-auto">
-          <button type="submit" className="text-neutral-500 hover:underline">
-            Sair
-          </button>
-        </form>
       </div>
       {children}
     </div>

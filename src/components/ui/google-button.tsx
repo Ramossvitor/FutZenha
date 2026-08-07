@@ -1,12 +1,22 @@
+import type { CSSProperties } from "react";
+import { cx } from "@/lib/cx";
+
 // Link, e não botão de formulário: o fluxo inteiro é GET — a ida ao Google é um
 // redirect e a volta também. Um <form> aqui só atrapalharia.
 
-const classes =
-  "flex w-full items-center justify-center gap-3 rounded-lg border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700";
+// O único lugar do app com cor fora dos tokens, e de propósito: são as cores de
+// marca do Google, que as diretrizes dele não deixam restilizar. `light-dark()`
+// resolve pelo `color-scheme` que o globals.css já declara no :root, então o
+// botão acompanha o tema sem precisar de variante por tema.
+const chrome: CSSProperties = {
+  backgroundColor: "light-dark(#FFFFFF, #131314)",
+  color: "light-dark(#1F1F1F, #E3E3E3)",
+  borderColor: "light-dark(#747775, #8E918F)",
+};
 
 function GoogleLogo() {
   return (
-    <svg viewBox="0 0 48 48" aria-hidden="true" className="size-5">
+    <svg viewBox="0 0 48 48" aria-hidden className="size-5 shrink-0">
       <path
         fill="#4285F4"
         d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"
@@ -27,9 +37,24 @@ function GoogleLogo() {
   );
 }
 
-export function GoogleButton({ href, label }: { href: string; label?: string }) {
+export function GoogleButton({
+  href,
+  label,
+  className,
+}: {
+  href: string;
+  label?: string;
+  className?: string;
+}) {
   return (
-    <a href={href} className={classes}>
+    <a
+      href={href}
+      style={chrome}
+      className={cx(
+        "inline-flex h-11 w-full items-center justify-center gap-3 rounded-ctl border font-display text-[14px] font-semibold transition-opacity hover:opacity-90",
+        className,
+      )}
+    >
       <GoogleLogo />
       {label ?? "Entrar com o Google"}
     </a>
