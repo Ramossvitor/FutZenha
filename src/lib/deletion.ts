@@ -337,9 +337,7 @@ export async function getVotacao(
 
 export type VotacaoAberta = {
   voteId: number;
-  matchDayId: number;
   matchDayDate: string;
-  groupId: number | null;
   reason: string;
   horasRestantes: number;
   jaVotei: boolean;
@@ -359,9 +357,7 @@ export async function getVotacoesAbertasDoJogador(playerId: number): Promise<Vot
   const linhas = await db
     .select({
       voteId: matchDayDeletionVotes.id,
-      matchDayId: matchDayDeletionVotes.matchDayId,
       matchDayDate: matchDays.date,
-      groupId: matchDays.groupId,
       reason: matchDayDeletionVotes.reason,
       eligibleCount: matchDayDeletionVotes.eligibleCount,
       horasRestantes: sql<number>`greatest(0, ceil(extract(epoch from (

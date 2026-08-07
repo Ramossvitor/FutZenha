@@ -1,15 +1,16 @@
 import type { ReactNode } from "react";
-import { Wordmark } from "@/components/shell/marca";
 import { cx } from "@/lib/cx";
 
 /**
  * O cartão centrado das telas de porta de entrada: login, convite de conta e
  * convite de grupo.
  *
- * A string dele estava copiada em três arquivos, e já tinha divergido. Aqui
- * também mora a decisão de mostrar a marca: são as únicas telas do app sem
- * barra lateral nem abas, então sem o logotipo a pessoa não sabe onde caiu —
- * e um link de convite chega quase sempre de alguém que só disse "entra aí".
+ * A string dele estava copiada em três arquivos, e já tinha divergido.
+ *
+ * Sem logotipo aqui de propósito: estas telas NÃO estão fora do shell — o
+ * layout raiz é um só e vale para elas também. Deslogado, a TopBar já mostra o
+ * Wordmark no celular e a Sidebar no desktop, então um segundo dentro do cartão
+ * empilhava a marca duas vezes na mesma tela.
  */
 export function CartaoDeEntrada({
   titulo,
@@ -24,8 +25,6 @@ export function CartaoDeEntrada({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-sm flex-col gap-5 py-6 sm:py-12">
-      <Wordmark tamanho="lg" className="self-center" />
-
       <div className="rounded-card border border-line bg-surface p-5">
         <h1 className="font-display text-[21px] leading-[1.15] font-extrabold font-stretch-112% text-fg">
           {titulo}

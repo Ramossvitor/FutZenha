@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { setMyAttendance } from "@/app/pelada/[id]/actions";
-import { VotarForm } from "@/app/votacao/[id]/votar-form";
+import { votar } from "@/app/votacao/[id]/actions";
 import { AvatarPilha } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { BarraDaVotacao } from "@/components/ui/meter";
 import { Podium } from "@/components/ui/podium";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
+import { VotarForm } from "@/components/ui/votar-form";
 import { db } from "@/db";
 import { attendances, games, matchDays, players, teams } from "@/db/schema";
 import { getVotacoesAbertasDoJogador } from "@/lib/deletion";
@@ -161,7 +162,7 @@ export default async function HomePage() {
           </div>
 
           <div className="mt-3">
-            <VotarForm voteId={votacaoPendente.voteId} />
+            <VotarForm voteId={votacaoPendente.voteId} acaoVotar={votar} />
           </div>
 
           <div className="mt-2.5 flex items-center gap-2">

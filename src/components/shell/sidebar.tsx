@@ -1,13 +1,12 @@
 import Link from "next/link";
-import { logout } from "@/app/login/actions";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import type { GrupoAtual } from "@/lib/grupo-atual";
 import { papelLabel } from "@/lib/grupos-permissions";
+import { WordmarkLink } from "@/components/ui/marca";
 import type { Session } from "@/lib/session";
 import { ChipDoGrupo } from "./chip-do-grupo";
-import { WordmarkLink } from "./marca";
 import { itensLaterais } from "./nav-items";
 import { NavLink } from "./nav-link";
 
@@ -22,10 +21,19 @@ export function Sidebar({
   session,
   grupo,
   naoLidas,
+  aoSair,
 }: {
   session: Session | null;
   grupo: GrupoAtual | null;
   naoLidas: number;
+  /**
+   * A Server Action do Sair, injetada pelo layout.
+   *
+   * Vem por prop e não por import porque `@/app/login/actions` é `"use server"`
+   * e puxa o grafo inteiro de banco e senha: importá-lo daqui faria a única
+   * aresta de `src/components/` para dentro de `src/app/` de todo o projeto.
+   */
+  aoSair: () => Promise<void>;
 }) {
   const itens = itensLaterais({
     logado: session !== null,
@@ -77,7 +85,7 @@ export function Sidebar({
               </span>
             </span>
           </Link>
-          <form action={logout}>
+          <form action={aoSair}>
             <Button type="submit" variante="ghost" tamanho="sm" className="w-full justify-start">
               Sair
             </Button>

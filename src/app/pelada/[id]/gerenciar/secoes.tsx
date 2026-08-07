@@ -13,7 +13,7 @@ import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
 import { formatSkill, formatTime } from "@/lib/format";
 import { siteUrl } from "@/lib/site-url";
-import { BuscaJogador, type ItemJogador } from "./busca-jogador";
+import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import {
   abrirVotacaoExclusao,
   addGoal,
@@ -208,7 +208,7 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
 }
 
 export function SecaoTimes({ pelada }: { pelada: PainelDaPelada }) {
-  const { matchDay, teamList, teamMembers, confirmed, gameCount } = pelada;
+  const { matchDay, teamList, teamMembers, confirmed, gameList } = pelada;
 
   return (
     <Section titulo="Times">
@@ -237,7 +237,9 @@ export function SecaoTimes({ pelada }: { pelada: PainelDaPelada }) {
               </PendingButton>
               <span className="text-[12px] text-fg-4">
                 {confirmed.length} confirmados
-                {teamList.length > 0 && gameCount > 0 && " · apague os jogos antes de re-sortear"}
+                {teamList.length > 0 &&
+                  gameList.length > 0 &&
+                  " · apague os jogos antes de re-sortear"}
               </span>
             </form>
           </CardBody>
@@ -524,7 +526,7 @@ export function SecaoJogos({ pelada }: { pelada: PainelDaPelada }) {
 }
 
 export function SecaoEncerrar({ pelada }: { pelada: PainelDaPelada }) {
-  const { matchDay, dentroDaJanela, segundosDeJanela } = pelada;
+  const { matchDay, dentroDaJanela } = pelada;
 
   if (matchDay.status === "finished") {
     return (
@@ -535,7 +537,7 @@ export function SecaoEncerrar({ pelada }: { pelada: PainelDaPelada }) {
         </Banner>
         {dentroDaJanela ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Prazo horas={Math.ceil(segundosDeJanela / 3600)} />
+            <Prazo horas={Math.ceil(matchDay.segundosDeJanela / 3600)} />
             <span className="text-[13px] text-fg-2">
               Placar e gols ainda podem ser corrigidos.
             </span>

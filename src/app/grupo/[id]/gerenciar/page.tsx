@@ -2,7 +2,7 @@ import { and, asc, eq, notInArray } from "drizzle-orm";
 import { BannerDaQuery } from "@/components/ui/banner";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/card";
-import type { ItemJogador } from "@/app/pelada/[id]/gerenciar/busca-jogador";
+import type { ItemJogador } from "@/components/ui/busca-jogador";
 import { db } from "@/db";
 import { players, users } from "@/db/schema";
 import { podeGerenciarGrupo } from "@/lib/grupos-permissions";

@@ -200,7 +200,7 @@ function CartaoDeContexto({
 }) {
   return (
     <Card className={ativo ? "border-accent-edge" : undefined}>
-      <form action={trocarGrupo.bind(null, groupId, "inicio")}>
+      <form action={trocarGrupo.bind(null, groupId)}>
         <button
           type="submit"
           className="flex w-full items-center gap-3 rounded-t-card px-4 py-3.5 text-left transition-colors hover:bg-surface-2"

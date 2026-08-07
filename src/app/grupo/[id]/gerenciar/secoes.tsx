@@ -8,7 +8,7 @@ import { PendingButton } from "@/components/ui/pending-button";
 import type { Group } from "@/db/schema";
 import { papelLabel } from "@/lib/grupos-permissions";
 import { urlDoLink } from "@/lib/grupos";
-import { BuscaJogador, type ItemJogador } from "@/app/pelada/[id]/gerenciar/busca-jogador";
+import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import {
   aprovarPedido,
   atualizarGrupo,

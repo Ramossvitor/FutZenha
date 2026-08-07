@@ -59,7 +59,6 @@
   --warn-ink:    #945D00;
   --warn-tint:   #FFF6E3;
   --warn-line:   #F0D9A6;
-  --on-warn:     #0B0E0D;
 
   /* danger (vermelho) */
   --danger:      #CE2F16;
@@ -69,9 +68,7 @@
   --danger-line: #F5C4B8;
   --on-danger:   #FFFFFF;
 
-  /* inverso e foco */
-  --inverse:     #0E1310;
-  --on-inverse:  #F4F6F2;
+  /* foco */
   --ring:        #457200;
 
   /* coletes — o preenchimento É a cor da camisa e não muda entre temas.
@@ -88,7 +85,6 @@
   --r-selo:  3px;
   --r-ctl:   6px;
   --r-card: 10px;
-  --r-sheet: 22px;
 }
 
 /* --------------------------------------------------------------------------
@@ -127,7 +123,6 @@
     --warn-ink:    #FFB020;
     --warn-tint:   #231B0E;
     --warn-line:   #4A3D1C;
-    --on-warn:     #070908;
 
     --danger:      #FF4B2B;
     --danger-hover:#FF6449;
@@ -136,8 +131,6 @@
     --danger-line: #4A241C;
     --on-danger:   #070908;
 
-    --inverse:     #EDF2EF;
-    --on-inverse:  #070908;
     --ring:        #CDFF3A;
 
     --vest-preto-line:    #5C666B;
@@ -165,10 +158,10 @@
   --fg:#0E1310; --fg-2:#4A544D; --fg-3:#545E57; --fg-4:#636D66; --fg-dim:#8A938D; --fg-faint:#AAB2AC;
   --accent:#B8EF2A; --accent-hover:#C7F84F; --accent-ink:#457200; --accent-edge:#6E9509;
   --accent-tint:#F1FBD9; --accent-line:#C3E36F; --on-accent:#0B0E0D;
-  --warn:#C07A00; --warn-ink:#945D00; --warn-tint:#FFF6E3; --warn-line:#F0D9A6; --on-warn:#0B0E0D;
+  --warn:#C07A00; --warn-ink:#945D00; --warn-tint:#FFF6E3; --warn-line:#F0D9A6;
   --danger:#CE2F16; --danger-hover:#B82B13; --danger-ink:#C22F16;
   --danger-tint:#FDECE8; --danger-line:#F5C4B8; --on-danger:#FFFFFF;
-  --inverse:#0E1310; --on-inverse:#F4F6F2; --ring:#457200;
+  --ring:#457200;
   --vest-preto-line:#4A5257; --vest-branco-line:#849089; --vest-verde-line:#0E8E56;
   --vest-laranja-line:#D8600A; --vest-azul-line:#2F6FE0; --vest-vermelho-line:#D9342A;
   --vest-amarelo-line:#B08800;
@@ -181,10 +174,10 @@
   --fg:#EDF2EF; --fg-2:#9AA7A1; --fg-3:#7E8B85; --fg-4:#76837D; --fg-dim:#5E6A65; --fg-faint:#4E5A55;
   --accent:#CDFF3A; --accent-hover:#DBFF6B; --accent-ink:#CDFF3A; --accent-edge:#CDFF3A;
   --accent-tint:#1A2110; --accent-line:#3C4A22; --on-accent:#070908;
-  --warn:#FFB020; --warn-ink:#FFB020; --warn-tint:#231B0E; --warn-line:#4A3D1C; --on-warn:#070908;
+  --warn:#FFB020; --warn-ink:#FFB020; --warn-tint:#231B0E; --warn-line:#4A3D1C;
   --danger:#FF4B2B; --danger-hover:#FF6449; --danger-ink:#FF7A5E;
   --danger-tint:#1E100C; --danger-line:#4A241C; --on-danger:#070908;
-  --inverse:#EDF2EF; --on-inverse:#070908; --ring:#CDFF3A;
+  --ring:#CDFF3A;
   --vest-preto-line:#5C666B; --vest-branco-line:#E8EDEA; --vest-verde-line:#1FD183;
   --vest-laranja-line:#FF9038; --vest-azul-line:#4E8CF5; --vest-vermelho-line:#F2564A;
   --vest-amarelo-line:#FFD84D;
@@ -238,7 +231,6 @@
   --color-warn-ink:  var(--warn-ink);
   --color-warn-tint: var(--warn-tint);
   --color-warn-line: var(--warn-line);
-  --color-on-warn:   var(--on-warn);
 
   --color-danger:       var(--danger);
   --color-danger-hover: var(--danger-hover);
@@ -247,8 +239,6 @@
   --color-danger-line:  var(--danger-line);
   --color-on-danger:    var(--on-danger);
 
-  --color-inverse:    var(--inverse);
-  --color-on-inverse: var(--on-inverse);
   --color-ring:       var(--ring);
 
   --color-vest-preto:         var(--vest-preto);
@@ -270,7 +260,6 @@
   --radius-selo:  var(--r-selo);
   --radius-ctl:   var(--r-ctl);
   --radius-card:  var(--r-card);
-  --radius-sheet: var(--r-sheet);
 
   /* animate-urg / animate-flood */
   --animate-urg:   urg 1.15s ease-in-out infinite;
@@ -311,6 +300,29 @@
   body {
     background-color: var(--canvas);
     color: var(--fg);
+  }
+
+  /* --tabbar-h é contrato com as telas que têm botão fixo no rodapé: sem ele o
+     "enviar avaliação" fica por baixo das abas justamente na tela em que o
+     toque importa. No desktop não há abas, então zera.
+
+     A conta é a altura real da TabBar: 1px de borda + 6 de padding em cima +
+     56 do alvo de toque + 6 embaixo, mais a safe-area, que também entra no
+     padding de lá. Medido no browser — chutar 64 deixava o botão 5px por baixo
+     da barra.
+
+     Mora aqui e não num `style` no <body> porque declaração em atributo style
+     ganha de qualquer regra de folha de estilo, media query inclusive: com o
+     valor inline, o reset do desktop nunca chegava a valer. 64rem é o `lg` do
+     Tailwind, o mesmo ponto em que a TabBar some. */
+  body {
+    --tabbar-h: calc(69px + env(safe-area-inset-bottom));
+  }
+
+  @media (width >= 64rem) {
+    body {
+      --tabbar-h: 0px;
+    }
   }
 
   ::selection {
@@ -367,18 +379,4 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -.02em;
   line-height: .86;
-}
-
-/* Lista com separadores de 1px sem usar border-bottom: o gap deixa o fundo do
-   contêiner aparecer entre os filhos. Os filhos levam `bg-surface` explícito
-   de propósito, para que uma linha destacada possa trocar por bg-accent-tint
-   sem briga de especificidade. */
-@utility hairline {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background-color: var(--line-soft);
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  overflow: hidden;
 }

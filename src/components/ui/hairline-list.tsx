@@ -40,14 +40,12 @@ const linha = "flex flex-wrap items-center gap-x-2.5 gap-y-1 bg-surface px-3.5 p
 
 export function HairlineRow({
   as: Tag = "div",
-  interativo = false,
   destaque = false,
   apagado = false,
   className,
   children,
 }: {
   as?: "div" | "li";
-  interativo?: boolean;
   /** A sua própria linha na lista de presença ou de ranking. */
   destaque?: boolean;
   /** Inativo, fora, descartado. */
@@ -59,7 +57,6 @@ export function HairlineRow({
     <Tag
       className={cx(
         linha,
-        interativo && "transition-colors hover:bg-surface-2",
         destaque && "bg-accent-tint",
         apagado && "text-fg-dim",
         className,

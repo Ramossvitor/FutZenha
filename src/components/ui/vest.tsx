@@ -33,21 +33,3 @@ export function VestChip({
     />
   );
 }
-
-/** Chip + nome do time, que é o par que o design usa em toda parte. */
-export function Vest({
-  time,
-  tamanho = "md",
-  className,
-}: {
-  time: string;
-  tamanho?: TamanhoColete;
-  className?: string;
-}) {
-  return (
-    <span className={cx("inline-flex items-center gap-2", className)}>
-      <VestChip time={time} tamanho={tamanho} />
-      <span className="font-display text-[13px] font-bold font-stretch-112% text-fg">{time}</span>
-    </span>
-  );
-}

@@ -5,24 +5,15 @@ import { cx } from "@/lib/cx";
  * A grade de indicadores. Usa a mesma hairline das listas: gap de 1px sobre o
  * fundo da linha, então as células ficam separadas por fios sem nenhuma borda.
  */
-export function StatGrid({
-  colunas = 3,
-  className,
-  children,
-}: {
-  colunas?: 2 | 3;
-  className?: string;
-  children: ReactNode;
-}) {
+export function StatGrid({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <div
       className={cx(
         "grid gap-px overflow-hidden rounded-card border border-line bg-line-soft",
-        // Duas colunas no celular mesmo quando o pedido é três: a 390px, um
-        // terço da largura não comporta rótulo como "APROVEITAMENTO" ou
-        // "ORGANIZADORES", e eles quebravam no meio da palavra.
-        // Strings literais: `grid-cols-${n}` não sobreviveria ao scan do Tailwind.
-        colunas === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3",
+        // Duas colunas no celular e três a partir do sm: a 390px, um terço da
+        // largura não comporta rótulo como "APROVEITAMENTO" ou "ORGANIZADORES",
+        // e eles quebravam no meio da palavra.
+        "grid-cols-2 sm:grid-cols-3",
         className,
       )}
     >

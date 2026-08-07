@@ -10,8 +10,7 @@ export type BotaoVariante =
   | "secondary" // contorno
   | "ghost" // sem caixa, para ação terciária em linha
   | "danger" // vermelho cheio — ponto de não retorno
-  | "danger-outline" // contorno vermelho — remover, revogar, denunciar
-  | "inverse"; // inverte fundo e texto
+  | "danger-outline"; // contorno vermelho — remover, revogar, denunciar
 
 export type BotaoTamanho = "sm" | "md" | "lg";
 
@@ -40,7 +39,6 @@ const variantes: Record<BotaoVariante, string> = {
   ghost: "border-transparent bg-transparent text-fg-2 hover:bg-surface-2 hover:text-fg",
   danger: "border-transparent bg-danger text-on-danger hover:bg-danger-hover",
   "danger-outline": "border-danger-line bg-transparent text-danger-ink hover:bg-danger-tint",
-  inverse: "border-transparent bg-inverse text-on-inverse hover:opacity-90",
 };
 
 export type BotaoProps = {

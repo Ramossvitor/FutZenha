@@ -84,7 +84,7 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
       )}
 
       <Section titulo="Meus números" acao={<span className="eyebrow">só peladas encerradas</span>}>
-        <StatGrid colunas={3}>
+        <StatGrid>
           <StatTile label="Gols" valor={meusGols} />
           <StatTile label="Jogos" valor={meuRetro?.gamesPlayed ?? 0} />
           <StatTile

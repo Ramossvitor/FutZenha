@@ -29,21 +29,13 @@ function Estrela({ className }: { className?: string }) {
 /**
  * As estrelas recebidas, só leitura.
  */
-export function Estrelas({
-  valor,
-  de = 5,
-  className,
-}: {
-  valor: number;
-  de?: number;
-  className?: string;
-}) {
+export function Estrelas({ valor, className }: { valor: number; className?: string }) {
   return (
     <span className={cx("inline-flex items-center gap-0.5", className)}>
       <span className="sr-only">
-        {valor} de {de} estrelas
+        {valor} de {NOTAS.length} estrelas
       </span>
-      {Array.from({ length: de }, (_, i) => (
+      {NOTAS.map((_, i) => (
         <span
           key={i}
           aria-hidden

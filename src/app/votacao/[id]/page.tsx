@@ -10,7 +10,8 @@ import { Prazo } from "@/components/ui/prazo";
 import { getVotacao } from "@/lib/deletion";
 import { formatDate } from "@/lib/format";
 import { requirePlayer } from "@/lib/require-player";
-import { VotarForm } from "./votar-form";
+import { VotarForm } from "@/components/ui/votar-form";
+import { votar } from "./actions";
 
 export const metadata: Metadata = { title: "Votação" };
 
@@ -123,7 +124,7 @@ export default async function VotacaoPage({ params }: PageProps<"/votacao/[id]">
           é definitivo.
         </Banner>
       ) : (
-        <VotarForm voteId={voteId} />
+        <VotarForm voteId={voteId} acaoVotar={votar} />
       )}
 
       <LinkButton href="/avaliar" variante="ghost" tamanho="sm" className="self-start">

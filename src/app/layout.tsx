@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { logout } from "@/app/login/actions";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { TopBar } from "@/components/shell/top-bar";
@@ -51,22 +52,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       lang="pt-BR"
       className={`${archivo.variable} ${instrumentSans.variable} h-full antialiased`}
     >
-      {/* --tabbar-h é contrato com as telas que têm botão fixo no rodapé: sem
-          ele, o "enviar avaliação" fica por baixo das abas justamente na tela em
-          que o toque importa. No desktop não há abas, então zera.
-
-          A conta é a altura real da TabBar: 1px de borda + 6 de padding em cima
-          + 56 do alvo de toque + 6 embaixo, mais a safe-area, que também entra
-          no padding de lá. Medido no browser — chutar 64 deixava o botão 5px
-          por baixo da barra. */}
-      <body
-        className="flex min-h-full flex-col lg:[--tabbar-h:0px]"
-        style={
-          { "--tabbar-h": "calc(69px + env(safe-area-inset-bottom))" } as React.CSSProperties
-        }
-      >
+      {/* A altura da TabBar sai daqui como --tabbar-h e é o que segura o botão
+          fixo do rodapé fora das abas — a declaração e a conta dela estão em
+          globals.css, na camada base. */}
+      <body className="flex min-h-full flex-col">
         <div className="flex min-h-full flex-1 lg:gap-0">
-          <Sidebar session={session} grupo={grupo} naoLidas={naoLidas} />
+          <Sidebar session={session} grupo={grupo} naoLidas={naoLidas} aoSair={logout} />
 
           <div className="flex min-w-0 flex-1 flex-col">
             <TopBar session={session} grupo={grupo} naoLidas={naoLidas} />

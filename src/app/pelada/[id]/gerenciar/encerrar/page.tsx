@@ -16,7 +16,7 @@ import { montarChecklist } from "@/lib/encerramento";
 import { formatDate } from "@/lib/format";
 import { companheirosPorJogador, gruposElegiveis } from "@/lib/lineup";
 import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
-import { BuscaJogador, type ItemJogador } from "../busca-jogador";
+import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import { confirmarEncerramento, incluirNoJogo, moverLado, removerDoJogo } from "./actions";
 
 export const metadata = { title: "Conferir escalação" };

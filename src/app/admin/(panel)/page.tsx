@@ -39,7 +39,7 @@ export default async function AdminDashboardPage() {
       />
 
       <Section titulo="Uso da plataforma">
-        <StatGrid colunas={3}>
+        <StatGrid>
           <StatTile label="Jogadores ativos" valor={m.jogadoresAtivos} />
           <StatTile
             label="Contas ativas"

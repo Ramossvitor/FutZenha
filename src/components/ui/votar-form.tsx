@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { Banner } from "@/components/ui/banner";
-import { SubmitButton } from "@/components/ui/button";
-import { votar, type VotarState } from "./actions";
+import { Banner } from "./banner";
+import { SubmitButton } from "./button";
+
+export type VotarState = { error?: string; success?: boolean };
 
 const initialState: VotarState = {};
 
@@ -14,11 +15,24 @@ const initialState: VotarState = {};
  * mesma action, e o `pending` de um precisa desabilitar o outro — votar é
  * definitivo, e um duplo clique atrapalhado não pode registrar o contrário do
  * que a pessoa quis.
+ *
+ * A action entra por prop porque este form serve duas rotas — /votacao/[id] e a
+ * home — e importá-la de dentro de uma delas faria a outra alcançar um arquivo
+ * colocado numa rota que não é a sua.
  */
-export function VotarForm({ voteId }: { voteId: number }) {
-  const [state, formAction, pending] = useActionState(votar.bind(null, voteId, true), initialState);
+export function VotarForm({
+  voteId,
+  acaoVotar,
+}: {
+  voteId: number;
+  acaoVotar: (voteId: number, aFavor: boolean) => Promise<VotarState>;
+}) {
+  const [state, formAction, pending] = useActionState(
+    acaoVotar.bind(null, voteId, true),
+    initialState,
+  );
   const [stateNao, formActionNao, pendingNao] = useActionState(
-    votar.bind(null, voteId, false),
+    acaoVotar.bind(null, voteId, false),
     initialState,
   );
   const erro = state.error ?? stateNao.error;

@@ -3,23 +3,14 @@ import type { ComponentProps, ReactNode } from "react";
 import { cx } from "@/lib/cx";
 
 export function Card({
-  tom = "surface",
   className,
   children,
 }: {
-  /** `pit` afunda em vez de levantar — usado para inset dentro de outro card. */
-  tom?: "surface" | "pit";
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <div
-      className={cx(
-        "rounded-card border border-line",
-        tom === "surface" ? "bg-surface" : "bg-surface-2",
-        className,
-      )}
-    >
+    <div className={cx("rounded-card border border-line bg-surface", className)}>
       {children}
     </div>
   );

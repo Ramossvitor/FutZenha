@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { IconeSino } from "@/components/ui/icons";
+import { WordmarkLink } from "@/components/ui/marca";
 import type { GrupoAtual } from "@/lib/grupo-atual";
 import type { Session } from "@/lib/session";
 import { ChipDoGrupo } from "./chip-do-grupo";
-import { WordmarkLink } from "./marca";
 
 function Contador({ n }: { n: number }) {
   return (
