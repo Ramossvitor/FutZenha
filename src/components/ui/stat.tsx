@@ -18,8 +18,11 @@ export function StatGrid({
     <div
       className={cx(
         "grid gap-px overflow-hidden rounded-card border border-line bg-line-soft",
-        // strings literais: `grid-cols-${n}` não sobreviveria ao scan do Tailwind
-        colunas === 2 ? "grid-cols-2" : "grid-cols-3",
+        // Duas colunas no celular mesmo quando o pedido é três: a 390px, um
+        // terço da largura não comporta rótulo como "APROVEITAMENTO" ou
+        // "ORGANIZADORES", e eles quebravam no meio da palavra.
+        // Strings literais: `grid-cols-${n}` não sobreviveria ao scan do Tailwind.
+        colunas === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3",
         className,
       )}
     >
