@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader, Section } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
+import { IconeSeta } from "@/components/ui/icons";
+import { Prazo } from "@/components/ui/prazo";
 import { getVotacoesAbertasDoJogador } from "@/lib/deletion";
 import { formatDate } from "@/lib/format";
 import { getRodadasAbertasDoJogador } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 
-export const metadata: Metadata = { title: "Avaliações" };
+export const metadata: Metadata = { title: "Avaliações abertas" };
 
 export default async function AvaliarPage() {
   const session = await requirePlayer();
@@ -15,73 +20,65 @@ export default async function AvaliarPage() {
   ]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        titulo="Pendências"
+        descricao="O que está com prazo correndo e depende de você."
+      />
+
       {votacoes.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-lg font-bold">Votações abertas</h2>
-          {votacoes.map((v) => (
-            <Link
-              key={v.voteId}
-              href={`/votacao/${v.voteId}`}
-              className="flex flex-wrap items-center gap-2 rounded-xl border border-red-300 bg-white p-4 shadow-sm hover:border-red-500 dark:border-red-800 dark:bg-neutral-900"
-            >
-              <div>
-                <p className="font-medium">Excluir a pelada de {formatDate(v.matchDayDate)}?</p>
-                <p className="text-sm text-neutral-500">Seu voto é definitivo</p>
-              </div>
-              <div className="ml-auto flex flex-col items-end gap-1">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    v.jaVotei
-                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
-                      : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
-                  }`}
-                >
-                  {v.jaVotei ? "já votou" : "falta votar"}
-                </span>
-                <span className="text-xs text-neutral-500">faltam {v.horasRestantes}h</span>
-              </div>
-            </Link>
-          ))}
-        </section>
+        <Section titulo="Votações abertas">
+          <HairlineList as="ul">
+            {votacoes.map((v) => (
+              <li key={v.voteId}>
+                <HairlineRowLink href={`/votacao/${v.voteId}`}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-display text-[14px] font-bold text-fg">
+                      Apagar a pelada de <span className="capitalize">{formatDate(v.matchDayDate)}</span>?
+                    </span>
+                    <span className="block text-[12px] text-fg-4">O voto é definitivo.</span>
+                  </span>
+                  <Badge tom={v.jaVotei ? "neutral" : "danger"}>
+                    {v.jaVotei ? "já votou" : "falta votar"}
+                  </Badge>
+                  <Prazo horas={v.horasRestantes} />
+                  <IconeSeta className="size-4 text-fg-dim" />
+                </HairlineRowLink>
+              </li>
+            ))}
+          </HairlineList>
+        </Section>
       )}
 
-      <h1 className="text-2xl font-bold">Avaliações abertas</h1>
-
-      {rodadas.length === 0 ? (
-        <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          Nenhuma avaliação aberta agora. Depois que uma pelada que você jogou for encerrada, ela
-          aparece aqui.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-2">
+      <Section titulo="Avaliações">
+        <HairlineList
+          as="ul"
+          vazio={
+            <EmptyState
+              titulo="Nenhuma avaliação aberta"
+              descricao="Depois que uma pelada que você jogou for encerrada, ela aparece aqui com prazo de 2 dias."
+            />
+          }
+        >
           {rodadas.map(({ round, matchDayDate, location, jaEnviou, horasRestantes }) => (
             <li key={round.id}>
-              <Link
-                href={`/avaliar/${round.id}`}
-                className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm hover:border-emerald-600 dark:border-neutral-800 dark:bg-neutral-900"
-              >
-                <div>
-                  <p className="font-medium capitalize">{formatDate(matchDayDate)}</p>
-                  <p className="text-sm text-neutral-500">{location}</p>
-                </div>
-                <div className="ml-auto flex flex-col items-end gap-1">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      jaEnviou
-                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
-                        : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
-                    }`}
-                  >
-                    {jaEnviou ? "avaliado" : "falta avaliar"}
+              <HairlineRowLink href={`/avaliar/${round.id}`}>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-display text-[14px] font-bold text-fg capitalize">
+                    {formatDate(matchDayDate)}
                   </span>
-                  <span className="text-xs text-neutral-500">faltam {horasRestantes}h</span>
-                </div>
-              </Link>
+                  <span className="block truncate text-[12px] text-fg-4">{location}</span>
+                </span>
+                <Badge tom={jaEnviou ? "accent" : "warn"}>
+                  {jaEnviou ? "avaliado" : "falta avaliar"}
+                </Badge>
+                <Prazo horas={horasRestantes} />
+                <IconeSeta className="size-4 text-fg-dim" />
+              </HairlineRowLink>
             </li>
           ))}
-        </ul>
-      )}
+        </HairlineList>
+      </Section>
     </div>
   );
 }

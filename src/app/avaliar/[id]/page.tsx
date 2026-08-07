@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
+import { Badge } from "@/components/ui/badge";
+import { Banner } from "@/components/ui/banner";
+import { LinkButton } from "@/components/ui/button";
+import { Card, PageHeader, Section } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Estrelas } from "@/components/ui/estrelas";
+import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
+import { IconeCadeado } from "@/components/ui/icons";
+import { Prazo } from "@/components/ui/prazo";
 import { db } from "@/db";
 import { matchDays, ratingRoundRaters, ratingRounds } from "@/db/schema";
 import { formatDate } from "@/lib/format";
@@ -51,52 +59,79 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
   const encerrada = rodada.status !== "open" || rodada.venceu;
 
   return (
-    <div className="flex flex-col gap-4">
-      <header>
-        <h1 className="text-2xl font-bold">Avaliar companheiros</h1>
-        <p className="text-sm text-neutral-500">
-          <span className="capitalize">{formatDate(rodada.matchDayDate)}</span> · {rodada.location}
-        </p>
-      </header>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        titulo={
+          <>
+            Como foi
+            <br />a rapaziada?
+          </>
+        }
+        selos={
+          encerrada ? (
+            <Badge tom="neutral">encerrada</Badge>
+          ) : (
+            <Prazo horas={rodada.horasRestantes} />
+          )
+        }
+        descricao={
+          <>
+            <span className="capitalize">{formatDate(rodada.matchDayDate)}</span> ·{" "}
+            {rodada.location}
+            <span className="mt-0.5 block text-fg-4">Só quem dividiu lado com você.</span>
+          </>
+        }
+      />
 
-      {encerrada ? (
-        <p className="rounded-lg border border-neutral-300 bg-neutral-100 px-4 py-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+      {!encerrada && (
+        <Card className="border-accent-line bg-accent-tint p-3.5">
+          <div className="flex items-start gap-2.5">
+            <IconeCadeado className="mt-0.5 size-5 shrink-0 text-accent-ink" />
+            <div>
+              <p className="font-display text-[14px] font-extrabold font-stretch-112% text-accent-ink">
+                Ninguém vai saber que foi você.
+              </p>
+              <p className="mt-0.5 text-[12.5px] leading-[1.5] text-fg-2">
+                A pessoa vê a estrela que recebeu, nunca quem deu. Nem quem organiza, nem quem
+                administra. A apuração sai antes do prazo se todo mundo avaliar — ainda faltam{" "}
+                {pendencias.pendentes} de {pendencias.total}.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {encerrada && (
+        <Banner tom="info">
           O prazo desta avaliação já acabou.{" "}
           {rodada.submittedAt
             ? "A sua avaliação foi contabilizada."
             : "Você não avaliou a tempo, e as notas foram calculadas sem a sua."}
-        </p>
-      ) : (
-        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-          Dê de 1 a 5 estrelas para quem jogou do seu lado. As avaliações são{" "}
-          <strong>anônimas</strong>. Faltam {rodada.horasRestantes}h para o prazo, e a apuração
-          acontece antes se todos avaliarem — ainda faltam {pendencias.pendentes} de{" "}
-          {pendencias.total}.
-        </p>
+        </Banner>
       )}
 
       {companheiros.length === 0 ? (
-        <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          Ninguém para avaliar nesta pelada — seus companheiros de time ainda não têm conta no
-          sistema.
-        </p>
+        <EmptyState
+          titulo="Ninguém para avaliar"
+          descricao="Seus companheiros de time nesta pelada ainda não têm conta no sistema. A avaliação precisa de três contas ativas do mesmo lado."
+        />
       ) : encerrada ? (
-        <ul className="flex flex-col gap-2">
-          {companheiros.map((c) => (
-            <li
-              key={c.playerId}
-              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white p-3 text-sm shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-            >
-              <span>
-                {c.isGoalkeeper ? "🧤 " : ""}
-                {c.nickname ?? c.name}
-              </span>
-              <span className="ml-auto text-amber-400">
-                {jaDadas.has(c.playerId) ? "★".repeat(jaDadas.get(c.playerId)!) : "—"}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <Section titulo="O que você deu">
+          <HairlineList as="ul">
+            {companheiros.map((c) => (
+              <HairlineRow as="li" key={c.playerId}>
+                <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
+                  {c.nickname ?? c.name}
+                </span>
+                {jaDadas.has(c.playerId) ? (
+                  <Estrelas valor={jaDadas.get(c.playerId)!} />
+                ) : (
+                  <span className="text-[12px] text-fg-4">não avaliou</span>
+                )}
+              </HairlineRow>
+            ))}
+          </HairlineList>
+        </Section>
       ) : (
         <RatingForm
           roundId={roundId}
@@ -105,6 +140,7 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
             (c): CompanheiroForm => ({
               playerId: c.playerId,
               rotulo: c.nickname ?? c.name,
+              nome: c.name,
               isGoalkeeper: c.isGoalkeeper,
               estrelasAtuais: jaDadas.get(c.playerId),
             }),
@@ -112,9 +148,9 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
         />
       )}
 
-      <Link href="/avaliar" className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">
+      <LinkButton href="/avaliar" variante="ghost" tamanho="sm" className="self-start">
         ← Todas as avaliações
-      </Link>
+      </LinkButton>
     </div>
   );
 }
