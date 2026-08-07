@@ -182,9 +182,15 @@ jobs:
 
     # Faz o link aparecer na aba "Deployments" do repositório. Para exigir
     # aprovação manual antes de publicar:
-    # Settings → Environments → producao → Required reviewers.
+    # Settings → Environments → Production → Required reviewers.
+    #
+    # O nome tem que bater EXATAMENTE com o ambiente onde os secrets foram
+    # cadastrados: secret de ambiente só é injetado no job que declara aquele
+    # ambiente. Já custou um deploy — o job pedia "producao" (ambiente que o
+    # GitHub criou sozinho, vazio) enquanto os secrets estavam em "Production",
+    # e as três variáveis chegaram vazias em vez de "***".
     environment:
-      name: producao
+      name: Production
       url: ${{ steps.deploy.outputs.url }}
 
     env:
