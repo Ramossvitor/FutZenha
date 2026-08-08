@@ -33,6 +33,15 @@ export const viewport: Viewport = {
   ],
 };
 
+// Vale para todo segmento abaixo, páginas e Server Actions incluídas.
+//
+// Não é folga para request lento: é o que garante que o `connect_timeout: 30`
+// do src/db/index.ts chegue a disparar. Herdando o default do plano, um compute
+// do Neon acordando estoura o teto da função ANTES do driver desistir, e o que
+// a pessoa vê é um 504 opaco em vez do src/app/error.tsx — que é justamente a
+// tela que sabe dizer "confere antes de repetir".
+export const maxDuration = 60;
+
 // Ler a sessão aqui torna todas as páginas dinâmicas por request — escolha
 // deliberada para mostrar quem está logado em qualquer página.
 export default async function RootLayout({ children }: LayoutProps<"/">) {

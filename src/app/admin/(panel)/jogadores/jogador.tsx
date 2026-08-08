@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Button, SubmitButton } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Field, Input } from "@/components/ui/field";
 import { IconeLuva } from "@/components/ui/icons";
@@ -218,9 +218,9 @@ export function LinhaDoJogador({
           <CamposDoJogador player={player} />
         </form>
         <form action={setPlayerActive.bind(null, player.id, false)}>
-          <Button type="submit" variante="ghost" tamanho="sm" className="text-danger-ink">
+          <SubmitButton variante="ghost" tamanho="sm" className="text-danger-ink">
             Desativar — sai das listas, mantém o histórico
-          </Button>
+          </SubmitButton>
         </form>
         <SecaoDeAcesso player={player} user={user} pending={pending} euMesmo={euMesmo} />
       </div>

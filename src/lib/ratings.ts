@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { db, type Executor } from "@/db";
 import {
   gamePlayers,
   games,
@@ -32,8 +32,17 @@ export function prazoEmDias(dias: number) {
   return sql<Date>`now() + make_interval(days => ${dias}::int)`;
 }
 
-export async function getEscalacaoDaPelada(matchDayId: number): Promise<EscalacaoRow[]> {
-  return db
+/**
+ * Recebe o executor porque roda tanto solto (telas de avaliação) quanto dentro
+ * da transação de encerrar a pelada — e usar o `db` global de dentro de uma
+ * transação, com pool pequeno, é pedir para a query esperar a conexão que a
+ * própria transação reservou (deadlock de encerramento que travava produção).
+ */
+export async function getEscalacaoDaPelada(
+  exec: Executor,
+  matchDayId: number,
+): Promise<EscalacaoRow[]> {
+  return exec
     .select({
       gameId: gamePlayers.gameId,
       playerId: gamePlayers.playerId,
@@ -61,7 +70,7 @@ export async function getCompanheiros(
   matchDayId: number,
   playerId: number,
 ): Promise<Companheiro[]> {
-  const companheiros = companheirosPorJogador(await getEscalacaoDaPelada(matchDayId));
+  const companheiros = companheirosPorJogador(await getEscalacaoDaPelada(db, matchDayId));
   const ids = [...(companheiros.get(playerId) ?? [])];
   if (ids.length === 0) return [];
 
@@ -92,12 +101,15 @@ export type RaterElegivel = { playerId: number; userId: number };
  * pelada" exigiu: com o mínimo em 2, duas contas combinadas fabricavam nota
  * (ver src/lib/lineup.ts).
  */
-export async function getRatersElegiveis(matchDayId: number): Promise<RaterElegivel[]> {
-  const companheiros = companheirosPorJogador(await getEscalacaoDaPelada(matchDayId));
+export async function getRatersElegiveis(
+  exec: Executor,
+  matchDayId: number,
+): Promise<RaterElegivel[]> {
+  const companheiros = companheirosPorJogador(await getEscalacaoDaPelada(exec, matchDayId));
   const jogaram = [...companheiros.keys()];
   if (jogaram.length === 0) return [];
 
-  const contas = await db
+  const contas = await exec
     .select({ playerId: users.playerId, userId: users.id })
     .from(users)
     .where(and(inArray(users.playerId, jogaram), eq(users.active, true)));

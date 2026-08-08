@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Button, SubmitButton } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconeAlerta, IconeBola, IconeGrafico, IconeGrupo } from "@/components/ui/icons";
@@ -118,14 +118,13 @@ export default async function NotificacoesPage() {
                       action={marcarComoLida.bind(null, n.id)}
                       className="border-t border-line"
                     >
-                      <Button
-                        type="submit"
+                      <SubmitButton
                         variante="ghost"
                         tamanho="sm"
                         className="w-full justify-center rounded-none"
                       >
                         Marcar como lida
-                      </Button>
+                      </SubmitButton>
                     </form>
                   )}
                 </Card>

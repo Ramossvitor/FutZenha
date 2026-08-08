@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
 import { notifications, type Notification, type NotificationType } from "@/db/schema";
@@ -25,13 +26,14 @@ export async function notificar(exec: Executor, novas: NovaNotificacao[]): Promi
     .onConflictDoNothing({ target: [notifications.playerId, notifications.dedupeKey] });
 }
 
-export async function contarNaoLidas(playerId: number): Promise<number> {
+// `cache()` porque o layout e /perfil contam no mesmo render.
+export const contarNaoLidas = cache(async (playerId: number): Promise<number> => {
   const [row] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(notifications)
     .where(and(eq(notifications.playerId, playerId), isNull(notifications.readAt)));
   return row?.total ?? 0;
-}
+});
 
 export async function listarNotificacoes(playerId: number, limite = 50): Promise<Notification[]> {
   return db

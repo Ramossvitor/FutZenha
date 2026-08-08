@@ -55,11 +55,14 @@ export const getGrupoAtual = cache(async (): Promise<GrupoAtual | null> => {
   const id = Number(bruto);
   if (!Number.isInteger(id) || id <= 0) return null;
 
-  const papel = await papelNoGrupo(id, session.player.id);
-  if (!papel) return null;
-
-  const grupo = await getGrupo(id);
-  if (!grupo) return null;
+  // Em paralelo de propósito: buscar o nome de um grupo de que a pessoa saiu é
+  // inofensivo (o resultado é descartado pelo papel nulo), e a espera some do
+  // caminho crítico do layout — que roda isto em TODA navegação.
+  const [papel, grupo] = await Promise.all([
+    papelNoGrupo(id, session.player.id),
+    getGrupo(id),
+  ]);
+  if (!papel || !grupo) return null;
 
   return { id: grupo.id, name: grupo.name, papel };
 });

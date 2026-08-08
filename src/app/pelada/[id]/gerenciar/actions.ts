@@ -106,8 +106,10 @@ async function assertPlacarEditavel(matchDayId: number) {
     .select({ dentroDaJanela: sql<boolean>`${JANELA_CORRECAO}` })
     .from(matchDays)
     .where(eq(matchDays.id, matchDayId));
-  // A pelada existe: requirePeladaAdmin já 404 se não existisse.
-  if (!row.dentroDaJanela) {
+  // O requirePeladaAdmin viu a pelada existir, mas ela pode ter sido apagada
+  // entre o guard e esta query (votação aprovada, admin da plataforma) — sem o
+  // `!row`, isso virava TypeError em vez de mensagem.
+  if (!row || !row.dentroDaJanela) {
     redirect(`/pelada/${matchDayId}/gerenciar?erro=janela-encerrada`);
   }
 }

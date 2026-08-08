@@ -126,8 +126,14 @@ export async function enviarAvaliacoes(
   }
 
   // Se este era o último que faltava, a rodada fecha e as notas saem na hora —
-  // ninguém precisa esperar os 2 dias.
-  await fecharSeTodosAvaliaram(roundId);
+  // ninguém precisa esperar os 2 dias. Uma falha AQUI não pode virar erro na
+  // tela: as notas desta pessoa já commitaram, e o fechamento é idempotente —
+  // o varredor de pendências fecha a rodada no prazo de qualquer jeito.
+  try {
+    await fecharSeTodosAvaliaram(roundId);
+  } catch (erro) {
+    console.error("[avaliar] falha ao fechar rodada após o último envio:", erro);
+  }
 
   revalidatePath("/avaliar");
   revalidatePath(`/avaliar/${roundId}`);

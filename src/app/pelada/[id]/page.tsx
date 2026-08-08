@@ -33,27 +33,31 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
 
-  const session = await getSession();
-  const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, id));
+  // Três ondas de Promise.all em vez de uma escadinha de awaits: era a página
+  // mais lenta do app — até 10 round-trips seriais ao banco por navegação.
+  const [session, [matchDay]] = await Promise.all([
+    getSession(),
+    db.select().from(matchDays).where(eq(matchDays.id, id)),
+  ]);
   if (!matchDay) notFound();
 
-  const activePlayers = await db
-    .select()
-    .from(players)
-    .where(eq(players.active, true))
-    .orderBy(asc(players.name));
-  const attendanceRows = await db.select().from(attendances).where(eq(attendances.matchDayId, id));
+  const [activePlayers, attendanceRows, teamList, gameList, papel] = await Promise.all([
+    db.select().from(players).where(eq(players.active, true)).orderBy(asc(players.name)),
+    db.select().from(attendances).where(eq(attendances.matchDayId, id)),
+    db.select().from(teams).where(eq(teams.matchDayId, id)).orderBy(asc(teams.sortOrder)),
+    db.select().from(games).where(eq(games.matchDayId, id)).orderBy(asc(games.sortOrder), asc(games.id)),
+    // Em pelada de grupo, o admin do grupo também gerencia — e o papel sai do
+    // groupId da própria pelada, nunca de um id vindo da URL.
+    session && matchDay.groupId !== null
+      ? papelNoGrupo(matchDay.groupId, session.player.id)
+      : null,
+  ]);
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
   const confirmados = attendanceRows.filter((a) => a.status === "in").length;
 
-  const teamList = await db
-    .select()
-    .from(teams)
-    .where(eq(teams.matchDayId, id))
-    .orderBy(asc(teams.sortOrder));
-  const teamMembers =
+  const [teamMembers, goalRows, escalacao, grupo] = await Promise.all([
     teamList.length > 0
-      ? await db
+      ? db
           .select({
             teamId: teamPlayers.teamId,
             playerId: players.id,
@@ -71,16 +75,9 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
             ),
           )
           .orderBy(asc(players.name))
-      : [];
-
-  const gameList = await db
-    .select()
-    .from(games)
-    .where(eq(games.matchDayId, id))
-    .orderBy(asc(games.sortOrder), asc(games.id));
-  const goalRows =
+      : [],
     gameList.length > 0
-      ? await db
+      ? db
           .select({
             gameId: goals.gameId,
             quantity: goals.quantity,
@@ -96,16 +93,15 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
               gameList.map((g) => g.id),
             ),
           )
-      : [];
-  // De que lado cada um jogou, POR JOGO. Não dá para sair do team_players do
-  // sorteio como saía antes: incluirNoJogo põe alguém do lado oposto sem tocar
-  // no colete da pelada, e quem chegou atrasado e foi escalado direto num jogo
-  // nem tem linha de sorteio — o gol dele saía com o chip cinza de colete
-  // desconhecido. game_players é a fonte que o resto do app já trata como
-  // autoridade sobre escalação (ver gerenciar/dados.ts e encerrar/page.tsx).
-  const escalacao =
+      : [],
+    // De que lado cada um jogou, POR JOGO. Não dá para sair do team_players do
+    // sorteio como saía antes: incluirNoJogo põe alguém do lado oposto sem tocar
+    // no colete da pelada, e quem chegou atrasado e foi escalado direto num jogo
+    // nem tem linha de sorteio — o gol dele saía com o chip cinza de colete
+    // desconhecido. game_players é a fonte que o resto do app já trata como
+    // autoridade sobre escalação (ver gerenciar/dados.ts e encerrar/page.tsx).
     gameList.length > 0
-      ? await db
+      ? db
           .select({
             gameId: gamePlayers.gameId,
             playerId: gamePlayers.playerId,
@@ -118,7 +114,9 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
               gameList.map((g) => g.id),
             ),
           )
-      : [];
+      : [],
+    matchDay.groupId !== null ? getGrupo(matchDay.groupId) : undefined,
+  ]);
   const nomeDoTime = new Map(teamList.map((t) => [t.id, t.name]));
   const jogoPorId = new Map(gameList.map((g) => [g.id, g]));
   // Chave `jogo:jogador` porque a mesma pessoa pode trocar de lado entre jogos.
@@ -136,13 +134,6 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
   const podeMarcar = matchDay.status === "scheduled";
   const meuPlayerId = session?.player.id ?? null;
 
-  // Em pelada de grupo, o admin do grupo também gerencia — e o papel sai do
-  // groupId da própria pelada, nunca de um id vindo da URL.
-  const papel =
-    session && matchDay.groupId !== null
-      ? await papelNoGrupo(matchDay.groupId, session.player.id)
-      : null;
-  const grupo = matchDay.groupId !== null ? await getGrupo(matchDay.groupId) : undefined;
   const podeGerenciar =
     session !== null &&
     podeGerenciarPelada(

@@ -10,6 +10,10 @@ import { processarPendencias } from "@/lib/pendencias";
 // admin e de jogador). Esta rota se autentica sozinha.
 export const dynamic = "force-dynamic";
 
+// Um dia ruim de varredura fecha várias rodadas com replay em cascata — melhor
+// declarar o teto do que descobrir o default do plano no meio de uma transação.
+export const maxDuration = 60;
+
 // Comparação em tempo constante — o mesmo cuidado que src/lib/auth.ts toma com
 // a assinatura do cookie. Um `!==` vazaria o prefixo correto pelo tempo.
 function segredoConfere(recebido: string, esperado: string): boolean {

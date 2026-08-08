@@ -5,7 +5,7 @@ import { BannerDaQuery } from "@/components/ui/banner";
 import { Card, CardBody, PageHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/field";
-import { PendingButton } from "@/components/ui/pending-button";
+import { SubmitButton } from "@/components/ui/button";
 import { db } from "@/db";
 import { gamePlayers, games, matchDays, players, ratingRounds, users } from "@/db/schema";
 import { formatDate, formatDateShort, formatTime } from "@/lib/format";
@@ -119,9 +119,9 @@ export default async function AdminPeladasPage({ searchParams }: PageProps<"/adm
                     </Field>
                     {/* Apaga a pelada e recalcula a nota de todo mundo do zero:
                         não tem desfazer. */}
-                    <PendingButton variante="danger" labelPending="Excluindo…">
+                    <SubmitButton variante="danger" labelPending="Excluindo…">
                       Excluir e recalcular
-                    </PendingButton>
+                    </SubmitButton>
                   </form>
                 </details>
               </CardBody>

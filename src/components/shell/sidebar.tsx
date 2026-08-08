@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button, LinkButton } from "@/components/ui/button";
+import { LinkButton, SubmitButton } from "@/components/ui/button";
 import type { GrupoAtual } from "@/lib/grupo-atual";
 import { papelLabel } from "@/lib/grupos-permissions";
 import { WordmarkLink } from "@/components/ui/marca";
@@ -86,9 +86,14 @@ export function Sidebar({
             </span>
           </Link>
           <form action={aoSair}>
-            <Button type="submit" variante="ghost" tamanho="sm" className="w-full justify-start">
+            <SubmitButton
+              variante="ghost"
+              tamanho="sm"
+              labelPending="Saindo…"
+              className="w-full justify-start"
+            >
               Sair
-            </Button>
+            </SubmitButton>
           </form>
         </div>
       ) : (

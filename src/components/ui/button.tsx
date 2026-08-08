@@ -1,9 +1,16 @@
+"use client";
+
 import Link from "next/link";
 import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react";
+import { useFormStatus } from "react-dom";
 import { cx } from "@/lib/cx";
+import { IconeCarregando } from "./icons";
 
-// Nada de `server-only` aqui: este módulo é importado pelo pending-button, que
-// é client, então ele entra no grafo do cliente como módulo compartilhado.
+// "use client" no arquivo inteiro é decisão de produto, não acidente: em
+// produção uma Server Action leva de 1 a 4 segundos (cold start + banco), e um
+// submit sem pending parece botão quebrado — a pessoa clica de novo e duplica a
+// operação. O SubmitButton lê useFormStatus sozinho, então TODO submit do app
+// desabilita e mostra spinner sem o caller fazer nada.
 
 export type BotaoVariante =
   | "primary" // lime cheio — a ação principal da tela
@@ -45,8 +52,9 @@ export type BotaoProps = {
   variante?: BotaoVariante;
   tamanho?: BotaoTamanho;
   /**
-   * Não é hook — é prop. Vem do `useActionState` de quem chama (que já é
-   * client) ou do <PendingButton>. É o que mantém este arquivo sem "use client".
+   * Força o estado ocupado por fora — útil com `useActionState`, quando o
+   * pending certo é o da action e não o do <form>. O SubmitButton soma este
+   * valor ao do useFormStatus; no Button cru ele é a única fonte.
    */
   pending?: boolean;
   labelPending?: ReactNode;
@@ -71,16 +79,34 @@ export function Button({
       type={type}
       disabled={disabled || pending}
       aria-busy={pending || undefined}
+      // Região viva SEMPRE, e não só quando pending: um aria-live que nasce
+      // junto com a mudança não é anunciado. Sem isto, a troca por
+      // `labelPending` passava em silêncio — o `disabled` do mesmo render tira
+      // o foco daqui e joga no <body>, então quem usa leitor de tela perdia ao
+      // mesmo tempo a posição e o aviso de que a ação está em voo. O spinner
+      // não entra no anúncio: os ícones já nascem `aria-hidden`.
+      aria-live="polite"
       className={cx(base, tamanhos[tamanho], variantes[variante], className)}
     >
+      {pending && <IconeCarregando className="size-[1.1em] shrink-0 animate-spin" />}
       {pending ? (labelPending ?? children) : children}
     </button>
   );
 }
 
-/** O caso dominante: <form action={serverAction}> com um submit dentro. */
-export function SubmitButton(props: ButtonHTMLAttributes<HTMLButtonElement> & BotaoProps) {
-  return <Button {...props} type="submit" />;
+/**
+ * O caso dominante: <form action={serverAction}> com um submit dentro.
+ *
+ * `useFormStatus` lê o <form> ancestral, então o pending vem de graça em
+ * qualquer form — Server Component em volta continua server. A prop `pending`
+ * soma (OR) para quem controla por `useActionState`.
+ */
+export function SubmitButton({
+  pending,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & BotaoProps) {
+  const status = useFormStatus();
+  return <Button {...props} type="submit" pending={pending || status.pending} />;
 }
 
 /** Mesmas classes, mas navega. */

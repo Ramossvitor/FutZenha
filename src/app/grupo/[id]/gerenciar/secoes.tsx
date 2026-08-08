@@ -4,7 +4,6 @@ import { Card, CardBody, CardHeader, Section } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
-import { PendingButton } from "@/components/ui/pending-button";
 import type { Group } from "@/db/schema";
 import { papelLabel } from "@/lib/grupos-permissions";
 import { urlDoLink } from "@/lib/grupos";
@@ -115,14 +114,14 @@ export function SecaoPedidos({
               </span>
               {/* A fila muda debaixo do clique quando duas abas estão abertas. */}
               <form action={aprovarPedido.bind(null, groupId, p.id)}>
-                <PendingButton tamanho="sm" labelPending="…">
+                <SubmitButton tamanho="sm" labelPending="…">
                   Aprovar
-                </PendingButton>
+                </SubmitButton>
               </form>
               <form action={recusarPedido.bind(null, groupId, p.id)}>
-                <PendingButton variante="secondary" tamanho="sm" labelPending="…">
+                <SubmitButton variante="secondary" tamanho="sm" labelPending="…">
                   Recusar
-                </PendingButton>
+                </SubmitButton>
               </form>
             </li>
           ))}
@@ -185,9 +184,9 @@ export function SecaoMembros({
                       <form action={transferirAdministracao.bind(null, groupId, m.playerId)}>
                         {/* Só existe um admin por grupo: transferir por engano
                             tira o seu próprio poder de desfazer. */}
-                        <PendingButton variante="secondary" tamanho="sm" labelPending="…">
+                        <SubmitButton variante="secondary" tamanho="sm" labelPending="…">
                           Tornar admin
-                        </PendingButton>
+                        </SubmitButton>
                       </form>
                     )}
                     <form action={removerMembro.bind(null, groupId, m.playerId)}>
@@ -257,9 +256,9 @@ export function SecaoLink({
               />
             </Field>
             {/* Gerar duas vezes revoga o link que acabou de ir pro zap. */}
-            <PendingButton variante="secondary" labelPending="Gerando…">
+            <SubmitButton variante="secondary" labelPending="Gerando…">
               {link ? "Gerar link novo" : "Gerar link"}
-            </PendingButton>
+            </SubmitButton>
           </form>
 
           {link && (
@@ -356,9 +355,9 @@ export function ZonaDePerigoDoGrupo({
             >
               <Input id="confirmacao" name="confirmacao" required autoComplete="off" />
             </Field>
-            <PendingButton variante="danger" labelPending="Excluindo…" className="self-start">
+            <SubmitButton variante="danger" labelPending="Excluindo…" className="self-start">
               Excluir grupo
-            </PendingButton>
+            </SubmitButton>
           </form>
         </CardBody>
       </Card>

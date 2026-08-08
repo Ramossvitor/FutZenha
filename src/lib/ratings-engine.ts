@@ -49,7 +49,9 @@ export type MotivoReplay = { tipo: "rodada" | "revisao"; dedupeKey: string };
  * beco sem saída, já que não existe "reabrir pelada".
  */
 export async function abrirRodada(exec: Executor, matchDayId: number): Promise<number | null> {
-  const raters = await getRatersElegiveis(matchDayId);
+  // No MESMO executor da transação — com o `db` global aqui, a query ficava na
+  // fila esperando a conexão que a própria transação segurava (deadlock).
+  const raters = await getRatersElegiveis(exec, matchDayId);
   if (raters.length === 0) return null;
 
   const [round] = await exec

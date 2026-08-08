@@ -29,7 +29,14 @@ export default async function NovoGrupoPage({ searchParams }: PageProps<"/grupos
         <Card>
           <CardBody className="flex flex-col gap-5">
             <Field htmlFor="name" label="Nome" obrigatorio>
-              <Input id="name" name="name" required maxLength={60} placeholder="Pelada da firma" />
+              <Input
+                id="name"
+                name="name"
+                required
+                minLength={3}
+                maxLength={60}
+                placeholder="Pelada da firma"
+              />
             </Field>
 
             <Field
