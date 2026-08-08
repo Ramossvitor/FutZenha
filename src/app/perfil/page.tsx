@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { logout } from "@/app/login/actions";
 import { Badge } from "@/components/ui/badge";
 import { BannerDaQuery } from "@/components/ui/banner";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/button";
 import { Card, CardBody, Eyebrow, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { GoogleButton } from "@/components/ui/google-button";
@@ -196,14 +196,14 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
           )}
           <HairlineRow as="li">
             <form action={logout} className="flex-1">
-              <Button
-                type="submit"
+              <SubmitButton
                 variante="ghost"
                 tamanho="sm"
+                labelPending="Saindo…"
                 className="-mx-3 w-full justify-start text-danger-ink"
               >
                 Sair
-              </Button>
+              </SubmitButton>
             </form>
           </HairlineRow>
         </HairlineList>

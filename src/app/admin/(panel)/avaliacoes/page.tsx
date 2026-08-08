@@ -7,7 +7,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Estrelas } from "@/components/ui/estrelas";
 import { Field, Input } from "@/components/ui/field";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
-import { PendingButton } from "@/components/ui/pending-button";
 import { Prazo } from "@/components/ui/prazo";
 import { db } from "@/db";
 import { matchDays, ratingRoundRaters, ratingRounds, users } from "@/db/schema";
@@ -162,27 +161,26 @@ export default async function AdminAvaliacoesPage() {
                       <div className="flex flex-wrap gap-2">
                         {/* Descartar recalcula a nota de todo mundo desta
                             pelada em diante: não tem desfazer. */}
-                        <PendingButton
+                        <SubmitButton
                           name="decisao"
                           value="aceitar"
                           variante="danger"
                           labelPending="Descartando…"
                         >
                           Descartar a nota
-                        </PendingButton>
-                        {/* Também PendingButton: useFormStatus tem escopo de
-                            formulário, então com um Button cru este aqui
-                            continuava clicável enquanto o descarte estava em
-                            voo — e reenviava o mesmo form com a decisão
-                            oposta. */}
-                        <PendingButton
+                        </SubmitButton>
+                        {/* useFormStatus tem escopo de formulário: com um
+                            Button cru este aqui continuava clicável enquanto o
+                            descarte estava em voo — e reenviava o mesmo form
+                            com a decisão oposta. */}
+                        <SubmitButton
                           name="decisao"
                           value="rejeitar"
                           variante="secondary"
                           labelPending="Registrando…"
                         >
                           Manter — foi justa
-                        </PendingButton>
+                        </SubmitButton>
                       </div>
                       <p className="text-[12px] leading-[1.45] text-fg-4">
                         Descartar recalcula a nota de todo mundo desta pelada em diante. Sem

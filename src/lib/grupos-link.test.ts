@@ -43,17 +43,15 @@ describe("condicaoLinkVivo", () => {
     expect(texto).not.toMatch(/expires_at"? >=/);
   });
 
-  // As duas fontes de tempo que os chamadores usam: `now()` do Postgres na
-  // página (a pureza do render proíbe Date.now()) e um Date do Node em
-  // `linkAtivo`. As duas têm que montar a mesma forma de condição.
-  it("aceita now() do Postgres e Date do Node", () => {
+  // Só `now()` do Postgres, nunca Date do Node: a compilação de um Date até
+  // funciona (era o que este teste conferia), mas o DRIVER quebra — Date em sql
+  // cru não passa pelo mapeamento de coluna e o serializer passthrough do
+  // postgres-js entrega o objeto inteiro ao escritor de bytes. Foi o crash da
+  // tela de gestão de grupo em produção; a assinatura agora nem aceita Date.
+  it("usa o relógio do Postgres, sem parâmetro", () => {
     const comSql = compilar(condicaoLinkVivo(sql`now()`));
-    const comDate = compilar(condicaoLinkVivo(new Date("2026-08-06T00:00:00Z")));
 
     expect(comSql.sql).toContain("now()");
     expect(comSql.params).toEqual([]);
-
-    expect(comDate.sql).not.toContain("now()");
-    expect(comDate.params).toHaveLength(1);
   });
 });

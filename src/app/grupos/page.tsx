@@ -8,6 +8,7 @@ import { Field, Input } from "@/components/ui/field";
 import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
 import { IconeCheck, IconeSeta } from "@/components/ui/icons";
 import { Nota } from "@/components/ui/nota";
+import { SubmitDeCartao } from "@/components/ui/submit-de-cartao";
 import { getGrupoAtual } from "@/lib/grupo-atual";
 import { convitesPendentes, listarGruposPublicos, listarMeusGrupos } from "@/lib/grupos";
 import { papelLabel } from "@/lib/grupos-permissions";
@@ -201,10 +202,7 @@ function CartaoDeContexto({
   return (
     <Card className={ativo ? "border-accent-edge" : undefined}>
       <form action={trocarGrupo.bind(null, groupId)}>
-        <button
-          type="submit"
-          className="flex w-full items-center gap-3 rounded-t-card px-4 py-3.5 text-left transition-colors hover:bg-surface-2"
-        >
+        <SubmitDeCartao className="flex w-full items-center gap-3 rounded-t-card px-4 py-3.5 text-left transition-colors hover:bg-surface-2">
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-2">
               <span className="font-display text-[18px] leading-[1.2] font-extrabold font-stretch-112% text-fg">
@@ -227,7 +225,7 @@ function CartaoDeContexto({
           ) : (
             <IconeSeta className="size-4 shrink-0 text-fg-dim" />
           )}
-        </button>
+        </SubmitDeCartao>
       </form>
 
       {groupId !== null && (

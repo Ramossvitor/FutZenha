@@ -8,7 +8,6 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeLuva } from "@/components/ui/icons";
 import { Nota } from "@/components/ui/nota";
-import { PendingButton } from "@/components/ui/pending-button";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
 import { formatSkill, formatTime } from "@/lib/format";
@@ -232,9 +231,9 @@ export function SecaoTimes({ pelada }: { pelada: PainelDaPelada }) {
               </Field>
               {/* Re-sortear apaga o sorteio inteiro: um duplo clique
                   atrapalhado refaz os times sem querer. */}
-              <PendingButton labelPending="Sorteando…">
+              <SubmitButton labelPending="Sorteando…">
                 {teamList.length > 0 ? "Re-sortear" : "Sortear times"}
-              </PendingButton>
+              </SubmitButton>
               <span className="text-[12px] text-fg-4">
                 {confirmed.length} confirmados
                 {teamList.length > 0 &&
@@ -587,13 +586,13 @@ export function ZonaDePerigo({ pelada }: { pelada: PainelDaPelada }) {
                 Apaga presenças, times e resultados. Como a pelada não foi encerrada, nada dela
                 conta em ranking ou avaliação — dá para excluir direto.
               </p>
-              <PendingButton
+              <SubmitButton
                 variante="danger"
                 labelPending="Excluindo…"
                 className="self-start"
               >
                 Excluir agora
-              </PendingButton>
+              </SubmitButton>
             </form>
           ) : votacao ? (
             <div className="flex flex-col gap-2">
@@ -654,13 +653,13 @@ export function ZonaDePerigo({ pelada }: { pelada: PainelDaPelada }) {
               </Field>
               {/* Só existe uma votação por pelada, para sempre: abrir duas
                   vezes por engano não tem desfazer. */}
-              <PendingButton
+              <SubmitButton
                 variante="danger-outline"
                 labelPending="Abrindo…"
                 className="self-start"
               >
                 Abrir votação de exclusão
-              </PendingButton>
+              </SubmitButton>
             </form>
           )}
         </CardBody>

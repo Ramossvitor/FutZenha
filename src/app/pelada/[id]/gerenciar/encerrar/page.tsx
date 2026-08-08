@@ -7,7 +7,6 @@ import { Card, CardBody, CardHeader, Eyebrow, PageHeader } from "@/components/ui
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeAlerta, IconeCheck, IconeLuva } from "@/components/ui/icons";
-import { PendingButton } from "@/components/ui/pending-button";
 import { VestChip } from "@/components/ui/vest";
 import { db } from "@/db";
 import { gamePlayers, games, players, teams, users } from "@/db/schema";
@@ -342,7 +341,7 @@ export default async function EncerrarPeladaPage({
         <form action={confirmarEncerramento.bind(null, id)} className="flex flex-col gap-2">
           {/* Irreversível: um duplo clique atrapalhado não pode encerrar duas
               vezes enquanto a primeira ainda está a caminho. */}
-          <PendingButton
+          <SubmitButton
             variante="danger"
             tamanho="lg"
             labelPending="Encerrando…"
@@ -350,7 +349,7 @@ export default async function EncerrarPeladaPage({
             className="w-full"
           >
             Encerrar a pelada
-          </PendingButton>
+          </SubmitButton>
           {!checklist.podeEncerrar && (
             <p className="text-center text-[11.5px] leading-[1.45] text-danger-ink">
               Tem jogo com um lado vazio. Corrige acima para poder encerrar.

@@ -139,3 +139,12 @@ export function IconeBola(props: Icone) {
     </svg>
   );
 }
+
+/** Arco aberto que gira com `animate-spin` — o spinner dos botões em pending. */
+export function IconeCarregando(props: Icone) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3a9 9 0 1 0 9 9" />
+    </svg>
+  );
+}

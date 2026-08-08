@@ -42,6 +42,17 @@ async function main() {
     return;
   }
 
+  // O aviso precisa ser barulhento, não fatal: derrubar o build por causa de
+  // uma env var que a integração antiga não injeta deixaria produção sem
+  // deploy — e DDL transacional simples ainda passa pelo PgBouncer.
+  if (process.env.VERCEL && url === process.env.DATABASE_URL) {
+    console.warn(
+      "[migrate] ATENÇÃO: usando a connection string POOLED (PgBouncer) para migrations. " +
+        "Configure DIRECT_DATABASE_URL (ou atualize a integração Neon) — " +
+        "CREATE INDEX CONCURRENTLY e afins vão falhar por aqui.",
+    );
+  }
+
   // onnotice silencia os "already exists, skipping" que o migrator provoca em
   // toda execução — o log do build fica legível.
   const conn = postgres(url, { max: 1, prepare: false, onnotice: () => {} });

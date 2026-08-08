@@ -40,10 +40,12 @@ export const papelNoGrupo = cache(
   },
 );
 
-export async function getGrupo(groupId: number): Promise<Group | undefined> {
+// `cache()` porque generateMetadata e o corpo da página de grupo perguntam o
+// mesmo grupo no mesmo render — sem isto eram duas consultas idênticas.
+export const getGrupo = cache(async (groupId: number): Promise<Group | undefined> => {
   const [grupo] = await db.select().from(groups).where(eq(groups.id, groupId));
   return grupo;
-}
+});
 
 export type MeuGrupo = Group & { papel: NonNullable<Vinculo>; membros: number };
 
@@ -232,7 +234,7 @@ export async function linkAtivo(groupId: number) {
   const [link] = await db
     .select()
     .from(groupInviteLinks)
-    .where(and(eq(groupInviteLinks.groupId, groupId), condicaoLinkVivo(new Date())))
+    .where(and(eq(groupInviteLinks.groupId, groupId), condicaoLinkVivo(sql`now()`)))
     .orderBy(desc(groupInviteLinks.createdAt));
   return link;
 }

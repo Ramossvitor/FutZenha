@@ -17,16 +17,18 @@ import { groupInviteLinks } from "../db/schema";
 /**
  * O link está vivo: não revogado, dentro da validade e com vaga sobrando.
  *
- * `agora` é SQL, não `Date`, porque os três chamadores precisam de fontes de
- * tempo diferentes — a página do convite roda no render, onde a regra de pureza
- * do React proíbe `Date.now()`, e usa `now()` do Postgres; `linkAtivo` já
- * passava um `Date` do Node. Deixar a escolha com quem chama mantém a regra
- * única sem forçar nenhum dos dois.
+ * `agora` é SQL e NÃO aceita `Date` de propósito. Um `Date` interpolado em
+ * `sql` cru não passa pelo mapeamento de coluna do drizzle, e o serializer que
+ * o driver postgres-js instala para timestamp é passthrough — o objeto Date
+ * chegava inteiro no escritor de bytes e derrubava a query
+ * (ERR_INVALID_ARG_TYPE). Foi exatamente assim que a tela de gestão de grupo
+ * quebrou em produção. `now()` do Postgres serve a todos os chamadores e ainda
+ * respeita a regra de pureza do render (sem Date.now()).
  *
  * `maxUses` nulo é teto ausente, de propósito: link que morre no primeiro clique
  * é inútil num grupo de WhatsApp com vinte pessoas.
  */
-export function condicaoLinkVivo(agora: SQL | Date): SQL | undefined {
+export function condicaoLinkVivo(agora: SQL): SQL | undefined {
   return and(
     isNull(groupInviteLinks.revokedAt),
     sql`${groupInviteLinks.expiresAt} > ${agora}`,
