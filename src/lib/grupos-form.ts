@@ -10,7 +10,11 @@ import { z } from "zod";
 // Postgres devolveria erro 500 em vez de "dados inválidos". Pior no update:
 // gravar lixo na coluna que decide quem enxerga o grupo.
 const grupoSchema = z.object({
-  name: z.string().trim().min(3, "Nome muito curto").max(60),
+  // O regex barra quebra de linha no meio do nome (o `.trim()` só corta as
+  // pontas). O nome do grupo sai daqui direto para o assunto do email de convite
+  // (ver email-modelos.ts), e assunto com CR/LF é o formato de injeção de
+  // cabeçalho — melhor recusar na entrada do que confiar no que o Resend faz.
+  name: z.string().trim().min(3, "Nome muito curto").max(60).regex(/^[^\r\n]+$/),
   description: z
     .string()
     .trim()

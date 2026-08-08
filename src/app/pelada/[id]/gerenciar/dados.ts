@@ -49,12 +49,20 @@ export async function carregarPainel(matchDayId: number) {
         .orderBy(asc(games.sortOrder), asc(games.id)),
       getVotacaoDaPelada(matchDayId),
       // Os convites de quem está nesta pelada e ainda não tem conta. É o que torna o
-      // "cadastrar quem chegou" utilizável: quem organiza gera o convite e precisa
-      // do link na mão para mandar no WhatsApp — não há e-mail no projeto. O
-      // leftJoin com `users` + isNull é o que mantém a regra: convite para quem já
-      // tem conta é reset de senha, e isso é da plataforma — não passa por aqui.
+      // "cadastrar quem chegou" utilizável: quem organiza precisa do link na mão
+      // para mandar no WhatsApp — e, com o envio configurado, reenviar por e-mail
+      // daqui mesmo (ver reenviarConviteDaPelada). O leftJoin com `users` + isNull
+      // é o que mantém a regra: convite para quem já tem conta é reset de senha, e
+      // isso é da plataforma — não passa por aqui.
       db
-        .select({ token: invites.token, expiresAt: invites.expiresAt, name: players.name })
+        .select({
+          token: invites.token,
+          expiresAt: invites.expiresAt,
+          name: players.name,
+          playerId: invites.playerId,
+          email: invites.email,
+          emailSentAt: invites.emailSentAt,
+        })
         .from(invites)
         .innerJoin(players, eq(players.id, invites.playerId))
         .innerJoin(attendances, eq(attendances.playerId, invites.playerId))

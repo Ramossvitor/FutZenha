@@ -375,8 +375,9 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Convite de cadastro enviado pelo admin via WhatsApp. Se o jogador já tem
-// conta, resgatar o convite = redefinir a senha. Um pendente por jogador.
+// Convite de cadastro, entregue por email (ver src/lib/email-convite.ts) ou
+// copiado e mandado no WhatsApp. Se o jogador já tem conta, resgatar o convite =
+// redefinir a senha. Um pendente por jogador.
 export const invites = pgTable("invites", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(), // 32 bytes aleatórios em base64url
@@ -391,6 +392,11 @@ export const invites = pgTable("invites", {
   email: text("email"),
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
+  // Última vez que este convite saiu por email. Nulo = nunca saiu (envio não
+  // configurado, ou falhou). É o que diz ao admin, dias depois do banner de
+  // confirmação sumir, se ainda precisa entregar o link no WhatsApp. Convite
+  // regenerado nasce nulo sozinho: gerarConvite apaga a linha e cria outra.
+  emailSentAt: timestamp("email_sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

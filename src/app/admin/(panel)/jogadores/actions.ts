@@ -8,7 +8,9 @@ import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
 import { criarJogadorComConvite, gerarConvite, parseEmailDeConvite } from "@/lib/convites";
 import { isUniqueViolation } from "@/lib/db-errors";
+import { enviarConvitePorEmail } from "@/lib/email-convite";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
+import { redirectPosEnvio } from "@/app/redirect-pos-envio";
 
 const playerSchema = z.object({
   name: z.string().trim().min(1, "Nome é obrigatório").max(60),
@@ -28,9 +30,9 @@ function parsePlayerForm(formData: FormData) {
   });
 }
 
-
-// Cadastrar já cria o convite (ver src/lib/convites.ts); o botão de gerar
-// convite segue existindo para reenviar quando o prazo vencer.
+// Cadastrar já cria o convite (ver src/lib/convites.ts) e, com email, já o
+// envia; o botão de gerar convite segue existindo para reenviar quando o prazo
+// vencer.
 export async function createPlayer(formData: FormData) {
   await requirePlatformAdmin();
   const parsed = parsePlayerForm(formData);
@@ -38,15 +40,21 @@ export async function createPlayer(formData: FormData) {
   const email = parseEmailDeConvite(formData.get("email"));
   if (!email.success) redirect("/admin/jogadores?erro=email-invalido");
 
+  let criado: { token: string };
   try {
-    await db.transaction((tx) =>
+    criado = await db.transaction((tx) =>
       criarJogadorComConvite(tx, { ...parsed.data, email: email.data }),
     );
   } catch (error) {
     if (isUniqueViolation(error)) redirect("/admin/jogadores?erro=nome-duplicado");
     throw error;
   }
+
+  // O envio fica fora da transação: falha de email não desfaz o cadastro, e um
+  // rollback depois do envio mandaria um convite que não existe.
+  const envio = email.data ? await enviarConvitePorEmail(criado.token) : null;
   revalidatePath("/admin/jogadores");
+  if (envio) redirectPosEnvio("/admin/jogadores", envio);
   redirect("/admin/jogadores");
 }
 
@@ -75,7 +83,9 @@ const idSchema = z.number().int().positive();
 
 // Convite para quem já tem conta é reset de senha — por isso esta action é
 // exclusiva da plataforma. É o único caminho que chega em `gerarConvite` com um
-// jogador que pode já ter conta; o do admin da pelada só cria jogador novo.
+// jogador que pode já ter conta; o do admin da pelada só cria jogador novo. O
+// email também muda de texto nesse caso: quem já é do app não recebe boas-vindas
+// (ver emailDeResetDeAcesso, escolhido dentro de enviarConvitePorEmail).
 export async function createInvite(playerId: number, formData: FormData) {
   await requirePlatformAdmin();
   const id = idSchema.parse(playerId);
@@ -84,8 +94,36 @@ export async function createInvite(playerId: number, formData: FormData) {
   const email = parseEmailDeConvite(formData.get("email"));
   if (!email.success) redirect("/admin/jogadores?erro=email-invalido");
 
-  await db.transaction((tx) => gerarConvite(tx, id, email.data));
+  const token = await db.transaction((tx) => gerarConvite(tx, id, email.data));
+  const envio = email.data ? await enviarConvitePorEmail(token) : null;
   revalidatePath("/admin/jogadores");
+  if (envio) redirectPosEnvio("/admin/jogadores", envio);
+}
+
+/**
+ * Reenvia por email o convite pendente do jogador — sem reemitir: o token
+ * continua o mesmo, então um link já entregue no WhatsApp segue valendo.
+ * Convite vencido, resgatado ou sem email não se reenvia; para esses o caminho
+ * é o botão de gerar convite, que troca o token.
+ *
+ * O select aqui só acha o token do convite pendente (`usedAt is null`). Quem diz
+ * se ele ainda serve para email — não vencido, com destinatário — é
+ * `enviarConvitePorEmail`, que é dono dessa regra e devolve `convite-inelegivel`
+ * para o mesmo banner.
+ */
+export async function reenviarConvitePorEmail(playerId: number) {
+  await requirePlatformAdmin();
+  const id = idSchema.parse(playerId);
+
+  const [invite] = await db
+    .select({ token: invites.token })
+    .from(invites)
+    .where(and(eq(invites.playerId, id), isNull(invites.usedAt)));
+  if (!invite) redirect("/admin/jogadores?erro=convite-nao-reenviavel");
+
+  const envio = await enviarConvitePorEmail(invite.token);
+  revalidatePath("/admin/jogadores");
+  redirectPosEnvio("/admin/jogadores", envio);
 }
 
 export async function revokeInvite(playerId: number) {

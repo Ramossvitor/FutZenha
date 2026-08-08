@@ -5,9 +5,11 @@ import { Field, Input } from "@/components/ui/field";
 import { IconeLuva } from "@/components/ui/icons";
 import { Nota } from "@/components/ui/nota";
 import type { Invite, Player, User } from "@/db/schema";
+import { emailConfigurado } from "@/lib/email-envio";
 import { siteUrl } from "@/lib/site-url";
 import {
   createInvite,
+  reenviarConvitePorEmail,
   revokeInvite,
   setPlatformAdmin,
   setPlayerActive,
@@ -104,10 +106,26 @@ export function SecaoDeAcesso({
               Google · {invite.email}
             </Badge>
           )}
+          {invite.emailSentAt && (
+            <Badge tom="neutral" caixa="normal">
+              e-mail enviado{" "}
+              {invite.emailSentAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+            </Badge>
+          )}
           <code className="min-w-0 flex-1 truncate rounded-selo bg-surface-2 px-2 py-1 text-[11px] text-fg-2">
             {inviteUrl}
           </code>
           <CopyButton text={inviteUrl} />
+          {/* Reenviar usa o mesmo token — um link já entregue no WhatsApp segue
+              valendo. Sem key do Resend (preview, dev) o botão some, como o
+              botão do Google sem credencial. */}
+          {invite.email && emailConfigurado() && (
+            <form action={reenviarConvitePorEmail.bind(null, player.id)}>
+              <SubmitButton variante="secondary" tamanho="sm">
+                Reenviar e-mail
+              </SubmitButton>
+            </form>
+          )}
           <span className="text-[11px] text-fg-4">
             expira{" "}
             {invite.expiresAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -10,14 +10,18 @@ import {
   gamePlayers,
   games,
   goals,
+  invites,
   matchDays,
   players,
   teamPlayers,
   teams,
+  users,
   type MatchDay,
 } from "@/db/schema";
 import { criarJogadorComConvite, parseEmailDeConvite } from "@/lib/convites";
+import { enviarConvitePorEmail } from "@/lib/email-convite";
 import { isUniqueViolation } from "@/lib/db-errors";
+import { redirectPosEnvio } from "@/app/redirect-pos-envio";
 import { abrirVotacao, apagarPelada, motivoExclusaoSchema } from "@/lib/deletion";
 import { drawTeams } from "@/lib/draw";
 import { parseMatchDayForm } from "@/lib/match-day-form";
@@ -353,15 +357,21 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
   const email = parseEmailDeConvite(formData.get("email"));
   if (!email.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=email-invalido`);
 
+  let token: string;
   try {
-    await db.transaction(async (tx) => {
-      const { playerId } = await criarJogadorComConvite(tx, {
+    token = await db.transaction(async (tx) => {
+      const criado = await criarJogadorComConvite(tx, {
         name: parsed.data.name,
         nickname: null,
         isGoalkeeper: parsed.data.isGoalkeeper,
         email: email.data,
       });
-      await tx.insert(attendances).values({ matchDayId, playerId, status: "in" });
+      await tx.insert(attendances).values({
+        matchDayId,
+        playerId: criado.playerId,
+        status: "in",
+      });
+      return criado.token;
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -370,7 +380,51 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
     throw error;
   }
 
+  // O envio fica fora da transação: falha de email não desfaz o cadastro, e um
+  // rollback depois do envio mandaria um convite que não existe.
+  const envio = email.data ? await enviarConvitePorEmail(token) : null;
   revalidateMatchDay(matchDayId);
+  if (envio) redirectPosEnvio(`/pelada/${matchDayId}/gerenciar`, envio);
+}
+
+/**
+ * Reenvia por email um convite da lista "Convites para entregar" — mesmo token,
+ * sem reemitir: o link já copiado segue valendo.
+ *
+ * O escopo pela presença nesta pelada é obrigatório: `playerId` vem do cliente,
+ * e sem esse filtro um admin de pelada reenviaria o convite de qualquer jogador
+ * da plataforma. O leftJoin com `users` mantém a regra da lista: convite de quem
+ * já tem conta é reset de senha, e isso é da plataforma. O escopo não é freio de
+ * repetição — presença é auto-servível (ver definirPresenca); quem segura o
+ * reenvio em loop é a janela por destinatário do enviarConvitePorEmail.
+ *
+ * Vencido ou sem email não aparece aqui: essa regra é do enviarConvitePorEmail,
+ * que devolve `convite-inelegivel` para o mesmo banner.
+ */
+export async function reenviarConviteDaPelada(matchDayId: number, playerId: number) {
+  await requirePeladaAdmin(matchDayId);
+  if (!Number.isInteger(playerId)) {
+    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  }
+
+  const [invite] = await db
+    .select({ token: invites.token })
+    .from(invites)
+    .innerJoin(attendances, eq(attendances.playerId, invites.playerId))
+    .leftJoin(users, eq(users.playerId, invites.playerId))
+    .where(
+      and(
+        eq(invites.playerId, playerId),
+        eq(attendances.matchDayId, matchDayId),
+        isNull(invites.usedAt),
+        isNull(users.id),
+      ),
+    );
+  if (!invite) redirect(`/pelada/${matchDayId}/gerenciar?erro=convite-nao-reenviavel`);
+
+  const envio = await enviarConvitePorEmail(invite.token);
+  revalidateMatchDay(matchDayId);
+  redirectPosEnvio(`/pelada/${matchDayId}/gerenciar`, envio);
 }
 
 export async function definirPresenca(

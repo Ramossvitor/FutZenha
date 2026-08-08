@@ -11,6 +11,7 @@ import { Nota } from "@/components/ui/nota";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
 import { formatSkill, formatTime } from "@/lib/format";
+import { emailConfigurado } from "@/lib/email-envio";
 import { siteUrl } from "@/lib/site-url";
 import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import {
@@ -23,6 +24,7 @@ import {
   deleteGoal,
   deleteMatchDay,
   drawTeamsAction,
+  reenviarConviteDaPelada,
   swapPlayersAction,
   updateGameScore,
   updateMatchDay,
@@ -165,8 +167,10 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
               <SubmitButton className="self-start">Cadastrar e confirmar</SubmitButton>
               <p className="text-[12px] leading-[1.45] text-fg-4">
                 Cria o jogador, já marca a presença e gera o convite de acesso — o link aparece
-                aqui embaixo para você mandar no zap. Com o e-mail preenchido, a pessoa entra pelo
-                Google e só aquela conta resgata o convite.
+                aqui embaixo para você mandar no zap.{" "}
+                {emailConfigurado()
+                  ? "Com o e-mail preenchido, o convite já sai por e-mail, a pessoa entra pelo Google e só aquela conta o resgata."
+                  : "Com o e-mail preenchido, a pessoa entra pelo Google e só aquela conta resgata o convite."}
               </p>
             </form>
           </CardBody>
@@ -189,10 +193,25 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
                 className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3 last:border-0"
               >
                 <span className="font-display text-[13px] font-bold text-fg">{c.name}</span>
+                {c.emailSentAt && (
+                  <Badge tom="neutral" caixa="normal">
+                    e-mail enviado{" "}
+                    {c.emailSentAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                  </Badge>
+                )}
                 <code className="min-w-0 flex-1 truncate rounded-selo bg-surface-2 px-2 py-1 text-[11px] text-fg-3">
                   {`${siteUrl()}/convite/${c.token}`}
                 </code>
                 <CopyButton text={`${siteUrl()}/convite/${c.token}`} />
+                {/* Reenviar usa o mesmo token — um link já copiado segue valendo.
+                    Sem key do Resend (preview, dev) o botão some. */}
+                {c.email && emailConfigurado() && (
+                  <form action={reenviarConviteDaPelada.bind(null, matchDay.id, c.playerId)}>
+                    <SubmitButton variante="secondary" tamanho="sm">
+                      Reenviar e-mail
+                    </SubmitButton>
+                  </form>
+                )}
                 <span className="text-[11px] text-fg-4">
                   expira{" "}
                   {c.expiresAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}

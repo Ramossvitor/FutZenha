@@ -60,6 +60,16 @@ export const MENSAGENS: Record<string, string> = {
   "link-invalido":
     "Esse link do grupo não vale mais — ele expirou, foi revogado ou já bateu o limite de usos. Peça um novo a quem administra o grupo.",
 
+  // convite por email (ver src/lib/email-convite.ts)
+  "email-nao-enviado":
+    "O convite está criado, mas o e-mail não saiu. Copie o link e mande no WhatsApp.",
+  "email-limite":
+    "Limite diário de e-mails atingido. Copie o link e mande no WhatsApp — amanhã o envio volta.",
+  "email-recente":
+    "Esse convite já saiu por e-mail há pouco. Espere alguns minutos ou copie o link e mande no WhatsApp.",
+  "convite-nao-reenviavel":
+    "Esse convite não está mais pendente ou não tem e-mail. Gere um convite novo.",
+
   // ----- confirmações -----
   entrou: "Pronto, você está no grupo.",
   saiu: "Você saiu do grupo.",
@@ -68,6 +78,7 @@ export const MENSAGENS: Record<string, string> = {
   "pedido-aprovado": "Pedido aprovado.",
   "pedido-recusado": "Pedido recusado.",
   "convite-enviado": "Convite enviado.",
+  "convite-enviado-por-email": "Convite enviado por e-mail.",
   "convite-revogado": "Convite revogado.",
   "convite-recusado": "Convite recusado.",
   "grupo-atualizado": "Grupo atualizado.",

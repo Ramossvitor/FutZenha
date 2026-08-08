@@ -13,6 +13,7 @@ import {
   groups,
   users,
 } from "@/db/schema";
+import { agendarAvisoDeConviteDeGrupo } from "@/lib/email-convite";
 import { parseGrupoForm } from "@/lib/grupos-form";
 import { podePromover, podeRemoverMembro } from "@/lib/grupos-permissions";
 import { gerarLink, papelNoGrupo } from "@/lib/grupos";
@@ -315,14 +316,14 @@ export async function convidarJogador(groupId: number, formData: FormData) {
   if (!Number.isInteger(playerId)) erro(groupId, "dados-invalidos");
 
   const [conta] = await db
-    .select({ id: users.id })
+    .select({ id: users.id, email: users.email })
     .from(users)
     .where(and(eq(users.playerId, playerId), eq(users.active, true)));
   if (!conta) erro(groupId, "sem-conta");
 
   if ((await papelNoGrupo(groupId, playerId)) !== null) erro(groupId, "ja-membro");
 
-  await db.transaction(async (tx) => {
+  const conviteId = await db.transaction(async (tx) => {
     const [convite] = await tx
       .insert(groupInvitations)
       .values({ groupId, playerId, invitedByPlayerId: session.player.id })
@@ -330,7 +331,7 @@ export async function convidarJogador(groupId: number, formData: FormData) {
       // no-op silencioso, e não erro na cara do organizador.
       .onConflictDoNothing()
       .returning();
-    if (!convite) return;
+    if (!convite) return null;
 
     await notificar(tx, [
       {
@@ -342,7 +343,22 @@ export async function convidarJogador(groupId: number, formData: FormData) {
         dedupeKey: `grupo:${groupId}:convite:${convite.id}`,
       },
     ]);
+    return convite.id;
   });
+
+  // Só quando o convite é novo: reconvidar é no-op e não pode repetir o email.
+  // O agendamento, o freio de repetição e o `.catch` moram na lib (mesmo arranjo
+  // de agendarProcessamento em pendencias.ts).
+  if (conviteId !== null && conta.email) {
+    agendarAvisoDeConviteDeGrupo({
+      invitationId: conviteId,
+      groupId,
+      playerId,
+      para: conta.email,
+      nomeDoGrupo: grupo.name,
+      quemConvidou: session.player.name,
+    });
+  }
 
   revalidateGrupo(groupId);
   ok(groupId, "convite-enviado");

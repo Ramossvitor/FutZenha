@@ -31,7 +31,7 @@ export default async function GerenciarPeladaPage({
   searchParams,
 }: PageProps<"/pelada/[id]/gerenciar">) {
   const { id: idParam } = await params;
-  const { erro } = await searchParams;
+  const { erro, ok } = await searchParams;
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
   // 404 para quem não administra esta pelada — inclusive para id inexistente.
@@ -52,7 +52,7 @@ export default async function GerenciarPeladaPage({
         }
       />
 
-      <BannerDaQuery erro={erro} locais={LOCAIS} />
+      <BannerDaQuery erro={erro} ok={ok} locais={LOCAIS} />
 
       <SecaoDados pelada={pelada} />
       <SecaoPresenca pelada={pelada} />

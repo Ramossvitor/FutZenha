@@ -16,7 +16,7 @@ const LOCAIS = {
 
 export default async function JogadoresPage({ searchParams }: PageProps<"/admin/jogadores">) {
   const session = await requirePlatformAdmin();
-  const { erro } = await searchParams;
+  const { erro, ok } = await searchParams;
 
   const [allPlayers, allUsers, pendingInvites] = await Promise.all([
     db.select().from(players).orderBy(asc(players.name)),
@@ -38,7 +38,7 @@ export default async function JogadoresPage({ searchParams }: PageProps<"/admin/
         descricao="Todo mundo cadastrado na plataforma, com ou sem conta. Quem não tem conta joga e marca gol, mas fica fora dos rankings e da avaliação."
       />
 
-      <BannerDaQuery erro={erro} locais={LOCAIS} />
+      <BannerDaQuery erro={erro} ok={ok} locais={LOCAIS} />
 
       <Section titulo="Novo jogador">
         <Card>
