@@ -31,6 +31,16 @@ export type GrupoAtual = {
 };
 
 /**
+ * Para onde a troca de grupo leva depois de gravar o cookie — ver `trocarGrupo`.
+ *
+ * Mora aqui, e não junto da action, porque o painel do seletor precisa do tipo
+ * para declarar a prop da Server Action que recebe do layout: com ele em
+ * `src/app/grupos/actions`, `src/components/` passaria a nomear `src/app/`, que
+ * é a única direção de import que o projeto não tem em lugar nenhum.
+ */
+export type DestinoDaTroca = "ficar" | "ir-para-inicio";
+
+/**
  * O grupo em que a pessoa está navegando, ou null para "todas as peladas".
  *
  * O cookie é só uma dica — qualquer um edita o valor no DevTools. A autoridade

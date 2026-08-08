@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { trocarGrupo } from "@/app/grupos/actions";
 import { logout } from "@/app/login/actions";
+import { PainelDeGrupo } from "@/components/shell/painel-de-grupo";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { TopBar } from "@/components/shell/top-bar";
 import { getGrupoAtual } from "@/lib/grupo-atual";
+import { listarGruposDoSeletor } from "@/lib/grupos";
 import { contarNaoLidas } from "@/lib/notifications";
 import { agendarProcessamento } from "@/lib/pendencias";
 import { getSession } from "@/lib/session";
@@ -46,10 +49,15 @@ export const maxDuration = 60;
 // deliberada para mostrar quem está logado em qualquer página.
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const session = await getSession();
-  const [grupo, naoLidas] = await Promise.all([
+  // A lista do seletor entra aqui porque é aqui que o painel dela mora, e em
+  // paralelo com o resto porque isto roda em TODA navegação: em série somaria
+  // um round-trip ao caminho crítico de cada uma.
+  const [grupo, naoLidas, grupos] = await Promise.all([
     getGrupoAtual(),
     session ? contarNaoLidas(session.player.id) : Promise.resolve(0),
+    session ? listarGruposDoSeletor(session.player.id) : Promise.resolve([]),
   ]);
+  const temSeletor = grupos.length > 0;
 
   // Prazos vencidos são aplicados depois da resposta, no máximo 1× por minuto
   // por instância. O cron diário é só a rede de segurança para quando o site
@@ -66,10 +74,21 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           globals.css, na camada base. */}
       <body className="flex min-h-full flex-col">
         <div className="flex min-h-full flex-1 lg:gap-0">
-          <Sidebar session={session} grupo={grupo} naoLidas={naoLidas} aoSair={logout} />
+          <Sidebar
+            session={session}
+            grupo={grupo}
+            temSeletor={temSeletor}
+            naoLidas={naoLidas}
+            aoSair={logout}
+          />
 
           <div className="flex min-w-0 flex-1 flex-col">
-            <TopBar session={session} grupo={grupo} naoLidas={naoLidas} />
+            <TopBar
+              session={session}
+              grupo={grupo}
+              temSeletor={temSeletor}
+              naoLidas={naoLidas}
+            />
             {/* 3xl no celular e no tablet, 5xl a partir do desktop: a tela de
                 encerrar tem um trilho de 20rem ao lado do conteúdo, e em 768px
                 sobrava menos de 26rem para os dois lados do jogo. */}
@@ -79,6 +98,16 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <TabBar session={session} />
           </div>
         </div>
+
+        {/* Fora do <aside> e do <header> de propósito: os dois somem por
+            `display:none` no breakpoint, e popover em subárvore não renderizada
+            não abre. No fim do <body> ele também vem depois dos dois chips na
+            ordem do documento, que é o que o anchor positioning exige da âncora.
+            Não mexe no flex daqui: fechado é `display:none`, aberto vai para o
+            top layer. */}
+        {temSeletor && (
+          <PainelDeGrupo grupo={grupo} grupos={grupos} aoTrocarGrupo={trocarGrupo} />
+        )}
       </body>
     </html>
   );

@@ -20,11 +20,13 @@ import { NavLink } from "./nav-link";
 export function Sidebar({
   session,
   grupo,
+  temSeletor,
   naoLidas,
   aoSair,
 }: {
   session: Session | null;
   grupo: GrupoAtual | null;
+  temSeletor: boolean;
   naoLidas: number;
   /**
    * A Server Action do Sair, injetada pelo layout.
@@ -44,7 +46,7 @@ export function Sidebar({
     <aside className="sticky top-0 hidden h-dvh w-[236px] shrink-0 flex-col gap-5 border-r border-line bg-nav px-3.5 py-4 lg:flex">
       <WordmarkLink tamanho="md" className="px-1" />
 
-      {session && <ChipDoGrupo grupo={grupo} />}
+      {session && <ChipDoGrupo forma="lateral" grupo={grupo} temSeletor={temSeletor} />}
 
       {/* Rótulo diferente do da tab bar: as duas ficam no DOM ao mesmo tempo, e
           só o `display:none` do breakpoint separa uma da outra. Dois marcos de

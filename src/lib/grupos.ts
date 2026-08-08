@@ -71,6 +71,26 @@ export async function listarMeusGrupos(playerId: number): Promise<MeuGrupo[]> {
     .orderBy(asc(groups.name));
 }
 
+export type GrupoDoSeletor = Pick<Group, "id" | "name">;
+
+/**
+ * Meus grupos, enxutos, para o seletor do cabeçalho.
+ *
+ * Separada de `listarMeusGrupos` por causa do custo: aquela carrega descrição,
+ * política de entrada e um `count(*)` correlacionado por grupo, e roda em três
+ * telas. Esta roda em TODA navegação, dentro do layout — o subselect de
+ * contagem seria uma varredura de `group_members` por request para pintar uma
+ * lista que só mostra nome.
+ */
+export async function listarGruposDoSeletor(playerId: number): Promise<GrupoDoSeletor[]> {
+  return db
+    .select({ id: groups.id, name: groups.name })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(eq(groupMembers.playerId, playerId))
+    .orderBy(asc(groups.name));
+}
+
 /**
  * Grupos públicos, para a aba "descobrir" de /grupos.
  *

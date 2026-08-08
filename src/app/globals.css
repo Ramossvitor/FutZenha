@@ -256,7 +256,7 @@
   --color-vest-amarelo:       var(--vest-amarelo);
   --color-vest-amarelo-line:  var(--vest-amarelo-line);
 
-  /* rounded-selo / rounded-ctl / rounded-card / rounded-sheet */
+  /* rounded-selo / rounded-ctl / rounded-card */
   --radius-selo:  var(--r-selo);
   --radius-ctl:   var(--r-ctl);
   --radius-card:  var(--r-card);
@@ -379,4 +379,86 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -.02em;
   line-height: .86;
+}
+
+/* --------------------------------------------------------------------------
+   Seletor de grupo — o único popover do app.
+
+   O painel vai para o top layer, o que dispensa z-index inteiro: ele passa por
+   cima do z-30 da TopBar e da TabBar e não é cortado pela coluna de 236px da
+   lateral. Aqui mora só ONDE ele aparece.
+
+   Mora no CSS e não em classe do Tailwind porque `anchor-name` precisa de um
+   identificador literal por instância — e as duas instâncias do chip (topo e
+   lateral) ficam AS DUAS no DOM, com só o breakpoint escondendo uma. O painel
+   é um só (ver PainelDeGrupo); quem troca de âncora é o mesmo 64rem que troca
+   qual chip está na tela.
+
+   Sem `position-area` (Safari < 26), o UA centraliza o popover na tela e ele
+   vira uma folha no meio, com backdrop — degrada para algo que ainda parece
+   intencional, e não para um painel colado no canto superior esquerdo.
+   -------------------------------------------------------------------------- */
+[data-chip-grupo="topo"]    { anchor-name: --chip-grupo-topo; }
+[data-chip-grupo="lateral"] { anchor-name: --chip-grupo-lateral; }
+
+/* Quem esconde popover fechado é o `display: none` da folha do UA — e ele perde
+   para QUALQUER declaração de autor, o `flex` do painel incluído. Sem esta
+   regra o painel fica aberto na tela o tempo todo, desde o primeiro paint.
+   Os dois atributos são de propósito: sobem a especificidade acima da classe
+   utilitária, que é quem estava ganhando. */
+[data-painel-grupo][popover]:not(:popover-open) {
+  display: none;
+}
+
+/* Browser sem popover (Safari ≤ 16, Firefox ≤ 124) não conhece `:popover-open`,
+   e seletor desconhecido invalida a regra inteira acima. Sem esta rede o
+   atributo `popover` é ignorado e o painel cai no fluxo — e agora que ele mora
+   no fim do <body>, isso é uma lista de grupos solta embaixo da TabBar, em toda
+   página.
+
+   O preço é o chip virar botão morto lá — mas só o atalho se perde, não a
+   tarefa: o hub /grupos continua a um toque pela lateral no desktop e por
+   Perfil › Meus grupos no celular, e é de lá que a troca sempre foi feita. */
+@supports not selector(:popover-open) {
+  [data-painel-grupo] {
+    display: none;
+  }
+}
+
+/* A folha do UA centraliza popover com `inset: 0` + `margin: auto`, e é disso
+   que depende o fallback descrito lá em cima. Só que o preflight do Tailwind
+   zera `margin` em `*` — declaração de autor, que ganha do UA — e mata
+   justamente o `auto`: com `inset: 0` e largura definida, a caixa fica
+   sobrerrestrita e resolve encostando em top/left 0. Sem esta linha o fallback
+   entrega exatamente o canto superior esquerdo que ele prometia evitar.
+   Quando há `position-area`, o bloco abaixo sobrescreve com o afastamento de 6px. */
+[data-painel-grupo] {
+  margin: auto;
+}
+
+/* O @supports testa o valor EXATO usado abaixo, e não um `position-area: bottom`
+   genérico: as palavras-chave dos dois eixos precisam ser do mesmo grupo, e um
+   `bottom span-inline-end` (físico + lógico) é sintaxe inválida que passaria no
+   teste genérico e seria descartada na regra — o painel caía no canto superior
+   esquerdo em vez de cair no fallback centralizado. */
+@supports (position-area: block-end span-inline-end) {
+  [data-painel-grupo] {
+    position: absolute;
+    inset: auto;
+    margin: 6px 0 0 0;
+    position-area: block-end span-inline-end;
+    /* vira para cima se não couber embaixo, e para dentro se não couber à
+       direita — o chip da lateral fica a 14px da borda esquerda da tela. */
+    position-try-fallbacks: flip-block, flip-inline;
+    /* Abaixo de 64rem quem está na tela é o chip do topo; daí para cima, o da
+       lateral. Mesmo ponto de corte do `lg` do Tailwind, que é justamente quem
+       esconde um e mostra o outro — ver o --tabbar-h lá em cima. */
+    position-anchor: --chip-grupo-topo;
+  }
+
+  @media (width >= 64rem) {
+    [data-painel-grupo] {
+      position-anchor: --chip-grupo-lateral;
+    }
+  }
 }

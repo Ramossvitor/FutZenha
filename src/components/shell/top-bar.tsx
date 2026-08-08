@@ -23,16 +23,23 @@ function Contador({ n }: { n: number }) {
 export function TopBar({
   session,
   grupo,
+  temSeletor,
   naoLidas,
 }: {
   session: Session | null;
   grupo: GrupoAtual | null;
+  temSeletor: boolean;
   naoLidas: number;
 }) {
   return (
     <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-nav px-3 py-2 lg:hidden">
       {session ? (
-        <ChipDoGrupo grupo={grupo} className="min-w-0 flex-1" />
+        <ChipDoGrupo
+          forma="topo"
+          grupo={grupo}
+          temSeletor={temSeletor}
+          className="min-w-0 flex-1"
+        />
       ) : (
         <WordmarkLink tamanho="sm" className="flex-1" />
       )}
