@@ -17,6 +17,7 @@ import { VotarForm } from "@/components/ui/votar-form";
 import { db } from "@/db";
 import { attendances, games, matchDays, players, teams } from "@/db/schema";
 import { getVotacoesAbertasDoJogador } from "@/lib/deletion";
+import { ehElegivel } from "@/lib/elegiveis";
 import { formatDateShort, formatTime, todayISO } from "@/lib/format";
 import { getGrupoAtual } from "@/lib/grupo-atual";
 import { STATUS_PELADA } from "@/lib/match-day-form";
@@ -75,6 +76,11 @@ export default async function HomePage() {
         .where(eq(attendances.matchDayId, nextMatch.id))
     : [];
   const confirmados = presencas.filter((p) => p.status === "in");
+  const naEspera = presencas.filter((p) => p.status === "waitlist");
+  // Mesma regra da página da pelada: com "Todas as peladas" no seletor, a
+  // próxima pode ser de um grupo que não é meu — e aí o botão não é meu.
+  const souElegivel =
+    session && nextMatch ? await ehElegivel(nextMatch, session.player.id) : false;
   const minhaPresenca = session
     ? presencas.find((p) => p.playerId === session.player.id)?.status
     : undefined;
@@ -199,9 +205,17 @@ export default async function HomePage() {
                   data-num
                 >
                   {confirmados.length}
+                  {nextMatch.maxPlayers !== null && (
+                    <span className="text-[15px] text-fg-4">/{nextMatch.maxPlayers}</span>
+                  )}
                 </span>
                 <span className="font-display text-[11px] leading-[1.25] font-bold tracking-[.08em] text-fg-3 uppercase">
-                  {confirmados.length === 1 ? "confirmado" : "confirmados"}
+                  {nextMatch.maxPlayers === null
+                    ? confirmados.length === 1
+                      ? "confirmado"
+                      : "confirmados"
+                    : "vagas"}
+                  {naEspera.length > 0 && ` · ${naEspera.length} na espera`}
                 </span>
                 <span className="flex-1" />
                 <AvatarPilha nomes={confirmados.map((c) => c.nickname ?? c.name)} />
@@ -210,15 +224,26 @@ export default async function HomePage() {
 
             {/* Presença própria só existe antes do sorteio — depois dele, quem
                 mexe é quem organiza. É a mesma regra da página da pelada. */}
-            {session && nextMatch.status === "scheduled" && (
+            {session && souElegivel && nextMatch.status === "scheduled" && (
               <div className="flex border-t border-line">
                 <form action={setMyAttendance.bind(null, nextMatch.id, "in")} className="flex-1">
                   <SubmitButton
-                    variante={minhaPresenca === "in" ? "primary" : "ghost"}
+                    variante={
+                      minhaPresenca === "in" || minhaPresenca === "waitlist" ? "primary" : "ghost"
+                    }
                     tamanho="lg"
                     className="w-full rounded-none rounded-bl-card border-0 border-r border-line"
                   >
-                    Vou
+                    {/* O botão diz o que vai acontecer, não o que a pessoa
+                        gostaria: clicar "Vou" numa pelada lotada põe na espera,
+                        e descobrir isso só depois é a pior versão disto. */}
+                    {minhaPresenca === "waitlist"
+                      ? "Na espera"
+                      : nextMatch.maxPlayers !== null &&
+                          confirmados.length >= nextMatch.maxPlayers &&
+                          minhaPresenca !== "in"
+                        ? "Entrar na espera"
+                        : "Vou"}
                   </SubmitButton>
                 </form>
                 <form action={setMyAttendance.bind(null, nextMatch.id, "out")} className="flex-1">

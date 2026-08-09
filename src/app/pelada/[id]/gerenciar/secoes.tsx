@@ -11,6 +11,7 @@ import { Nota } from "@/components/ui/nota";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
 import { formatSkill, formatTime } from "@/lib/format";
+import { listaFechada } from "@/lib/lista-presenca";
 import { emailConfigurado } from "@/lib/email-envio";
 import { siteUrl } from "@/lib/site-url";
 import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
@@ -24,6 +25,8 @@ import {
   deleteGoal,
   deleteMatchDay,
   drawTeamsAction,
+  marcarFalta,
+  promoverDaEspera,
   reenviarConviteDaPelada,
   swapPlayersAction,
   updateGameScore,
@@ -59,6 +62,17 @@ export function SecaoDados({ pelada }: { pelada: PainelDaPelada }) {
             <Field htmlFor="g-local" label="Local" obrigatorio className="sm:min-w-48 sm:flex-1">
               <Input id="g-local" name="location" required defaultValue={matchDay.location} />
             </Field>
+            <Field htmlFor="g-vagas" label="Vagas" className="sm:w-24" ajuda="Vazio = sem limite.">
+              <Input
+                id="g-vagas"
+                name="maxPlayers"
+                type="number"
+                min={2}
+                max={60}
+                inputMode="numeric"
+                defaultValue={matchDay.maxPlayers ?? ""}
+              />
+            </Field>
             <Field htmlFor="g-notes" label="Observações" className="sm:min-w-48 sm:flex-1">
               <Input id="g-notes" name="notes" defaultValue={matchDay.notes ?? ""} />
             </Field>
@@ -71,7 +85,10 @@ export function SecaoDados({ pelada }: { pelada: PainelDaPelada }) {
 }
 
 export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
-  const { matchDay, activePlayers, statusByPlayer, confirmed, convitesParaEntregar } = pelada;
+  const { matchDay, activePlayers, jogadorPorId, lista, statusByPlayer, confirmed, convitesParaEntregar } =
+    pelada;
+  const fechada = listaFechada(matchDay.status);
+  const encerrada = matchDay.status === "finished";
 
   return (
     <Section
@@ -79,14 +96,98 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
       acao={
         <span className="font-display text-[11px] font-bold tracking-[.08em] text-fg-4 uppercase">
           {confirmed.length} confirmados
+          {matchDay.maxPlayers !== null && ` de ${matchDay.maxPlayers}`}
         </span>
       }
     >
       <p className="text-[12.5px] leading-[1.5] text-fg-4">
-        Você marca por quem ainda não tem acesso — vale mesmo depois do sorteio. Quem já tem conta
-        marca <strong className="text-fg-3">Vou</strong> pela página da pelada; a partir daí você
-        também ajusta a presença dessa pessoa.
+        {fechada ? (
+          <>
+            A lista fechou no sorteio. Agora você registra o que aconteceu: quem apareceu sem estar
+            na lista, quem <strong className="text-fg-3">não veio</strong> e quem sobe da espera.
+          </>
+        ) : (
+          <>
+            Você marca por quem ainda não tem acesso. Quem já tem conta marca{" "}
+            <strong className="text-fg-3">Vou</strong> pela página da pelada — depois do sorteio
+            você passa a poder incluir qualquer pessoa do grupo.
+          </>
+        )}
       </p>
+
+      {/* A ordem de chegada é o que a lista tem de mais concreto, e ela não
+          existe na busca — que é alfabética e serve para achar alguém. Por isso
+          as duas coisas convivem: a lista mostra a fila, a busca resolve casos. */}
+      {(lista.vagas.length > 0 || lista.espera.length > 0 || lista.faltas.length > 0) && (
+        <Card>
+          <ul className="flex flex-col">
+            {[
+              { chave: "vagas" as const, rotulo: "Na lista", linhas: lista.vagas },
+              { chave: "espera" as const, rotulo: "Espera", linhas: lista.espera },
+              { chave: "faltas" as const, rotulo: "Não vieram", linhas: lista.faltas },
+            ]
+              .filter((bloco) => bloco.linhas.length > 0)
+              .map((bloco) => (
+                <li key={bloco.chave}>
+                  <div className="border-b border-line-soft bg-surface-2 px-4 py-1.5">
+                    <Eyebrow>
+                      {bloco.rotulo} · {bloco.linhas.length}
+                    </Eyebrow>
+                  </div>
+                  <ul className="flex flex-col">
+                    {bloco.linhas.map((linha, i) => {
+                      const jogador = jogadorPorId.get(linha.playerId);
+                      if (!jogador) return null;
+                      return (
+                        <li
+                          key={linha.playerId}
+                          className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-2 last:border-0"
+                        >
+                          <span
+                            className="w-5 shrink-0 text-right font-display text-[12px] font-bold text-fg-4"
+                            data-num
+                          >
+                            {i + 1}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
+                            {jogador.nickname ?? jogador.name}
+                          </span>
+                          {!encerrada && bloco.chave === "espera" && (
+                            <form
+                              action={promoverDaEspera.bind(null, matchDay.id, linha.playerId)}
+                            >
+                              <SubmitButton tamanho="sm" disabled={!fechada}>
+                                Subir
+                              </SubmitButton>
+                            </form>
+                          )}
+                          {!encerrada && fechada && bloco.chave === "vagas" && (
+                            <form
+                              action={marcarFalta.bind(null, matchDay.id, linha.playerId, true)}
+                            >
+                              <SubmitButton variante="secondary" tamanho="sm">
+                                Não veio
+                              </SubmitButton>
+                            </form>
+                          )}
+                          {!encerrada && bloco.chave === "faltas" && (
+                            <form
+                              action={marcarFalta.bind(null, matchDay.id, linha.playerId, false)}
+                            >
+                              <SubmitButton variante="secondary" tamanho="sm">
+                                Veio, sim
+                              </SubmitButton>
+                            </form>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              ))}
+          </ul>
+        </Card>
+      )}
 
       <BuscaJogador
         itens={activePlayers.map((player): ItemJogador => {
@@ -98,6 +199,8 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
             selos: (
               <>
                 {status === "in" && <Badge tom="accent">vai</Badge>}
+                {status === "waitlist" && <Badge tom="neutral">espera</Badge>}
+                {status === "no_show" && <Badge tom="neutral">não veio</Badge>}
                 {status === "out" && <Badge tom="neutral">fora</Badge>}
               </>
             ),
@@ -251,10 +354,11 @@ export function SecaoTimes({ pelada }: { pelada: PainelDaPelada }) {
               {/* Re-sortear apaga o sorteio inteiro: um duplo clique
                   atrapalhado refaz os times sem querer. */}
               <SubmitButton labelPending="Sorteando…">
-                {teamList.length > 0 ? "Re-sortear" : "Sortear times"}
+                {teamList.length > 0 ? "Re-sortear" : "Fechar lista e sortear"}
               </SubmitButton>
               <span className="text-[12px] text-fg-4">
                 {confirmed.length} confirmados
+                {teamList.length === 0 && " · sortear trava a lista: daqui em diante quem inclui é você"}
                 {teamList.length > 0 &&
                   gameList.length > 0 &&
                   " · apague os jogos antes de re-sortear"}

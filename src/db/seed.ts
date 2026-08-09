@@ -81,8 +81,16 @@ async function seedPastMatchDay(
     .values({ date, startTime: "20:00", location: "Quadra do Zenha", status: "finished" })
     .returning();
 
+  // `confirmedAt` escalonado pelo índice: a ordem da lista é ordem de chegada, e
+  // um seed que grava todo mundo no mesmo instante esconderia qualquer erro de
+  // ordenação atrás do desempate por id.
   await db.insert(schema.attendances).values(
-    confirmed.map((p) => ({ matchDayId: matchDay.id, playerId: p.id, status: "in" as const })),
+    confirmed.map((p, i) => ({
+      matchDayId: matchDay.id,
+      playerId: p.id,
+      status: "in" as const,
+      confirmedAt: new Date(Date.now() - (confirmed.length - i) * 60_000),
+    })),
   );
   const out = rotated.filter((p) => !confirmed.includes(p)).slice(0, 3);
   await db.insert(schema.attendances).values(
@@ -239,13 +247,17 @@ async function main() {
       startTime: "20:00",
       location: "Quadra do Zenha",
       status: "scheduled",
+      // Com limite, e com mais gente confirmada do que vaga: é o único jeito de
+      // o seed nascer com lista de espera para olhar.
+      maxPlayers: 6,
     })
     .returning();
   await db.insert(schema.attendances).values(
-    inserted.slice(0, 8).map((p) => ({
+    inserted.slice(0, 8).map((p, i) => ({
       matchDayId: next.id,
       playerId: p.id,
-      status: "in" as const,
+      status: i < 6 ? ("in" as const) : ("waitlist" as const),
+      confirmedAt: new Date(Date.now() - (8 - i) * 3_600_000),
     })),
   );
 

@@ -23,7 +23,24 @@ export const matchDayStatusEnum = pgEnum("match_day_status", [
   "finished",
 ]);
 
-export const attendanceStatusEnum = pgEnum("attendance_status", ["in", "out"]);
+// Os quatro estados possíveis de quem foi convidado para a lista. `in` é o
+// único que conta em qualquer lugar: o sorteio (drawTeamsAction) e o ranking de
+// presença (src/lib/stats.ts) filtram por ele, então espera e falta ficam de
+// fora sem que nenhuma consulta precise saber que eles existem.
+//
+// - `in`       — na lista, dentro das vagas.
+// - `out`      — desistiu (ou nunca entrou e o admin marcou fora).
+// - `waitlist` — confirmou depois de as vagas acabarem. Sobe sozinho quando
+//                alguém sai, enquanto a lista está aberta (ver lista-presenca.ts).
+// - `no_show`  — confirmou e não apareceu. Marcado pelo admin a partir do
+//                sorteio, ou detectado no encerramento em quem não entrou em
+//                nenhum jogo. Não conta presença.
+export const attendanceStatusEnum = pgEnum("attendance_status", [
+  "in",
+  "out",
+  "waitlist",
+  "no_show",
+]);
 
 export const gameSideEnum = pgEnum("game_side", ["A", "B"]);
 
@@ -241,6 +258,11 @@ export const matchDays = pgTable("match_days", {
   createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
     onDelete: "set null",
   }),
+  // Quantos cabem. Nulo = sem limite, que é como toda pelada funcionava antes da
+  // lista de espera e continua funcionando. Com limite, quem confirma além dele
+  // entra como `waitlist` — o corte é por ordem de chegada (`confirmed_at`), não
+  // por nota nem por ordem alfabética.
+  maxPlayers: integer("max_players"),
   // Quando o admin confirmou a escalação e encerrou. A partir daqui a
   // escalação é imutável, e placar e gols têm 24h de janela para correção.
   finishedAt: timestamp("finished_at"),
@@ -263,6 +285,13 @@ export const attendances = pgTable(
       .notNull()
       .references(() => players.id, { onDelete: "cascade" }),
     status: attendanceStatusEnum("status").notNull().default("in"),
+    // Quando esta pessoa entrou na lista. É a ordem de chegada — quem ocupa
+    // vaga, quem fica na espera e quem sobe quando uma vaga abre saem daqui, e
+    // não do `updated_at`, que qualquer edição do admin mexe.
+    //
+    // Zerado ao sair (`out`): quem desiste e volta atrás entra no fim da fila,
+    // como na lista do WhatsApp. Nulo também em `out` que nunca chegou a entrar.
+    confirmedAt: timestamp("confirmed_at"),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [unique().on(t.matchDayId, t.playerId)],
@@ -448,6 +477,10 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "group_join_request",
   "group_join_request_resolved",
   "group_role_changed",
+  // O admin da pelada incluiu alguém que não tinha entrado na lista por conta
+  // própria. É o contrapeso da exceção em podeDefinirPresencaPor: a inclusão
+  // mexe na presença e no V/E/D de quem tem conta, então a pessoa fica sabendo.
+  "pelada_presenca_definida",
 ]);
 
 // Uma rodada por pelada — a unique em match_day_id é o que garante isso e o que

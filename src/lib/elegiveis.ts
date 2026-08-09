@@ -1,0 +1,73 @@
+import "server-only";
+import { and, asc, eq, exists, or, sql } from "drizzle-orm";
+import { db } from "@/db";
+import { attendances, groupMembers, players, type Player } from "@/db/schema";
+
+/**
+ * Quem pode entrar na lista desta pelada.
+ *
+ * Antes disto, as duas telas de presença liam `players.active = true` do banco
+ * inteiro: uma pelada de grupo mostrava — e aceitava — todo jogador cadastrado
+ * na plataforma. Isso funcionava quando só existia um grupo de fato; com grupos
+ * de verdade, é vazamento de um grupo para o outro.
+ *
+ * - **Pelada avulsa** (`groupId` nulo): todo jogador ativo, que é como tudo
+ *   funcionava antes dos grupos e continua funcionando.
+ * - **Pelada de grupo**: os membros do grupo.
+ *
+ * A união com quem já tem linha em `attendances` não é detalhe: sem ela, quem
+ * confirmou e depois saiu do grupo sumiria da lista de uma pelada em que está —
+ * e, encerrada a pelada, sumiria da tela que o admin usa para conferir a
+ * escalação de um jogo que a pessoa jogou.
+ */
+export type EscopoDaLista = { id: number; groupId: number | null };
+
+/**
+ * A condição em forma de SQL, para quem precisa compor com a própria consulta —
+ * a tela de encerrar junta o `users` para saber quem tem conta, e refazer o
+ * join aqui só para ela seria carregar a lista duas vezes.
+ */
+export function condicaoElegivel(matchDay: EscopoDaLista) {
+  if (matchDay.groupId === null) return undefined;
+
+  const ehMembro = exists(
+    db
+      .select({ um: sql`1` })
+      .from(groupMembers)
+      .where(
+        and(eq(groupMembers.groupId, matchDay.groupId), eq(groupMembers.playerId, players.id)),
+      ),
+  );
+  const jaEstaNaLista = exists(
+    db
+      .select({ um: sql`1` })
+      .from(attendances)
+      .where(and(eq(attendances.matchDayId, matchDay.id), eq(attendances.playerId, players.id))),
+  );
+  return or(ehMembro, jaEstaNaLista);
+}
+
+export async function jogadoresElegiveis(matchDay: EscopoDaLista): Promise<Player[]> {
+  return db
+    .select()
+    .from(players)
+    .where(and(eq(players.active, true), condicaoElegivel(matchDay)))
+    .orderBy(asc(players.name));
+}
+
+/**
+ * A mesma regra para uma pessoa só.
+ *
+ * As Server Actions recebem `playerId` do cliente e não podem depender de a tela
+ * ter oferecido a opção certa — Server Action é endpoint público e não passa
+ * pelo proxy (node_modules/next/dist/docs/01-app/02-guides/data-security.md).
+ * Carregar a lista inteira só para testar um id seria desperdício em grupo
+ * grande, então esta é uma consulta própria e não um `.some()` sobre a outra.
+ */
+export async function ehElegivel(matchDay: EscopoDaLista, playerId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: players.id })
+    .from(players)
+    .where(and(eq(players.id, playerId), eq(players.active, true), condicaoElegivel(matchDay)));
+  return row !== undefined;
+}

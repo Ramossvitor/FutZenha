@@ -15,6 +15,8 @@ import {
   users,
 } from "@/db/schema";
 import { getFaltamVotar, getVotacaoDaPelada } from "@/lib/deletion";
+import { jogadoresElegiveis } from "@/lib/elegiveis";
+import { repartirLista } from "@/lib/lista-presenca";
 
 /**
  * Tudo o que o painel precisa, numa função só.
@@ -26,7 +28,7 @@ import { getFaltamVotar, getVotacaoDaPelada } from "@/lib/deletion";
 export async function carregarPainel(matchDayId: number) {
   // Uma onda só para tudo o que depende apenas do id — o painel fazia 6 níveis
   // de await em série e era a rota mais pesada do app.
-  const [[matchDay], activePlayers, attendanceRows, teamList, gameList, votacao, convitesParaEntregar] =
+  const [[matchDay], attendanceRows, teamList, gameList, votacao, convitesParaEntregar] =
     await Promise.all([
       // A janela de correção vem calculada pelo Postgres — a regra de pureza do
       // React proíbe Date.now() durante o render.
@@ -39,7 +41,6 @@ export async function carregarPainel(matchDayId: number) {
         })
         .from(matchDays)
         .where(eq(matchDays.id, matchDayId)),
-      db.select().from(players).where(eq(players.active, true)).orderBy(asc(players.name)),
       db.select().from(attendances).where(eq(attendances.matchDayId, matchDayId)),
       db.select().from(teams).where(eq(teams.matchDayId, matchDayId)).orderBy(asc(teams.sortOrder)),
       db
@@ -89,10 +90,12 @@ export async function carregarPainel(matchDayId: number) {
   const podeEditarPlacar = matchDay.status !== "finished" || dentroDaJanela;
 
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
-  const confirmed = activePlayers.filter((p) => statusByPlayer.get(p.id) === "in");
   const gameIds = gameList.map((g) => g.id);
 
-  const [teamMembers, goalRows, lineupRows] = await Promise.all([
+  const [activePlayers, teamMembers, goalRows, lineupRows] = await Promise.all([
+    // Depende do `groupId`, então só dá para pedir depois de a pelada chegar —
+    // por isso está na segunda onda e não na primeira.
+    jogadoresElegiveis(matchDay),
     teamList.length > 0
       ? db
           .select({
@@ -148,11 +151,20 @@ export async function carregarPainel(matchDayId: number) {
   // tela, senão o cruzamento com o placar entrega o voto de cada um.
   const faltamVotar = votacao?.status === "open" ? (await getFaltamVotar(votacao.id)).length : 0;
 
+  // A lista repartida sai daqui pronta, para as seções continuarem burras —
+  // recebem dados e desenham. Quem tem linha mas não está elegível é jogador
+  // desativado, e some da tela como sempre somiu.
+  const jogadorPorId = new Map(activePlayers.map((p) => [p.id, p]));
+  const lista = repartirLista(attendanceRows.filter((a) => jogadorPorId.has(a.playerId)));
+  const confirmed = lista.vagas.map((l) => jogadorPorId.get(l.playerId)!);
+
   return {
     matchDay,
     dentroDaJanela,
     podeEditarPlacar,
     activePlayers,
+    jogadorPorId,
+    lista,
     statusByPlayer,
     confirmed,
     teamList,

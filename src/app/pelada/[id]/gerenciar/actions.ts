@@ -24,17 +24,39 @@ import { isUniqueViolation } from "@/lib/db-errors";
 import { redirectPosEnvio } from "@/app/redirect-pos-envio";
 import { abrirVotacao, apagarPelada, motivoExclusaoSchema } from "@/lib/deletion";
 import { drawTeams } from "@/lib/draw";
+import { formatDate } from "@/lib/format";
+import { listaFechada } from "@/lib/lista-presenca";
 import { parseMatchDayForm } from "@/lib/match-day-form";
-import { podeMarcarPor } from "@/lib/presenca";
+import { notificar } from "@/lib/notifications";
+import {
+  avaliarMarcacao,
+  avisoDePromocao,
+  entrarNaLista,
+  mereceAviso,
+  preencherVagasAbertas,
+  registrarFalta,
+  sairDaLista,
+  subirDaEspera,
+} from "@/lib/presenca";
 import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
 
 export async function updateMatchDay(matchDayId: number, formData: FormData) {
-  await requirePeladaAdmin(matchDayId);
+  const { matchDay } = await requirePeladaAdmin(matchDayId);
   const parsed = parseMatchDayForm(formData);
   if (!parsed.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
 
-  await db.update(matchDays).set(parsed.data).where(eq(matchDays.id, matchDayId));
+  await db.transaction(async (tx) => {
+    await tx.update(matchDays).set(parsed.data).where(eq(matchDays.id, matchDayId));
+    // Subir (ou limpar) o limite abre vagas sem ninguém sair. A espera sobe
+    // aqui, na ordem de chegada — sem isto ela ficava parada, e o próximo "Vou"
+    // entrava na frente de quem confirmou antes.
+    const promovidos = await preencherVagasAbertas(tx, matchDayId);
+    await notificar(
+      tx,
+      promovidos.map((p) => avisoDePromocao(matchDay, p)),
+    );
+  });
   revalidatePath("/");
   revalidatePath(`/pelada/${matchDayId}/gerenciar`);
   revalidatePath(`/pelada/${matchDayId}`);
@@ -366,11 +388,10 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
         isGoalkeeper: parsed.data.isGoalkeeper,
         email: email.data,
       });
-      await tx.insert(attendances).values({
-        matchDayId,
-        playerId: criado.playerId,
-        status: "in",
-      });
+      // Passa pela lista como qualquer um: com a pelada lotada e a lista aberta,
+      // o convidado entra na espera. Um insert cru de `status: "in"` aqui furaria
+      // o limite pelo caminho que ninguém olha.
+      await entrarNaLista(tx, matchDay.id, criado.playerId);
       return criado.token;
     });
   } catch (error) {
@@ -434,19 +455,91 @@ export async function definirPresenca(
 ) {
   const { session, matchDay } = await requirePeladaAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
+  if (!Number.isInteger(playerId)) {
+    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  }
   // `playerId` vem do cliente: quem tem conta ativa e ainda não entrou nesta
-  // pelada marca a si mesmo (ver podeDefinirPresencaPor em permissions.ts).
-  if (!(await podeMarcarPor(session, matchDayId, playerId))) {
+  // pelada marca a si mesmo enquanto a lista está aberta; com ela fechada, o
+  // admin inclui quem é elegível (ver podeDefinirPresencaPor em permissions.ts).
+  const { permitido, alvo } = await avaliarMarcacao(session, matchDay, playerId);
+  if (!permitido) {
     redirect(`/pelada/${matchDayId}/gerenciar?erro=precisa-confirmar`);
   }
-  await db
-    .insert(attendances)
-    .values({ matchDayId, playerId, status })
-    .onConflictDoUpdate({
-      target: [attendances.matchDayId, attendances.playerId],
-      set: { status, updatedAt: new Date() },
-    });
+
+  // O aviso é o contrapeso da exceção da lista fechada, e por isso vai no MESMO
+  // commit da presença: uma inclusão que grava e não avisa é justamente o que a
+  // regra antiga existia para impedir.
+  const avisar = status === "in" && mereceAviso(session, playerId, alvo);
+
+  await db.transaction(async (tx) => {
+    if (status === "in") {
+      await entrarNaLista(tx, matchDay.id, playerId);
+    } else {
+      const promovido = await sairDaLista(tx, matchDay.id, playerId);
+      if (promovido !== null) await notificar(tx, [avisoDePromocao(matchDay, promovido)]);
+    }
+
+    if (avisar) {
+      await notificar(tx, [
+        {
+          playerId,
+          type: "pelada_presenca_definida",
+          title: "Marcaram sua presença numa pelada",
+          body: `${session.player.name} incluiu você na pelada de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
+          href: `/pelada/${matchDayId}`,
+          dedupeKey: `presenca:${matchDayId}:${playerId}`,
+        },
+      ]);
+    }
+  });
+
   revalidatePath("/");
   revalidatePath(`/pelada/${matchDayId}/gerenciar`);
   revalidatePath(`/pelada/${matchDayId}`);
+}
+
+/**
+ * Sobe alguém da espera para uma vaga.
+ *
+ * Só com a lista fechada, e é aí que está o sentido: aberta, a promoção acontece
+ * sozinha quando alguém sai (ver sairDaLista). Fechada, quem decide é o admin,
+ * porque a vaga que abriu é de quem apareceu na quadra — e disso o banco não
+ * sabe nada.
+ */
+export async function promoverDaEspera(matchDayId: number, playerId: number) {
+  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  assertEscalacaoEditavel(matchDay);
+  if (!listaFechada(matchDay.status)) {
+    redirect(`/pelada/${matchDayId}/gerenciar?erro=lista-aberta`);
+  }
+  if (!Number.isInteger(playerId)) {
+    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  }
+
+  await db.transaction((tx) => subirDaEspera(tx, matchDayId, playerId));
+  revalidateMatchDay(matchDayId);
+}
+
+/**
+ * Registra que alguém confirmou e não apareceu — ou desfaz o registro.
+ *
+ * Só a partir do sorteio: antes dele a pelada nem aconteceu, e quem desistiu
+ * marca "Fora" sozinho. Tirar da vaga NÃO promove ninguém da espera, pelo mesmo
+ * motivo do promoverDaEspera acima.
+ *
+ * O efeito prático é duplo: quem está como falta fica de fora do próximo sorteio
+ * (drawTeamsAction só lê `in`) e não conta presença no ranking (src/lib/stats.ts).
+ */
+export async function marcarFalta(matchDayId: number, playerId: number, faltou: boolean) {
+  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  assertEscalacaoEditavel(matchDay);
+  if (!listaFechada(matchDay.status)) {
+    redirect(`/pelada/${matchDayId}/gerenciar?erro=lista-aberta`);
+  }
+  if (!Number.isInteger(playerId)) {
+    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  }
+
+  await db.transaction((tx) => registrarFalta(tx, matchDayId, playerId, faltou));
+  revalidateMatchDay(matchDayId);
 }

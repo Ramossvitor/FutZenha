@@ -9,8 +9,9 @@ import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeAlerta, IconeCheck, IconeLuva } from "@/components/ui/icons";
 import { VestChip } from "@/components/ui/vest";
 import { db } from "@/db";
-import { gamePlayers, games, players, teams, users } from "@/db/schema";
+import { attendances, gamePlayers, games, players, teams, users } from "@/db/schema";
 import { cx } from "@/lib/cx";
+import { condicaoElegivel } from "@/lib/elegiveis";
 import { montarChecklist } from "@/lib/encerramento";
 import { formatDate } from "@/lib/format";
 import { companheirosPorJogador, gruposElegiveis } from "@/lib/lineup";
@@ -40,7 +41,7 @@ export default async function EncerrarPeladaPage({
   // Encerrada já não tem o que conferir — a escalação virou imutável.
   if (matchDay.status === "finished") redirect(`/pelada/${id}/gerenciar`);
 
-  const [gameList, teamList, elenco] = await Promise.all([
+  const [gameList, teamList, elenco, confirmados] = await Promise.all([
     db
       .select()
       .from(games)
@@ -60,8 +61,14 @@ export default async function EncerrarPeladaPage({
       // é avaliada. Sem o users.active aqui, o checklist contava a conta
       // desativada como ativa e prometia uma rodada que o servidor não abre.
       .leftJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
-      .where(eq(players.active, true))
+      // O mesmo escopo das outras duas telas de presença: pelada de grupo lista
+      // o grupo, não a plataforma — e o incluirNoJogo recusa quem está fora dele.
+      .where(and(eq(players.active, true), condicaoElegivel(matchDay)))
       .orderBy(asc(players.name)),
+    db
+      .select({ playerId: attendances.playerId })
+      .from(attendances)
+      .where(and(eq(attendances.matchDayId, id), eq(attendances.status, "in"))),
   ]);
 
   const escalacao =
@@ -93,6 +100,19 @@ export default async function EncerrarPeladaPage({
   const escaladosSemConta = [...escalados]
     .filter((pid) => !comConta.has(pid))
     .map((pid) => jogadorPorId.get(pid)?.nickname ?? jogadorPorId.get(pid)?.name ?? "alguém");
+
+  // Quem confirmou e não entrou em nenhum jogo vira falta no encerramento (ver
+  // marcarFaltasAutomaticas). Mostrar antes é o que torna isso corrigível: depois
+  // do encerramento a escalação é imutável, e a única forma de consertar seria
+  // apagar a pelada. Pelada sem jogo lançado não marca falta em ninguém, e por
+  // isso a lista some junto.
+  const viraFalta =
+    gameList.length === 0
+      ? []
+      : confirmados
+          .filter((a) => !escalados.has(a.playerId))
+          .map((a) => jogadorPorId.get(a.playerId))
+          .filter((p) => p !== undefined);
 
   const checklist = montarChecklist({
     // TODOS os jogos, inclusive os sem nenhuma linha de escalação: são
@@ -313,6 +333,26 @@ export default async function EncerrarPeladaPage({
             ))}
           </HairlineList>
         </div>
+
+        {viraFalta.length > 0 && (
+          <div>
+            <Eyebrow>vão contar falta</Eyebrow>
+            <p className="mt-1 text-[11.5px] leading-[1.4] text-fg-4">
+              Confirmaram e não entraram em nenhum jogo. Ao encerrar, não contam presença no
+              ranking. Se algum deles jogou, inclua na escalação ao lado antes de confirmar.
+            </p>
+            <HairlineList as="ul" className="mt-2">
+              {viraFalta.map((p) => (
+                <HairlineRow as="li" key={p.id}>
+                  <span className="min-w-0 flex-1 truncate font-display text-[13.5px] font-bold text-fg">
+                    {p.nickname ?? p.name}
+                  </span>
+                  <Badge tom="neutral">não veio</Badge>
+                </HairlineRow>
+              ))}
+            </HairlineList>
+          </div>
+        )}
 
         <Card className="border-danger-line bg-danger-tint">
           <CardBody className="flex flex-col gap-2">

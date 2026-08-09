@@ -14,7 +14,7 @@ import type { notificationTypeEnum } from "@/db/schema";
 type TipoDeAviso = (typeof notificationTypeEnum.enumValues)[number];
 
 /**
- * O ícone por família de aviso. São 11 tipos e cinco famílias — o que importa
+ * O ícone por família de aviso. São 12 tipos e cinco famílias — o que importa
  * de relance é a natureza do aviso, não o tipo exato.
  *
  * `rating_round_closed` está declarado no enum mas nunca é emitido: o
@@ -33,6 +33,7 @@ const ICONE: Record<TipoDeAviso, { icone: React.ReactNode; cor: string }> = {
   group_join_request: { icone: <IconeGrupo />, cor: "text-warn-ink" },
   group_join_request_resolved: { icone: <IconeGrupo />, cor: "text-fg-3" },
   group_role_changed: { icone: <IconeGrupo />, cor: "text-fg-3" },
+  pelada_presenca_definida: { icone: <IconeBola />, cor: "text-accent-ink" },
 };
 
 export const metadata: Metadata = { title: "Avisos" };

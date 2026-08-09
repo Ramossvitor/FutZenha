@@ -78,21 +78,37 @@ export function podeGerenciarPelada(
  * que a pessoa entrou na pelada por conta própria, o organizador volta a mandar:
  * é ele quem corrige presença depois do sorteio.
  *
+ * **A exceção da lista fechada.** Fechar a lista é sortear os times, e daí em
+ * diante o organizador não monta mais lista: ele registra quem apareceu na
+ * quadra. Alguém que não confirmou aparece toda semana, e sem esta exceção o
+ * organizador ficaria esperando a pessoa abrir o celular no meio do jogo. Então,
+ * com a lista fechada, ele inclui quem for **elegível** — membro do grupo, ou
+ * jogador ativo se a pelada for avulsa (ver src/lib/elegiveis.ts).
+ *
+ * Três coisas seguram o afrouxamento, e nenhuma é dispensável:
+ *
+ * 1. só vale **depois** do sorteio, quando já existe pelada acontecendo — antes
+ *    dele, a lista continua sendo auto-servível;
+ * 2. o alvo precisa ser **elegível**, então o alcance de uma pelada de grupo é o
+ *    grupo, e não a plataforma inteira;
+ * 3. quem é incluído **recebe notificação** e vê em qual pelada — quem chama é
+ *    que garante isso (ver definirPresenca).
+ *
+ * Continua sem parâmetro de papel de grupo, e continua de propósito: ser membro
+ * não é consentimento para ser escalado numa pelada que ainda vai acontecer.
+ * `elegivel` aqui é um piso, nunca uma autorização por si só.
+ *
  * O admin da plataforma passa por cima — ele é o fallback de toda pelada, e é
  * quem conserta pelada órfã e pelada abandonada.
- *
- * Grupo **não** relaxa esta regra, e é de propósito que não há parâmetro de
- * papel aqui. Ser membro de um grupo não é consentimento para ser escalado: a
- * regra protege a presença e o V/E/D de quem tem conta, e uma pelada de grupo
- * marcada para sábado não autoriza ninguém a marcar presença pelos outros
- * quarenta membros. Quem confirma é a pessoa, na página da pelada.
  */
 export function podeDefinirPresencaPor(
   ator: Ator,
-  alvo: { temContaAtiva: boolean; jaEstaNaPelada: boolean },
+  alvo: { temContaAtiva: boolean; jaEstaNaPelada: boolean; elegivel: boolean },
+  listaFechada: boolean,
 ): boolean {
   if (ator.isPlatformAdmin) return true;
-  return !alvo.temContaAtiva || alvo.jaEstaNaPelada;
+  if (!alvo.temContaAtiva || alvo.jaEstaNaPelada) return true;
+  return listaFechada && alvo.elegivel;
 }
 
 // Não existe aqui um `podeGerarConvite`, e é de propósito. A regra — convite

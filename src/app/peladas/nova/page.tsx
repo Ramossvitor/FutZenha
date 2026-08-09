@@ -56,9 +56,27 @@ export default async function NovaPeladaPage({ searchParams }: PageProps<"/pelad
               </Field>
             </div>
 
-            <Field htmlFor="location" label="Local" obrigatorio>
-              <Input id="location" name="location" required placeholder="Quadra do clube" />
-            </Field>
+            <div className="flex flex-wrap gap-4">
+              <Field htmlFor="location" label="Local" obrigatorio className="min-w-[12rem] flex-1">
+                <Input id="location" name="location" required placeholder="Quadra do clube" />
+              </Field>
+              <Field
+                htmlFor="maxPlayers"
+                label="Vagas"
+                ajuda="Deixe vazio para não limitar."
+                className="sm:w-28"
+              >
+                <Input
+                  id="maxPlayers"
+                  name="maxPlayers"
+                  type="number"
+                  min={2}
+                  max={60}
+                  inputMode="numeric"
+                  placeholder="20"
+                />
+              </Field>
+            </div>
 
             <Field
               htmlFor="notes"

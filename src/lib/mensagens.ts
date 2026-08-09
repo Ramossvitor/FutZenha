@@ -34,7 +34,8 @@ export const MENSAGENS: Record<string, string> = {
   "artilheiro-fora-do-jogo":
     "Só quem entrou nesse jogo pode marcar gol nele. Ajuste a escalação primeiro.",
   "precisa-confirmar":
-    "Quem tem conta ativa e ainda não entrou nesta pelada precisa marcar a própria presença antes de ser escalado.",
+    "Enquanto a lista está aberta, quem tem conta ativa marca a própria presença. Depois do sorteio você pode incluir quem for do grupo.",
+  "lista-aberta": "Isso só vale depois de fechar a lista — sorteie os times primeiro.",
   "escalacao-travada":
     "A pelada já foi encerrada e a escalação não muda mais. Para corrigir, é preciso excluir a pelada — o que exige votação dos jogadores.",
   "janela-encerrada":

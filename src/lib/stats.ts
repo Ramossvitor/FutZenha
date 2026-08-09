@@ -163,10 +163,16 @@ export async function getAttendanceStats(e: EscopoStats = {}): Promise<{
   totalDays: number;
   perPlayer: AttendanceStat[];
 }> {
+  // Só pelada encerrada, nos dois lados da razão. O denominador contava toda
+  // pelada do escopo, inclusive a de sábado que ainda vai acontecer: quem já
+  // tinha confirmado aparecia com aproveitamento pior do que tem, e quem não
+  // tinha confirmado ainda era punido por uma pelada que não aconteceu.
+  const encerradas = and(eq(matchDays.status, "finished"), escopo(e));
+
   const [{ totalDays }] = await db
     .select({ totalDays: sql<number>`count(*)::int` })
     .from(matchDays)
-    .where(escopo(e));
+    .where(encerradas);
 
   // `nickname` entra aqui para igualar as outras quatro consultas de stats:
   // sem ele, a linha de presença era a única do produto que mostrava o nome de
@@ -182,7 +188,10 @@ export async function getAttendanceStats(e: EscopoStats = {}): Promise<{
     .innerJoin(matchDays, eq(attendances.matchDayId, matchDays.id))
     .innerJoin(players, eq(attendances.playerId, players.id))
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
-    .where(and(eq(attendances.status, "in"), escopo(e)))
+    // `in` é presença de verdade: quem ficou na espera não jogou, e quem
+    // confirmou e não apareceu virou `no_show` no encerramento (ver
+    // marcarFaltasAutomaticas). Os dois ficam de fora sem filtro extra.
+    .where(and(eq(attendances.status, "in"), encerradas))
     .groupBy(players.id, players.name, players.nickname)
     .orderBy(desc(sql`count(*)`), players.name);
 

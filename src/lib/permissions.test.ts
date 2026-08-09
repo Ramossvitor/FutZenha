@@ -69,32 +69,81 @@ describe("podeGerenciarPelada em pelada de grupo", () => {
   });
 });
 
-describe("podeDefinirPresencaPor", () => {
-  const semConta = { temContaAtiva: false, jaEstaNaPelada: false };
-  const comContaDeFora = { temContaAtiva: true, jaEstaNaPelada: false };
-  const comContaJaNaPelada = { temContaAtiva: true, jaEstaNaPelada: true };
+describe("podeDefinirPresencaPor com a lista aberta", () => {
+  const ABERTA = false;
+  const semConta = { temContaAtiva: false, jaEstaNaPelada: false, elegivel: true };
+  const comContaDeFora = { temContaAtiva: true, jaEstaNaPelada: false, elegivel: true };
+  const comContaJaNaPelada = { temContaAtiva: true, jaEstaNaPelada: true, elegivel: true };
 
   // O caso que o override existe para resolver: quem não resgatou o convite (ou
   // teve a conta desativada) não consegue se marcar sozinho.
   it("organizador marca por quem não tem conta ativa", () => {
-    expect(podeDefinirPresencaPor(criador, semConta)).toBe(true);
+    expect(podeDefinirPresencaPor(criador, semConta, ABERTA)).toBe(true);
   });
 
   // O ataque: qualquer jogador logado cria pelada, então sem isto dava para
   // escalar gente com conta que nunca soube do jogo e mexer na presença e no
   // V/E/D dela (os rankings só contam quem tem conta — ver src/lib/stats.ts).
   it("não escala quem tem conta e ainda não entrou na pelada", () => {
-    expect(podeDefinirPresencaPor(criador, comContaDeFora)).toBe(false);
+    expect(podeDefinirPresencaPor(criador, comContaDeFora, ABERTA)).toBe(false);
+  });
+
+  // Ser elegível não é consentimento: uma pelada de grupo marcada para sábado
+  // não autoriza ninguém a montar a lista pelos outros quarenta membros.
+  it("ser elegível sozinho não abre a porta enquanto a lista está aberta", () => {
+    expect(
+      podeDefinirPresencaPor(criador, { ...comContaDeFora, elegivel: true }, ABERTA),
+    ).toBe(false);
   });
 
   it("depois que a pessoa entra, o organizador volta a mandar na presença dela", () => {
-    expect(podeDefinirPresencaPor(criador, comContaJaNaPelada)).toBe(true);
+    expect(podeDefinirPresencaPor(criador, comContaJaNaPelada, ABERTA)).toBe(true);
   });
 
   it("admin da plataforma passa por cima nos três casos", () => {
-    expect(podeDefinirPresencaPor(plataforma, semConta)).toBe(true);
-    expect(podeDefinirPresencaPor(plataforma, comContaDeFora)).toBe(true);
-    expect(podeDefinirPresencaPor(plataforma, comContaJaNaPelada)).toBe(true);
+    expect(podeDefinirPresencaPor(plataforma, semConta, ABERTA)).toBe(true);
+    expect(podeDefinirPresencaPor(plataforma, comContaDeFora, ABERTA)).toBe(true);
+    expect(podeDefinirPresencaPor(plataforma, comContaJaNaPelada, ABERTA)).toBe(true);
+  });
+});
+
+// Fechar a lista é sortear os times: daí em diante o organizador registra quem
+// apareceu na quadra, e não monta mais lista.
+describe("podeDefinirPresencaPor com a lista fechada", () => {
+  const FECHADA = true;
+
+  it("o organizador inclui quem tem conta, não confirmou, mas é elegível", () => {
+    expect(
+      podeDefinirPresencaPor(
+        criador,
+        { temContaAtiva: true, jaEstaNaPelada: false, elegivel: true },
+        FECHADA,
+      ),
+    ).toBe(true);
+  });
+
+  // O limite que sobra: numa pelada de grupo, o alcance é o grupo — não a
+  // plataforma inteira.
+  it("não inclui quem tem conta e não é elegível, nem com a lista fechada", () => {
+    expect(
+      podeDefinirPresencaPor(
+        criador,
+        { temContaAtiva: true, jaEstaNaPelada: false, elegivel: false },
+        FECHADA,
+      ),
+    ).toBe(false);
+  });
+
+  // Quem não tem conta nunca dependeu de elegibilidade: é o convidado que o
+  // organizador cadastra na hora, e ele não está em grupo nenhum ainda.
+  it("quem não tem conta segue livre, elegível ou não", () => {
+    expect(
+      podeDefinirPresencaPor(
+        criador,
+        { temContaAtiva: false, jaEstaNaPelada: false, elegivel: false },
+        FECHADA,
+      ),
+    ).toBe(true);
   });
 });
 

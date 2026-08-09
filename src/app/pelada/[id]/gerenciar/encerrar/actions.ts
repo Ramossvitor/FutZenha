@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { and, eq, notExists, sql } from "drizzle-orm";
+import { db, type Executor } from "@/db";
 import { attendances, gamePlayers, games, matchDays } from "@/db/schema";
-import { podeMarcarPor } from "@/lib/presenca";
+import { formatDate } from "@/lib/format";
+import { notificar } from "@/lib/notifications";
+import { avaliarMarcacao, entrarNaLista, mereceAviso, travarPelada } from "@/lib/presenca";
 import { abrirRodada } from "@/lib/ratings-engine";
 import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
 
@@ -62,13 +64,21 @@ export async function incluirNoJogo(
   side: "A" | "B",
   playerId: number,
 ) {
-  const { session } = await requirePeladaAdmin(matchDayId);
+  const { session, matchDay } = await requirePeladaAdmin(matchDayId);
+  // A mesma guarda das actions irmãs: id não-inteiro (ou lado inventado) morre
+  // aqui com o banner, e não como erro cru do banco no meio da transação.
+  if (!Number.isInteger(gameId) || !Number.isInteger(playerId) || (side !== "A" && side !== "B")) {
+    redirect(`/pelada/${matchDayId}/gerenciar/encerrar?erro=dados-invalidos`);
+  }
   await assertEditavel(matchDayId, gameId);
   // Escalar marca presença junto, então vale o mesmo limite do definirPresenca:
-  // quem tem conta ativa e nunca entrou nesta pelada não é escalado por outro.
-  if (!(await podeMarcarPor(session, matchDayId, playerId))) {
+  // quem tem conta ativa e nunca entrou nesta pelada só é escalado por outro se
+  // for elegível — e aqui a lista está sempre fechada, porque já existe jogo.
+  const { permitido, alvo } = await avaliarMarcacao(session, matchDay, playerId);
+  if (!permitido) {
     redirect(`/pelada/${matchDayId}/gerenciar/encerrar?erro=precisa-confirmar`);
   }
+  const avisar = mereceAviso(session, playerId, alvo);
 
   await db.transaction(async (tx) => {
     await tx
@@ -78,15 +88,74 @@ export async function incluirNoJogo(
         target: [gamePlayers.gameId, gamePlayers.playerId],
         set: { side },
       });
-    await tx
-      .insert(attendances)
-      .values({ matchDayId, playerId, status: "in" })
-      .onConflictDoUpdate({
-        target: [attendances.matchDayId, attendances.playerId],
-        set: { status: "in", updatedAt: new Date() },
-      });
+    // Entrar pela lista, e não por upsert cru: quem foi marcado como falta e
+    // depois apareceu na escalação tem que voltar a contar presença, e é o
+    // entrarNaLista que sabe disso.
+    await entrarNaLista(tx, matchDay.id, playerId);
+
+    if (avisar) {
+      await notificar(tx, [
+        {
+          playerId,
+          type: "pelada_presenca_definida",
+          title: "Marcaram sua presença numa pelada",
+          body: `${session.player.name} escalou você na pelada de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
+          href: `/pelada/${matchDayId}`,
+          dedupeKey: `presenca:${matchDayId}:${playerId}`,
+        },
+      ]);
+    }
   });
   revalidar(matchDayId);
+}
+
+/**
+ * Quem confirmou e não entrou em nenhum jogo vira falta.
+ *
+ * A escalação por jogo (`game_players`) é o registro mais fiel de quem esteve
+ * na quadra: ela sobrevive a troca de colete, a quem chegou atrasado e a quem o
+ * admin incluiu na mão. Se alguém está `in` e não aparece em nenhum jogo da
+ * pelada, ou não foi, ou o admin esqueceu de desmarcar — e nos dois casos contar
+ * presença é mentira no ranking.
+ *
+ * Roda no commit do encerramento, e não antes, porque até ali a escalação ainda
+ * muda. O admin que discordar desmarca depois? Não: encerrada, a escalação é
+ * imutável. Por isso a tela de encerramento mostra quem vai virar falta antes de
+ * confirmar — e é lá que se conserta, incluindo a pessoa no jogo.
+ *
+ * `totalDeJogos` vem de quem chama porque a consulta já foi feita. E ele é a
+ * guarda que importa: **pelada sem jogo lançado não marca falta em ninguém**.
+ * Sem isso, encerrar uma pelada em que o placar não foi registrado zeraria a
+ * presença de todo mundo que estava lá.
+ */
+async function marcarFaltasAutomaticas(
+  tx: Executor,
+  matchDayId: number,
+  totalDeJogos: number,
+): Promise<void> {
+  if (totalDeJogos === 0) return;
+
+  await tx
+    .update(attendances)
+    .set({ status: "no_show", updatedAt: new Date() })
+    .where(
+      and(
+        eq(attendances.matchDayId, matchDayId),
+        eq(attendances.status, "in"),
+        notExists(
+          tx
+            .select({ um: sql`1` })
+            .from(gamePlayers)
+            .innerJoin(games, eq(games.id, gamePlayers.gameId))
+            .where(
+              and(
+                eq(games.matchDayId, matchDayId),
+                eq(gamePlayers.playerId, attendances.playerId),
+              ),
+            ),
+        ),
+      ),
+    );
 }
 
 export async function confirmarEncerramento(matchDayId: number) {
@@ -115,6 +184,12 @@ export async function confirmarEncerramento(matchDayId: number) {
   // rodada seria um beco sem saída — a checagem de `finished` acima impede repetir a ação, o
   // varredor só fecha rodada que já existe, e não existe "reabrir pelada".
   await db.transaction(async (tx) => {
+    // O mesmo lock das escritas da lista: sem ele, uma inclusão concorrente
+    // passa entre o marcarFaltasAutomaticas e o commit — e entra `in` numa
+    // pelada que acabou de encerrar, sem ter jogado.
+    await travarPelada(tx, matchDayId);
+    await marcarFaltasAutomaticas(tx, matchDayId, lados.length);
+
     await tx
       .update(matchDays)
       .set({ status: "finished", finishedAt: sql`now()` })

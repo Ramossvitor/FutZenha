@@ -34,6 +34,17 @@ const matchDaySchema = z.object({
     .trim()
     .max(500)
     .transform((v) => (v === "" ? null : v)),
+  // Quantos cabem. Vazio vira null = sem limite, que é o padrão e o
+  // comportamento de toda pelada anterior à lista de espera. O piso é 2 porque
+  // abaixo disso não há sorteio possível; o teto é folga para quadra grande,
+  // e existe só para o campo não virar porta de número absurdo.
+  maxPlayers: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : Number(v)))
+    .refine((v) => v === null || (Number.isInteger(v) && v >= 2 && v <= 60), {
+      message: "Vagas: deixe vazio ou informe um número de 2 a 60",
+    }),
 });
 
 export function parseMatchDayForm(formData: FormData) {
@@ -42,5 +53,6 @@ export function parseMatchDayForm(formData: FormData) {
     startTime: formData.get("startTime") ?? "",
     location: formData.get("location") ?? "",
     notes: formData.get("notes") ?? "",
+    maxPlayers: formData.get("maxPlayers") ?? "",
   });
 }

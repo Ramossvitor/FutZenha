@@ -21,12 +21,90 @@ import {
   teamPlayers,
   teams,
 } from "@/db/schema";
+import { jogadoresElegiveis } from "@/lib/elegiveis";
 import { formatDate, formatSkill, formatTime } from "@/lib/format";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
+import { repartirLista, vagasLivres } from "@/lib/lista-presenca";
 import { STATUS_PELADA } from "@/lib/match-day-form";
 import { podeGerenciarPelada } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
 import { setMyAttendance } from "./actions";
+
+type LinhaExibida = { playerId: number; status: "in" | "out" | "waitlist" | "no_show" };
+
+/**
+ * Um pedaço da lista — na lista, na espera, faltou, não respondeu.
+ *
+ * A numeração é o que faz a lista parecer lista: "você é o 3º da espera" é a
+ * informação que a pessoa procura, e ela não existe numa chamada alfabética.
+ */
+function Bloco({
+  titulo,
+  legenda,
+  linhas,
+  jogadorPorId,
+  meuPlayerId,
+  numerada = false,
+  apagar = true,
+}: {
+  titulo: string;
+  legenda?: string;
+  linhas: LinhaExibida[];
+  jogadorPorId: Map<number, { id: number; name: string; nickname: string | null }>;
+  meuPlayerId: number | null;
+  numerada?: boolean;
+  apagar?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Eyebrow>
+        {titulo} · {linhas.length}
+      </Eyebrow>
+      {legenda && <p className="text-[11.5px] text-fg-4">{legenda}</p>}
+      <HairlineList as="ul">
+        {linhas.map((linha, i) => {
+          const jogador = jogadorPorId.get(linha.playerId);
+          if (!jogador) return null;
+          const souEu = meuPlayerId === linha.playerId;
+          const inativo = apagar && (linha.status === "out" || linha.status === "no_show");
+          return (
+            <HairlineRow as="li" key={linha.playerId} destaque={souEu} apagado={inativo}>
+              {numerada ? (
+                <span
+                  className="w-5 shrink-0 text-right font-display text-[12px] font-bold text-fg-4"
+                  data-num
+                >
+                  {i + 1}
+                </span>
+              ) : (
+                /* A marca colorida repete o que o selo à direita já diz — cor
+                   sozinha não pode carregar a informação. */
+                <span
+                  aria-hidden
+                  className={`h-6 w-1 shrink-0 rounded-full ${
+                    linha.status === "no_show" ? "bg-danger" : "bg-line-strong"
+                  }`}
+                />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-display text-[14px] font-bold text-fg">
+                  {jogador.nickname ?? jogador.name}
+                </span>
+                {jogador.nickname && (
+                  <span className="block truncate text-[11.5px] text-fg-4">{jogador.name}</span>
+                )}
+              </span>
+
+              {souEu && <Badge tom="accent">você</Badge>}
+              {linha.status === "waitlist" && <Badge tom="neutral">espera</Badge>}
+              {linha.status === "no_show" && <Badge tom="neutral">faltou</Badge>}
+            </HairlineRow>
+          );
+        })}
+      </HairlineList>
+    </div>
+  );
+}
 
 export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) {
   const { id: idParam } = await params;
@@ -42,7 +120,9 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
   if (!matchDay) notFound();
 
   const [activePlayers, attendanceRows, teamList, gameList, papel] = await Promise.all([
-    db.select().from(players).where(eq(players.active, true)).orderBy(asc(players.name)),
+    // Pelada de grupo lista o grupo; avulsa lista a plataforma. Antes disto era
+    // sempre a plataforma inteira — ver src/lib/elegiveis.ts.
+    jogadoresElegiveis(matchDay),
     db.select().from(attendances).where(eq(attendances.matchDayId, id)),
     db.select().from(teams).where(eq(teams.matchDayId, id)).orderBy(asc(teams.sortOrder)),
     db.select().from(games).where(eq(games.matchDayId, id)).orderBy(asc(games.sortOrder), asc(games.id)),
@@ -53,7 +133,16 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
       : null,
   ]);
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
-  const confirmados = attendanceRows.filter((a) => a.status === "in").length;
+  const jogadorPorId = new Map(activePlayers.map((p) => [p.id, p]));
+  // Quem tem linha mas não está elegível é jogador desativado: some da lista,
+  // como sempre somiu.
+  const { vagas, espera, faltas } = repartirLista(
+    attendanceRows.filter((a) => jogadorPorId.has(a.playerId)),
+  );
+  const semResposta = activePlayers.filter((p) => !statusByPlayer.has(p.id));
+  const confirmados = vagas.length;
+  const livres = vagasLivres(confirmados, matchDay.maxPlayers);
+  const listaCheia = livres === 0;
 
   const [teamMembers, goalRows, escalacao, grupo] = await Promise.all([
     teamList.length > 0
@@ -133,6 +222,10 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
 
   const podeMarcar = matchDay.status === "scheduled";
   const meuPlayerId = session?.player.id ?? null;
+  // Numa pelada de grupo, quem não é do grupo não entra na lista — o servidor já
+  // recusa (ver setMyAttendance). Sem este teste a tela oferecia o botão assim
+  // mesmo, e clicar não fazia nada: sem erro, sem banner, sem explicação.
+  const souElegivel = meuPlayerId !== null && activePlayers.some((p) => p.id === meuPlayerId);
 
   const podeGerenciar =
     session !== null &&
@@ -321,7 +414,9 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
               {confirmados}
             </span>
             <span className="font-display text-[11px] font-bold text-fg-4">
-              / {activePlayers.length}
+              {matchDay.maxPlayers === null
+                ? `/ ${activePlayers.length}`
+                : `/ ${matchDay.maxPlayers} vagas`}
             </span>
           </span>
         }
@@ -345,62 +440,91 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
           </Banner>
         )}
 
-        <HairlineList as="ul">
-          {activePlayers.map((player) => {
-            const status = statusByPlayer.get(player.id);
-            const souEu = meuPlayerId === player.id;
-            return (
-              <HairlineRow
-                as="li"
-                key={player.id}
-                destaque={souEu}
-                apagado={status === "out"}
-              >
-                {/* A marca colorida repete o que o selo à direita já diz — cor
-                    sozinha não pode carregar a informação. */}
-                <span
-                  aria-hidden
-                  className={`h-6 w-1 shrink-0 rounded-full ${
-                    status === "in"
-                      ? "bg-accent"
-                      : status === "out"
-                        ? "bg-danger"
-                        : "bg-line-strong"
-                  }`}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-display text-[14px] font-bold text-fg">
-                    {player.nickname ?? player.name}
-                  </span>
-                  {player.nickname && (
-                    <span className="block truncate text-[11.5px] text-fg-4">{player.name}</span>
-                  )}
-                </span>
+        {/* A ordem importa: a lista é por ordem de chegada, e é isso que ela
+            precisa mostrar. Antes era uma chamada alfabética de todo jogador da
+            plataforma, em que o estado de cada um era um selo perdido no meio. */}
+        {vagas.length > 0 && (
+          <Bloco
+            titulo="Na lista"
+            linhas={vagas}
+            jogadorPorId={jogadorPorId}
+            meuPlayerId={meuPlayerId}
+            numerada
+          />
+        )}
 
-                {souEu && <Badge tom="accent">você</Badge>}
-                {status === "in" && <Badge tom="accent">vai</Badge>}
-                {status === "out" && <Badge tom="neutral">fora</Badge>}
+        {espera.length > 0 && (
+          <Bloco
+            titulo="Lista de espera"
+            legenda={
+              podeMarcar
+                ? "Sobem por ordem de chegada assim que alguém sai."
+                : "A lista fechou antes de abrir vaga."
+            }
+            linhas={espera}
+            jogadorPorId={jogadorPorId}
+            meuPlayerId={meuPlayerId}
+            numerada
+          />
+        )}
 
-                {podeMarcar && souEu && (
-                  <span className="ml-auto flex gap-1.5">
-                    {status !== "in" && (
-                      <form action={setMyAttendance.bind(null, matchDay.id, "in")}>
-                        <SubmitButton tamanho="sm">Vou</SubmitButton>
-                      </form>
-                    )}
-                    {status !== "out" && (
-                      <form action={setMyAttendance.bind(null, matchDay.id, "out")}>
-                        <SubmitButton variante="secondary" tamanho="sm">
-                          Fora
-                        </SubmitButton>
-                      </form>
-                    )}
-                  </span>
-                )}
-              </HairlineRow>
-            );
-          })}
-        </HairlineList>
+        {faltas.length > 0 && (
+          <Bloco
+            titulo="Não compareceram"
+            legenda="Confirmaram e não entraram em nenhum jogo — não conta presença."
+            linhas={faltas}
+            jogadorPorId={jogadorPorId}
+            meuPlayerId={meuPlayerId}
+          />
+        )}
+
+        {vagas.length === 0 && espera.length === 0 && (
+          <EmptyState titulo="Ninguém na lista ainda" descricao="Seja o primeiro a confirmar." />
+        )}
+
+        {/* Quem ainda não respondeu só aparece enquanto dá para responder: depois
+            do sorteio, essa lista é ruído — quem não entrou, não entrou. */}
+        {podeMarcar && semResposta.length > 0 && (
+          <Bloco
+            titulo="Ainda não responderam"
+            legenda={
+              listaCheia
+                ? "A lista está cheia — quem confirmar agora entra na espera."
+                : undefined
+            }
+            linhas={semResposta.map((p) => ({ playerId: p.id, status: "out" as const }))}
+            jogadorPorId={jogadorPorId}
+            meuPlayerId={meuPlayerId}
+            apagar={false}
+          />
+        )}
+
+        {podeMarcar && session && !souElegivel && (
+          <Banner tom="info">
+            Esta pelada é do grupo {grupoVisivel ? grupo.name : "que a marcou"} — só quem é do
+            grupo entra na lista.
+          </Banner>
+        )}
+
+        {podeMarcar && meuPlayerId !== null && souElegivel && (
+          <span className="flex gap-1.5">
+            {statusByPlayer.get(meuPlayerId) !== "in" &&
+              statusByPlayer.get(meuPlayerId) !== "waitlist" && (
+                <form action={setMyAttendance.bind(null, matchDay.id, "in")}>
+                  <SubmitButton tamanho="sm">
+                    {listaCheia ? "Entrar na espera" : "Vou"}
+                  </SubmitButton>
+                </form>
+              )}
+            {statusByPlayer.get(meuPlayerId) !== "out" && (
+              <form action={setMyAttendance.bind(null, matchDay.id, "out")}>
+                <SubmitButton variante="secondary" tamanho="sm">
+                  Fora
+                </SubmitButton>
+              </form>
+            )}
+          </span>
+        )}
 
         <p className="text-[11.5px] text-fg-4">
           Não está na lista ou não tem conta? Fala com quem organiza a pelada.
