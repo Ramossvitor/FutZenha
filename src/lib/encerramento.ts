@@ -30,6 +30,33 @@ export type Checklist = {
   podeEncerrar: boolean;
 };
 
+/**
+ * Quem confirmou presença e não entrou em nenhum jogo — a lista "vão contar
+ * falta" da tela de encerrar, e exatamente o conjunto que o
+ * marcarFaltasAutomaticas grava como `no_show` no encerramento.
+ *
+ * Mora aqui, e não inline na página, porque a prévia e o servidor têm que dizer
+ * a mesma coisa: com a regra copiada em dois lugares, mudar um faria a tela
+ * prometer o que o encerramento não cumpre, e o teste que compara os dois
+ * passaria mesmo assim se tivesse a própria cópia.
+ *
+ * Pelada sem jogo lançado não marca falta em ninguém (ver
+ * confirmarEncerramento) — por isso `temJogo` zera a lista inteira.
+ */
+export function quemViraFalta({
+  temJogo,
+  confirmados,
+  escalados,
+}: {
+  temJogo: boolean;
+  confirmados: number[];
+  escalados: Iterable<number>;
+}): number[] {
+  if (!temJogo) return [];
+  const emCampo = new Set(escalados);
+  return confirmados.filter((playerId) => !emCampo.has(playerId));
+}
+
 function plural(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`;
 }

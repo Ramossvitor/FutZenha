@@ -10,6 +10,18 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Regras do projeto
 
+## Testes e verificação
+
+Três camadas, da mais barata à mais cara — PR só entra com o check "Verificação / Gate de qualidade" do `ci.yml` verde (a MESMA verificação gateia o deploy):
+
+- `npm test` — unit (vitest, sem banco). Arquivos `*.test.ts` ao lado do módulo.
+- `npm run test:integration` — integração com banco real (`*.integration.test.ts`; precisa de `docker compose up -d`; o global-setup cria `futzenha_test` na porta 5433 e aplica as migrations sozinho). Harness em `src/test/` (fixtures, cookie-store fake, mocks de `next/*`).
+- `npm run e2e` — smokes Playwright contra o build real (`npm run seed && npm run build` antes).
+
+`npm run test:coverage` roda unit + integração com cobertura (threshold no `vitest.config.mts`).
+
+Regras que os testes seguem: timestamps retroativos via `sql\`now() - interval\`` do Postgres (nunca `new Date()` em SQL cru); e-mails de fixture `@example.com`; **`RESEND_API_KEY` ausente em teste/E2E/CI é por design** — a ausência da key é o kill switch do envio real de e-mail, e o setup de integração aborta se ela existir.
+
 ## Commits
 
 Não faça commits (nem `git commit`, `git push`, `git merge`, `git rebase`) a menos que o usuário peça explicitamente. Ao terminar uma tarefa, deixe as alterações no working tree e apenas relate o que foi alterado.

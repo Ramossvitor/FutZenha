@@ -1,0 +1,29 @@
+name: CI
+
+# Todo PR e todo push na main passam pela MESMA verificação que gateia o
+# deploy (ver verificacao.yml). Para exigir isto antes de mergear:
+# Settings → Branches → branch protection na main exigindo o check
+# "Verificação / Gate de qualidade".
+#
+# O nome tem as duas partes porque o job aqui CHAMA um workflow reutilizável: o
+# GitHub reporta o check como "<job daqui> / <job de lá>". Exigir só
+# "Verificação" configura um check que nunca chega, e o PR fica pendente para
+# sempre — ou, pior, a proteção não gateia nada.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Push novo no mesmo PR cancela a verificação anterior — ao contrário do
+# deploy, aqui não há nada no meio do caminho que não possa ser abortado.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verificacao:
+    name: Verificação
+    uses: ./.github/workflows/verificacao.yml

@@ -234,6 +234,13 @@ export async function sairDaLista(
     });
 
   if (!ocupavaVaga || listaFechada(pelada.status)) return null;
+  // "Abriu uma vaga" é literal: o limite pode ter sido reduzido para baixo dos
+  // confirmados (updateMatchDay aceita, e não rebaixa ninguém), e aí a saída
+  // ainda deixa a lista cheia — promover aqui furaria o limite novo.
+  const ocupadasAposSaida = linhas.filter(
+    (l) => l.status === "in" && l.playerId !== playerId,
+  ).length;
+  if (pelada.maxPlayers !== null && ocupadasAposSaida >= pelada.maxPlayers) return null;
   const proximo = proximoDaEspera(linhas);
   if (!proximo) return null;
 

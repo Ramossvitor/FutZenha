@@ -41,6 +41,29 @@ describe("parseGrupoForm", () => {
     if (r.success) expect(r.data.description).toBeNull();
   });
 
+  // O ataque: o nome do grupo sai daqui direto para o assunto do email de
+  // convite, e CR/LF em assunto é injeção de cabeçalho (um Bcc: enfileirado).
+  // O trim só apara as pontas — a quebra no MEIO é o regex que barra.
+  it("recusa quebra de linha no meio do nome, em qualquer formato", () => {
+    for (const name of [
+      "Pelada\nBcc: x@example.com",
+      "Pelada\rBcc: x@example.com",
+      "Pelada\r\nBcc: x@example.com",
+    ]) {
+      expect(parseGrupoForm(form({ ...valido, name })).success).toBe(false);
+    }
+  });
+
+  // A borda deliberada: o trim roda ANTES do regex, então quebra só nas pontas
+  // é aparada e o que sobra passa. Se a ordem do schema inverter, este teste
+  // acusa — e espaço interno continua sendo nome normal, não injeção.
+  it("quebra de linha só nas pontas é aparada, e o nome passa", () => {
+    const r = parseGrupoForm(form({ ...valido, name: "\nPelada da firma\r\n" }));
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.name).toBe("Pelada da firma");
+    expect(parseGrupoForm(form({ ...valido, name: "Pelada de sábado à noite" })).success).toBe(true);
+  });
+
   // O ataque: Server Action é endpoint POST público, e o <select> da tela não
   // valida nada. Sem o z.enum, um valor inventado chegaria ao insert — e a
   // coluna que decide quem enxerga o grupo guardaria lixo.

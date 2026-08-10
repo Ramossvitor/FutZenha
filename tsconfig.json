@@ -11,6 +11,11 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // Para os dois imports de src/test/db-url.mts: o carregador nativo do Vite
+    // exige a extensão no vitest.config.mts, e o resolvedor "bundler" do TS não
+    // acha .mts sem ela. Só esse arquivo é importado assim; o resto do código
+    // segue sem extensão, como sempre.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

@@ -12,7 +12,7 @@ import { db } from "@/db";
 import { attendances, gamePlayers, games, players, teams, users } from "@/db/schema";
 import { cx } from "@/lib/cx";
 import { condicaoElegivel } from "@/lib/elegiveis";
-import { montarChecklist } from "@/lib/encerramento";
+import { montarChecklist, quemViraFalta } from "@/lib/encerramento";
 import { formatDate } from "@/lib/format";
 import { companheirosPorJogador, gruposElegiveis } from "@/lib/lineup";
 import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
@@ -104,15 +104,15 @@ export default async function EncerrarPeladaPage({
   // Quem confirmou e não entrou em nenhum jogo vira falta no encerramento (ver
   // marcarFaltasAutomaticas). Mostrar antes é o que torna isso corrigível: depois
   // do encerramento a escalação é imutável, e a única forma de consertar seria
-  // apagar a pelada. Pelada sem jogo lançado não marca falta em ninguém, e por
-  // isso a lista some junto.
-  const viraFalta =
-    gameList.length === 0
-      ? []
-      : confirmados
-          .filter((a) => !escalados.has(a.playerId))
-          .map((a) => jogadorPorId.get(a.playerId))
-          .filter((p) => p !== undefined);
+  // apagar a pelada. A regra vem do quemViraFalta para a prévia e o servidor não
+  // poderem divergir.
+  const viraFalta = quemViraFalta({
+    temJogo: gameList.length > 0,
+    confirmados: confirmados.map((a) => a.playerId),
+    escalados,
+  })
+    .map((playerId) => jogadorPorId.get(playerId))
+    .filter((p) => p !== undefined);
 
   const checklist = montarChecklist({
     // TODOS os jogos, inclusive os sem nenhuma linha de escalação: são

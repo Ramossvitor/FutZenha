@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  listaFechada,
   ordenarPorChegada,
   proximoDaEspera,
   repartirLista,
@@ -21,6 +22,15 @@ const linha = (
   confirmedAt: minuto === null ? null : T(minuto),
 });
 
+// Fechar a lista é sortear os times: daí em diante quem mexe nela é o admin.
+describe("listaFechada", () => {
+  it("só a pelada marcada tem lista aberta", () => {
+    expect(listaFechada("scheduled")).toBe(false);
+    expect(listaFechada("teams_drawn")).toBe(true);
+    expect(listaFechada("finished")).toBe(true);
+  });
+});
+
 describe("ordenarPorChegada", () => {
   it("ordena por confirmedAt, não por id", () => {
     const linhas = [linha(3, "in", 10), linha(1, "in", 30), linha(2, "in", 20)];
@@ -37,6 +47,13 @@ describe("ordenarPorChegada", () => {
   it("quem não tem marco de entrada vai para o fim, não para o começo", () => {
     const linhas = [linha(1, "in", null), linha(2, "in", 30)];
     expect(ordenarPorChegada(linhas).map((l) => l.playerId)).toEqual([2, 1]);
+  });
+
+  // Dois nulos empatam em "sem marco" e caem no mesmo desempate por id dos
+  // instantes iguais — sem ele, a ordem entre os dois mudaria a cada render.
+  it("dois sem marco desempatam pelo id, atrás de quem tem marco", () => {
+    const linhas = [linha(9, "in", null), linha(4, "in", null), linha(7, "in", 10)];
+    expect(ordenarPorChegada(linhas).map((l) => l.playerId)).toEqual([7, 4, 9]);
   });
 
   it("não mexe no array recebido", () => {
@@ -135,5 +152,14 @@ describe("proximoDaEspera", () => {
   it("ignora quem está fora e quem faltou", () => {
     const linhas = [linha(1, "out", null), linha(2, "no_show", 10), linha(3, "waitlist", 60)];
     expect(proximoDaEspera(linhas)?.playerId).toBe(3);
+  });
+
+  // Espera com marco e sem marco misturados: o nulo vai para o fim da fila —
+  // chutar que chegou primeiro tomaria a vaga de quem estava esperando — mas
+  // segue promovível quando é o único na espera.
+  it("na espera, quem não tem marco perde a vez mas não a fila", () => {
+    const misturada = [linha(1, "waitlist", null), linha(5, "waitlist", 30)];
+    expect(proximoDaEspera(misturada)?.playerId).toBe(5);
+    expect(proximoDaEspera([linha(1, "waitlist", null)])?.playerId).toBe(1);
   });
 });

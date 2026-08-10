@@ -1,0 +1,248 @@
+name: Verificação
+
+# Workflow reutilizável: a única fonte de verdade do que "verde" significa.
+# Chamado pelo ci.yml (todo PR e push na main) e pelo deploy.yml (gate do botão
+# de publicar) — o que protege um PR é exatamente o que protege um deploy.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Ref a verificar. Vazio = a ref do evento que disparou."
+        required: false
+        type: string
+        default: ""
+    outputs:
+      sha:
+        description: "O commit exato que foi verificado."
+        value: ${{ jobs.verificar.outputs.sha }}
+      assunto:
+        description: "Assunto do commit verificado."
+        value: ${{ jobs.verificar.outputs.assunto }}
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: Gate de qualidade
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      assunto: ${{ steps.commit.outputs.assunto }}
+
+    env:
+      # email-modelos.ts formata datas com toLocaleDateString("pt-BR") sem
+      # timezone fixa — sem isto, os testes de validade flakeariam entre a
+      # máquina local (America/Sao_Paulo) e o runner em UTC.
+      TZ: America/Sao_Paulo
+      # RESEND_API_KEY fica deliberadamente FORA deste workflow: a ausência da
+      # key é o único kill switch do envio real de e-mail, e o setup dos testes
+      # de integração aborta se ela existir. Não adicione como secret aqui.
+
+    # Postgres efêmero para migrations, integração, seed e E2E. Mesma imagem e
+    # credenciais do docker-compose.yml local — o que roda aqui é o que você
+    # roda na sua máquina. A porta é 5432 porque no runner não há o conflito
+    # que levou o local para a 5433.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: futzenha
+          POSTGRES_PASSWORD: futzenha
+          POSTGRES_DB: futzenha
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U futzenha -d futzenha"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Vazio usa a ref do evento (PR/push); o deploy passa "main" para
+          # garantir que só a main é publicada, de qualquer dropdown.
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - name: Registrar o commit verificado
+        id: commit
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "assunto=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Node (via .nvmrc) + cache do npm
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # Guard-rail que faltou aqui uma vez. O lock chegou na main com uma aresta
+      # peerOptional inválida (vite pedia esbuild ^0.27||^0.28 e enxergava a
+      # 0.25.12 da raiz): o npm 11 tolerava, o npm 10 do runner tentava consertar
+      # criando 27 posições que o lock não tinha, e o `npm ci` morria com
+      # "Missing: esbuild@0.28.1" — mensagem que omite o CAMINHO e por isso
+      # parecia mentira. `npm ls` acusa a aresta inválida em qualquer versão.
+      - name: Lock íntegro (nenhuma aresta inválida)
+        run: npm ls --all > /dev/null
+
+      # --- Gate 1/8 -----------------------------------------------------------
+      # Schema editado sem gerar migration: o drizzle-kit não gera nada quando
+      # schema e drizzle/ batem; qualquer arquivo novo ou alterado é migration
+      # esquecida. O `git add -N` põe os arquivos NOVOS no radar do diff — sem
+      # ele, uma migration recém-gerada seria untracked e o diff passaria limpo.
+      - name: Migration esquecida (schema x drizzle/)
+        env:
+          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
+        run: |
+          set -euo pipefail
+          npm run db:generate
+          git add -N drizzle/
+          git diff --exit-code drizzle/
+
+      # --- Gate 2/8 -----------------------------------------------------------
+      # Só o projeto unit: rápido e sem banco — falha barata primeiro.
+      - name: Testes de unidade (vitest)
+        run: npm test
+
+      # --- Gate 3/8 -----------------------------------------------------------
+      - name: Lint (eslint)
+        run: npm run lint
+
+      # --- Gate 4/8 -----------------------------------------------------------
+      # O script é `next typegen && tsc --noEmit`, não só o tsc: next-env.d.ts é
+      # gitignored e importa .next/types/*, que só existe depois do typegen.
+      - name: Typecheck
+        run: npm run typecheck
+
+      # --- Gate 5/8 -----------------------------------------------------------
+      # Roda o MESMO script que o build da Vercel executa antes do next build.
+      # Nenhuma var VERCEL/VERCEL_ENV está setada aqui, então os gates de
+      # src/db/migrate.ts deixam passar e o script roda inteiro: migrations +
+      # provisionarPlatformAdmins + materializarPlatformAdmins.
+      #
+      # SESSION_SECRET não é necessária: o migrate importa hashPassword
+      # (node:crypto) e siteUrl (só env), nunca sessionSecret().
+      #
+      # A segunda passada prova idempotência — que é o cenário real, porque este
+      # script roda em TODO build de produção, não só quando há migration nova.
+      - name: Dry-run das migrations (Postgres limpo)
+        env:
+          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
+          PLATFORM_ADMIN_USERNAMES: ci-admin
+        run: |
+          set -euo pipefail
+          echo "::group::1ª passada (banco vazio)"
+          npm run db:migrate:prod
+          echo "::endgroup::"
+          echo "::group::2ª passada (idempotência)"
+          npm run db:migrate:prod
+          echo "::endgroup::"
+
+      # --- Gate 6/8 -----------------------------------------------------------
+      # Unit + integração com cobertura, contra um banco próprio (o global-setup
+      # cria futzenha_test no service e aplica as migrations pelo runner do
+      # drizzle — obrigatório por causa do ALTER TYPE ... ADD VALUE da 0012).
+      - name: Integração + cobertura (vitest, banco real)
+        env:
+          TEST_DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha_test
+        run: npm run test:coverage
+
+      - name: Cobertura no resumo
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            {
+              echo "## Cobertura"
+              echo ""
+              node -e '
+                const s = require("./coverage/coverage-summary.json").total;
+                for (const k of ["lines", "statements", "functions", "branches"]) {
+                  console.log(`- ${k}: ${s[k].pct}% (${s[k].covered}/${s[k].total})`);
+                }
+              '
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # --- Gate 7/8 -----------------------------------------------------------
+      # O único passo que roda DEPOIS das migrations no build de produção — e por
+      # isso o mais importante de gatear. `npm run build` é
+      # `tsx src/db/migrate.ts && next build`: se o next build quebrar lá, o schema
+      # já avançou e o código não vai ao ar. Pega erro de prerender, que o tsc não
+      # vê. Roda `npx next build` direto, sem o migrate na frente: o banco do runner
+      # já está migrado pelo gate 5/8.
+      #
+      # SESSION_SECRET aqui só para o caso de alguma rota tocar sessionSecret() no
+      # prerender — é valor de CI, não sai daqui.
+      - name: Build de verificação
+        env:
+          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
+          SESSION_SECRET: ci-secret-nao-usado-em-producao
+        run: npx next build
+
+      # --- Gate 8/8 -----------------------------------------------------------
+      # E2E de fumaça contra o build de verdade. O seed reaproveita o banco
+      # futzenha já migrado (é destrutivo por design e travado em localhost).
+      - name: Seed do banco para o E2E
+        env:
+          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
+        run: npm run seed
+
+      - name: Cache dos browsers do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Instalar o Chromium do Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (Playwright)
+        env:
+          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
+          SESSION_SECRET: ci-secret-nao-usado-em-producao
+          CI: "true"
+        run: npm run e2e
+
+      - name: Relatório do Playwright (só em falha)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      # Informativo por enquanto: aponta CVE alto sem quebrar o gate. Vira
+      # bloqueante quando a rotina de triagem existir.
+      - name: npm audit (informativo)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+      # Os valores entram por `env:`, nunca como `${{ }}` no meio do script: a
+      # interpolação acontece ANTES do bash, então um assunto de commit contendo
+      # `cmd` ou $(cmd) viraria código executado aqui. Expandir $ASSUNTO é seguro —
+      # o bash não reinterpreta o conteúdo de uma variável. Vale para toda etapa
+      # nova que imprima dado vindo do repositório.
+      - name: Resumo da verificação
+        if: always()
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+          ASSUNTO: ${{ steps.commit.outputs.assunto }}
+        run: |
+          {
+            echo "## Verificação"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| commit | \`$SHA\` |"
+            echo "| assunto | $ASSUNTO |"
+            echo ""
+            echo "Verificado: migration esquecida · vitest unit · eslint · typecheck · migrations em Postgres limpo (2x) · integração + cobertura · next build · E2E Playwright · npm audit (informativo)."
+          } >> "$GITHUB_STEP_SUMMARY"

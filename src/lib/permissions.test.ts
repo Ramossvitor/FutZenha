@@ -100,6 +100,13 @@ describe("podeDefinirPresencaPor com a lista aberta", () => {
     expect(podeDefinirPresencaPor(criador, comContaJaNaPelada, ABERTA)).toBe(true);
   });
 
+  // O convidado de última hora não pertence a grupo nenhum ainda — exigir
+  // elegibilidade dele mataria justamente o caso que o override existe para
+  // resolver.
+  it("quem não tem conta segue livre mesmo sem ser elegível", () => {
+    expect(podeDefinirPresencaPor(criador, { ...semConta, elegivel: false }, ABERTA)).toBe(true);
+  });
+
   it("admin da plataforma passa por cima nos três casos", () => {
     expect(podeDefinirPresencaPor(plataforma, semConta, ABERTA)).toBe(true);
     expect(podeDefinirPresencaPor(plataforma, comContaDeFora, ABERTA)).toBe(true);
@@ -132,6 +139,31 @@ describe("podeDefinirPresencaPor com a lista fechada", () => {
         FECHADA,
       ),
     ).toBe(false);
+  });
+
+  // O ex-membro que confirmou e depois saiu do grupo: já está na pelada, então
+  // o organizador segue mandando na presença dele — a elegibilidade só filtra
+  // quem ainda está de fora.
+  it("quem já está na pelada dispensa elegibilidade", () => {
+    expect(
+      podeDefinirPresencaPor(
+        criador,
+        { temContaAtiva: true, jaEstaNaPelada: true, elegivel: false },
+        FECHADA,
+      ),
+    ).toBe(true);
+  });
+
+  // O bypass vem antes da elegibilidade: o admin da plataforma é o fallback de
+  // pelada órfã e abandonada, e o alcance dele já é a plataforma inteira.
+  it("admin da plataforma inclui até quem não é elegível", () => {
+    expect(
+      podeDefinirPresencaPor(
+        plataforma,
+        { temContaAtiva: true, jaEstaNaPelada: false, elegivel: false },
+        FECHADA,
+      ),
+    ).toBe(true);
   });
 
   // Quem não tem conta nunca dependeu de elegibilidade: é o convidado que o
