@@ -1,8 +1,9 @@
 import "server-only";
 import { after } from "next/server";
-import { and, count, eq, gt, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, count, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { groupInvitations, invites, players, users } from "@/db/schema";
+import { groupInvitations, groups, invites, players, users } from "@/db/schema";
+import { mesmoEmail } from "./email";
 import { emailConfigurado, enviarEmail } from "./email-envio";
 import {
   emailDeAvisoDeGrupo,
@@ -18,9 +19,10 @@ import {
 //
 // Sempre chamado DEPOIS do commit, nunca dentro da transação — o envio segura
 // uma conexão do pool por até 10s, e um rollback não "desenvia" um email que já
-// chegou. Recebe só o token de propósito: a revalidação (convite ainda pendente,
-// não expirado, com email) mora aqui e vale igual para o disparo automático do
-// cadastro e para o botão de reenviar — o call site fica com uma linha.
+// chegou. Recebe só o token (ou o id do convite) de propósito: a revalidação
+// (convite ainda pendente, não expirado, com email) mora aqui e vale igual para
+// o disparo automático e para o botão de reenviar — o call site fica com uma
+// linha.
 //
 // Sem guard, como convites.ts: quem autoriza é a action.
 
@@ -28,7 +30,18 @@ export type ResultadoEnvioDeConvite =
   | { ok: true }
   | {
       ok: false;
-      motivo: "nao-configurado" | "convite-inelegivel" | "envio-recente" | "limite" | "falha";
+      motivo:
+        | "nao-configurado"
+        | "convite-inelegivel"
+        | "envio-recente"
+        | "limite"
+        // Separado de "limite" porque a saída de quem leu é outra: o teto da
+        // instalação volta amanhã, o teto de quem convida é do próprio ator e
+        // some sozinho conforme as 24h correm. Dizer "limite diário de e-mails
+        // atingido" para o segundo culpa a plataforma por uma conta.
+        | "limite-do-convidante"
+        | "rajada"
+        | "falha";
     };
 
 // Freio de mão do envio. Não é otimização de cota: qualquer jogador logado cria
@@ -38,35 +51,100 @@ export type ResultadoEnvioDeConvite =
 // caixa de entrada, quantas vezes quiser — e ainda queima a cota de todo mundo.
 //
 // A janela por destinatário é o que impede encher a caixa de uma pessoa; o teto
-// diário é o que impede espalhar por muitas. Os dois saem de `email_sent_at`,
-// sem tabela nova. O teto fica abaixo dos 100/dia do free tier para sobrar
-// margem para os avisos de grupo, que não passam por aqui.
+// diário é o que impede espalhar por muitas. Os dois valem para os DOIS fluxos —
+// convite de plataforma e aviso de grupo — e saem de `email_sent_at` (invites e
+// group_invitations), sem tabela nova. O teto fica abaixo dos 100/dia do free
+// tier para sobrar margem (a cota do Resend conta recebidos também).
 const JANELA_POR_DESTINATARIO_MIN = 10;
 const JANELA_DIARIA_HORAS = 24;
 const TETO_DIARIO = 90;
+// Teto de quem dispara, só para o aviso de grupo: `invites` não guarda quem
+// convidou. Acima de dois elencos inteiros no mesmo dia (o seed tem 18 jogadores)
+// para não atrapalhar quem está montando grupo de verdade, e ainda bem abaixo do
+// teto da instalação — o que ele barra é a conta que cria grupo atrás de grupo.
+const TETO_POR_CONVIDANTE_DIA = 40;
+
+/** O teto diário vale para a instalação inteira, somando os dois fluxos. */
+async function tetoDiarioAtingido(): Promise<boolean> {
+  const [[plataforma], [grupo]] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(invites)
+      .where(gt(invites.emailSentAt, sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`)),
+    db
+      .select({ total: count() })
+      .from(groupInvitations)
+      .where(
+        gt(
+          groupInvitations.emailSentAt,
+          sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`,
+        ),
+      ),
+  ]);
+  return plataforma.total + grupo.total >= TETO_DIARIO;
+}
+
+/**
+ * Esta caixa de entrada já recebeu email nosso na janela por destinatário?
+ *
+ * Lê as duas tabelas porque o dedupe do aviso de grupo é por par (grupo,
+ * jogador), e criar um grupo novo estreia um par novo: sem esta consulta,
+ * quem cria grupo atrás de grupo alcança a mesma pessoa de novo a cada grupo,
+ * e a janela que existe justamente para "impedir encher a caixa de uma
+ * pessoa" não valeria para metade dos envios.
+ *
+ * Compara em memória, não em SQL: a forma canônica (ponto e +tag de Gmail, ver
+ * email.ts) não vira um predicado simples sem duplicar a regra aqui dentro. O
+ * conjunto é pequeno por construção — o teto diário o limita a 90 linhas.
+ */
+async function destinatarioRecebeuHaPouco(para: string): Promise<boolean> {
+  const [dePlataforma, deGrupo] = await Promise.all([
+    db
+      .select({ email: invites.email })
+      .from(invites)
+      .where(
+        gt(
+          invites.emailSentAt,
+          sql`now() - make_interval(mins => ${JANELA_POR_DESTINATARIO_MIN})`,
+        ),
+      ),
+    db
+      .select({ email: users.email })
+      .from(groupInvitations)
+      .innerJoin(users, eq(users.playerId, groupInvitations.playerId))
+      .where(
+        gt(
+          groupInvitations.emailSentAt,
+          sql`now() - make_interval(mins => ${JANELA_POR_DESTINATARIO_MIN})`,
+        ),
+      ),
+  ]);
+  return [...dePlataforma, ...deGrupo].some(
+    (linha) => linha.email !== null && mesmoEmail(linha.email, para),
+  );
+}
+
+/** Traduz a resposta do transporte no motivo que a UI sabe explicar. */
+function traduzirFalhaDeTransporte(
+  motivo: "limite" | "rajada" | "recusado" | "indisponivel" | "nao-configurado",
+): ResultadoEnvioDeConvite {
+  // "limite" e "rajada" pedem mensagem própria (amanhã volta vs espere uns
+  // segundos); o resto é falha genérica para o admin — o detalhe (recusado vs
+  // indisponível) já ficou no log do transporte. `nao-configurado` não chega
+  // aqui: a checagem no começo de cada fluxo já teria voltado.
+  if (motivo === "limite") return { ok: false, motivo: "limite" };
+  if (motivo === "rajada") return { ok: false, motivo: "rajada" };
+  return { ok: false, motivo: "falha" };
+}
 
 async function motivoDeBloqueio(para: string): Promise<"envio-recente" | "limite" | null> {
-  const [recente] = await db
-    .select({ id: invites.id })
-    .from(invites)
-    .where(
-      and(
-        eq(invites.email, para),
-        gt(invites.emailSentAt, sql`now() - make_interval(mins => ${JANELA_POR_DESTINATARIO_MIN})`),
-      ),
-    )
-    .limit(1);
-  if (recente) return "envio-recente";
+  if (await destinatarioRecebeuHaPouco(para)) return "envio-recente";
 
   // Subcontagem conhecida: gerarConvite apaga a linha antiga antes de criar a
   // nova, então um reenvio seguido de "gerar convite novo" some do total. Serve
   // ao propósito mesmo assim — o caminho que precisa de teto (criar jogador
   // atrás de jogador) deixa cada linha para trás.
-  const [{ total }] = await db
-    .select({ total: count() })
-    .from(invites)
-    .where(gt(invites.emailSentAt, sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`));
-  return total >= TETO_DIARIO ? "limite" : null;
+  return (await tetoDiarioAtingido()) ? "limite" : null;
 }
 
 export async function enviarConvitePorEmail(token: string): Promise<ResultadoEnvioDeConvite> {
@@ -126,64 +204,161 @@ export async function enviarConvitePorEmail(token: string): Promise<ResultadoEnv
       });
     return { ok: true };
   }
-  // "limite" pede mensagem própria (amanhã volta); o resto é falha genérica para
-  // o admin — o detalhe (recusado vs indisponível) já ficou no log do transporte.
-  // `nao-configurado` não chega aqui: a checagem lá em cima já teria voltado.
-  if (resultado.motivo === "limite") return { ok: false, motivo: "limite" };
-  return { ok: false, motivo: "falha" };
+  return traduzirFalhaDeTransporte(resultado.motivo);
+}
+
+/**
+ * O miolo do aviso de grupo: revalida no banco, aplica os freios e envia.
+ *
+ * São dois freios de janela, não um. `janelaMinutos` é o dedupe por par (grupo,
+ * jogador) sobre `email_sent_at` — envio de fato, não criação de linha: uma
+ * falha silenciosa não pode custar 24h de bloqueio. O disparo automático usa
+ * 24h (revogar-e-reconvidar não vira loop de email na caixa de uma pessoa); o
+ * botão de reenviar usa 10 min, a mesma confiança do "Reenviar e-mail" do admin
+ * de plataforma. Por cima dele vem `destinatarioRecebeuHaPouco`, que é global
+ * por caixa de entrada: é ele que fecha o contorno de criar um grupo novo para
+ * estrear um par novo.
+ */
+async function enviarAvisoDeGrupo(
+  groupId: number,
+  invitationId: number,
+  janelaMinutos: number,
+): Promise<ResultadoEnvioDeConvite> {
+  if (!emailConfigurado()) return { ok: false, motivo: "nao-configurado" };
+
+  const [convite] = await db
+    .select({
+      playerId: groupInvitations.playerId,
+      invitedByPlayerId: groupInvitations.invitedByPlayerId,
+      para: users.email,
+      nomeDoGrupo: groups.name,
+      quemConvidou: players.name,
+    })
+    .from(groupInvitations)
+    .innerJoin(groups, eq(groups.id, groupInvitations.groupId))
+    // Só conta ativa recebe o aviso — sem conta não há como aceitar o convite.
+    .innerJoin(
+      users,
+      and(eq(users.playerId, groupInvitations.playerId), eq(users.active, true)),
+    )
+    // Quem convidou pode ter sido apagado (FK set null) — o texto tem fallback.
+    .leftJoin(players, eq(players.id, groupInvitations.invitedByPlayerId))
+    .where(
+      and(
+        eq(groupInvitations.id, invitationId),
+        // Escopo pelo grupo: no reenvio o id vem do cliente, e sem o filtro o
+        // organizador de um grupo dispararia email pelo convite de outro.
+        eq(groupInvitations.groupId, groupId),
+        eq(groupInvitations.status, "pending"),
+      ),
+    );
+  if (!convite || !convite.para) return { ok: false, motivo: "convite-inelegivel" };
+
+  // Dedupe por envio de fato, em qualquer linha do par — inclusive a atual:
+  // reenviar logo depois do disparo automático espera a janela passar.
+  const [recente] = await db
+    .select({ id: groupInvitations.id })
+    .from(groupInvitations)
+    .where(
+      and(
+        eq(groupInvitations.groupId, groupId),
+        eq(groupInvitations.playerId, convite.playerId),
+        gt(groupInvitations.emailSentAt, sql`now() - make_interval(mins => ${janelaMinutos})`),
+      ),
+    )
+    .limit(1);
+  if (recente) return { ok: false, motivo: "envio-recente" };
+
+  // O dedupe acima é por par; este é por caixa de entrada, atravessando grupo e
+  // fluxo. Sem ele, 20 grupos novos = 20 emails para a mesma pessoa em segundos.
+  if (await destinatarioRecebeuHaPouco(convite.para)) {
+    return { ok: false, motivo: "envio-recente" };
+  }
+
+  if (convite.invitedByPlayerId !== null) {
+    const [porConvidante] = await db
+      .select({ total: count() })
+      .from(groupInvitations)
+      .where(
+        and(
+          eq(groupInvitations.invitedByPlayerId, convite.invitedByPlayerId),
+          gt(
+            groupInvitations.emailSentAt,
+            sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`,
+          ),
+        ),
+      );
+    if (porConvidante.total >= TETO_POR_CONVIDANTE_DIA) {
+      return { ok: false, motivo: "limite-do-convidante" };
+    }
+  }
+
+  if (await tetoDiarioAtingido()) return { ok: false, motivo: "limite" };
+
+  const resultado = await enviarEmail({
+    para: convite.para,
+    ...emailDeAvisoDeGrupo({
+      nomeDoGrupo: convite.nomeDoGrupo,
+      quemConvidou: convite.quemConvidou ?? "Alguém do grupo",
+    }),
+  });
+
+  if (resultado.ok) {
+    // Best-effort pelo mesmo motivo do fluxo de plataforma: o email já saiu, e
+    // o custo de falhar é o selo não aparecer (e um reenvio manual possível).
+    await db
+      .update(groupInvitations)
+      .set({ emailSentAt: new Date() })
+      .where(eq(groupInvitations.id, invitationId))
+      .catch((erro) => {
+        console.error("[email-convite] não marcou email_sent_at do aviso de grupo:", erro);
+      });
+    return { ok: true };
+  }
+  return traduzirFalhaDeTransporte(resultado.motivo);
+}
+
+/**
+ * O botão "Reenviar e-mail" da tela de gerenciar grupo. Inline (a action espera
+ * e traduz o resultado em banner via redirectPosEnvio), janela de 10 min por
+ * par — a janela global por destinatário continua valendo por cima.
+ */
+export function reenviarAvisoDeGrupo(
+  groupId: number,
+  invitationId: number,
+): Promise<ResultadoEnvioDeConvite> {
+  return enviarAvisoDeGrupo(groupId, invitationId, JANELA_POR_DESTINATARIO_MIN);
 }
 
 /**
  * Aviso do convite nominal de grupo, agendado para depois da resposta.
  *
- * Fire-and-forget deliberado: é redundante com a notificação in-app — se o email
- * falhar, o convite continua visível e respondível dentro do app. O `after()`
- * mora aqui, e não na action, pelo mesmo motivo de `agendarProcessamento` em
- * pendencias.ts: quem chama não precisa saber de agendamento nem de `.catch`.
+ * O envio é redundante com a notificação in-app — se o email falhar, o convite
+ * continua visível e respondível dentro do app —, então a action não espera por
+ * ele. Mas o resultado não é descartado: falha vira log (e o par fica sem
+ * `email_sent_at`, o que acende o selo "e-mail não saiu" na tela de gerenciar,
+ * ao lado do "Reenviar e-mail" que fica sempre disponível). O
+ * `after()` mora aqui, e não na action, pelo mesmo motivo de
+ * `agendarProcessamento` em pendencias.ts: quem chama não precisa saber de
+ * agendamento nem de `.catch`.
  *
  * O callback **retorna** a promessa: `after` a entrega ao `waitUntil` da Vercel,
  * e um callback que devolve `undefined` deixa a invocação ser congelada com o
  * fetch ainda no ar (ver next/dist/server/after/after-context.js).
  */
-export function agendarAvisoDeConviteDeGrupo(dados: {
-  invitationId: number;
-  groupId: number;
-  playerId: number;
-  para: string;
-  nomeDoGrupo: string;
-  quemConvidou: string;
-}): void {
+export function agendarAvisoDeConviteDeGrupo(groupId: number, invitationId: number): void {
   if (!emailConfigurado()) return;
 
   after(async () => {
     try {
-      // Revogar libera o índice parcial de pendente, então revogar-e-reconvidar
-      // seria um loop de email na caixa de uma pessoa. O histórico das linhas
-      // anteriores é o único freio que existe — a atual é excluída pelo id.
-      const [anterior] = await db
-        .select({ id: groupInvitations.id })
-        .from(groupInvitations)
-        .where(
-          and(
-            eq(groupInvitations.groupId, dados.groupId),
-            eq(groupInvitations.playerId, dados.playerId),
-            ne(groupInvitations.id, dados.invitationId),
-            gt(
-              groupInvitations.createdAt,
-              sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`,
-            ),
-          ),
-        )
-        .limit(1);
-      if (anterior) return;
-
-      await enviarEmail({
-        para: dados.para,
-        ...emailDeAvisoDeGrupo({
-          nomeDoGrupo: dados.nomeDoGrupo,
-          quemConvidou: dados.quemConvidou,
-        }),
-      });
+      const resultado = await enviarAvisoDeGrupo(groupId, invitationId, JANELA_DIARIA_HORAS * 60);
+      // "envio-recente" é o dedupe fazendo o trabalho dele, não um problema.
+      if (!resultado.ok && resultado.motivo !== "envio-recente") {
+        console.error("[email-convite] aviso de grupo não saiu:", {
+          invitationId,
+          motivo: resultado.motivo,
+        });
+      }
     } catch (erro) {
       // O `.catch` é obrigatório: uma rejeição não tratada dentro do `after`
       // derruba o log da request inteira (ver src/lib/pendencias.ts).

@@ -66,6 +66,10 @@ export const MENSAGENS: Record<string, string> = {
     "O convite está criado, mas o e-mail não saiu. Copie o link e mande no WhatsApp.",
   "email-limite":
     "Limite diário de e-mails atingido. Copie o link e mande no WhatsApp — amanhã o envio volta.",
+  "email-limite-do-convidante":
+    "Você já enviou muitos convites por e-mail nas últimas 24 horas. Copie o link e mande no WhatsApp — o envio volta conforme o dia corre.",
+  "email-rajada":
+    "Muitos e-mails saíram num intervalo curto. Espere alguns segundos e tente de novo — ou copie o link e mande no WhatsApp.",
   "email-recente":
     "Esse convite já saiu por e-mail há pouco. Espere alguns minutos ou copie o link e mande no WhatsApp.",
   "convite-nao-reenviavel":

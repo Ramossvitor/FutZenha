@@ -14,15 +14,9 @@ import {
   logarComo,
 } from "@/test/fixtures";
 import { esperaNotFound, esperaRedirect } from "@/test/navigation-fake";
+import { stubResend } from "@/test/resend-fake";
 
 const EMAIL = "convidado@example.com";
-
-function stubResend(status = 200): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "x" }), { status }));
-  vi.stubGlobal("fetch", fetchMock);
-  vi.stubEnv("RESEND_API_KEY", "re_test_fake");
-  return fetchMock;
-}
 
 async function logarComoAdminDaPlataforma(): Promise<void> {
   const { conta } = await criarJogadorComConta({}, { isPlatformAdmin: true });

@@ -11,7 +11,6 @@ import {
   gamePlayers,
   games,
   groupMembers,
-  groups,
   invites,
   matchDays,
   notifications,
@@ -38,16 +37,8 @@ import {
   criarPelada,
   logarComo,
 } from "@/test/fixtures";
+import { criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
 import { esperaRedirect } from "@/test/navigation-fake";
-
-async function criarGrupo(): Promise<number> {
-  const [grupo] = await db.insert(groups).values({ name: "Grupo de Teste" }).returning();
-  return grupo.id;
-}
-
-async function entrarNoGrupo(groupId: number, jogador: Player): Promise<void> {
-  await db.insert(groupMembers).values({ groupId, playerId: jogador.id });
-}
 
 /** Admin logado + pelada criada por ele — o ponto de partida das actions de gestão. */
 async function peladaComAdminLogado(

@@ -194,6 +194,11 @@ export const groupInvitations = pgTable(
     status: groupInvitationStatusEnum("status").notNull().default("pending"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     respondedAt: timestamp("responded_at"),
+    // Última vez que o aviso deste convite saiu por email. Nulo = nunca saiu
+    // (envio não configurado, falhou ou bloqueado pelas janelas). Alimenta o
+    // dedupe de reenvio, o teto diário combinado e o botão "Reenviar e-mail" —
+    // espelho de invites.email_sent_at.
+    emailSentAt: timestamp("email_sent_at"),
   },
   (t) => [
     // Um pendente por pessoa por grupo. Parcial e não total: quem recusou hoje

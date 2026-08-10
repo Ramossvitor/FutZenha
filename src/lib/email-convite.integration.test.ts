@@ -1,53 +1,17 @@
-import { randomBytes } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/db";
-import { invites, type Player } from "@/db/schema";
+import { invites } from "@/db/schema";
 import { enviarConvitePorEmail } from "@/lib/email-convite";
-import { criarConta, criarConvite, criarJogador } from "@/test/fixtures";
+import { criarConta, criarConvite, criarJogador, criarVolumeDeConvites } from "@/test/fixtures";
+import { criarConviteDeGrupo, criarGrupo, criarVolumeDeAvisosDeGrupo } from "@/test/fixtures-grupo";
+import { payloadDoEnvio, stubResend } from "@/test/resend-fake";
 
 const EMAIL = "destino@example.com";
-
-/** Key fake + Resend fake respondendo `status`; devolve o mock para inspecionar chamadas. */
-function stubResend(status = 200): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "x" }), { status }));
-  vi.stubGlobal("fetch", fetchMock);
-  vi.stubEnv("RESEND_API_KEY", "re_test_fake");
-  return fetchMock;
-}
 
 async function lerConvite(id: number) {
   const [linha] = await db.select().from(invites).where(eq(invites.id, id));
   return linha;
-}
-
-/**
- * Volume para o teto diário, inserido DIRETO — nunca via gerarConvite, que
- * apaga a linha anterior do jogador e subcontaria o total.
- */
-async function criarVolumeDeConvites(
-  jogador: Player,
-  quantos: number,
-  opcoes: { enviadoHaUmaHora: boolean },
-): Promise<void> {
-  const lote = randomBytes(4).toString("hex");
-  await db.insert(invites).values(
-    Array.from({ length: quantos }, (_, i) => ({
-      token: randomBytes(32).toString("base64url"),
-      playerId: jogador.id,
-      email: `volume-${lote}-${i}@example.com`,
-      expiresAt: sql`now() + interval '7 days'`,
-      emailSentAt: opcoes.enviadoHaUmaHora ? sql`now() - interval '60 minutes'` : null,
-    })),
-  );
-}
-
-function payloadDoEnvio(fetchMock: ReturnType<typeof vi.fn>): {
-  to: string[];
-  subject: string;
-} {
-  const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-  return JSON.parse(init.body as string);
 }
 
 describe("enviarConvitePorEmail", () => {
@@ -144,6 +108,46 @@ describe("enviarConvitePorEmail", () => {
       const depois = await lerConvite(convite.id);
       expect(depois.emailSentAt!.getTime()).toBeGreaterThan(convite.emailSentAt!.getTime());
     });
+
+    // A janela é por caixa de entrada, não por fluxo: o aviso de grupo sai para
+    // o e-mail da conta, que é o mesmo endereço deste convite.
+    it("aviso de grupo recente para a mesma caixa também bloqueia", async () => {
+      const dono = await criarJogador();
+      await criarConta(dono, { email: EMAIL });
+      const groupId = await criarGrupo();
+      await criarConviteDeGrupo(groupId, dono, { emailEnviadoHaMinutos: 5 });
+      const alvo = await criarJogador();
+      const convite = await criarConvite(alvo, { email: EMAIL });
+      const fetchMock = stubResend();
+
+      const resultado = await enviarConvitePorEmail(convite.token);
+
+      expect(resultado).toEqual({ ok: false, motivo: "envio-recente" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    // Gmail fora da regra @example.com de propósito — é a exceção registrada no
+    // AGENTS.md e no cabeçalho de fixtures.ts: a forma canônica (ponto e +tag)
+    // só existe para Gmail. Como o domínio deixa de proteger, o local part é um
+    // que ninguém registraria; e o caminho é bloqueado ANTES de qualquer fetch,
+    // além do kill switch da key e do fetch-guard do setup.
+    it("a janela compara a forma canônica: ponto e +tag de Gmail são a mesma caixa", async () => {
+      const anterior = await criarJogador();
+      await criarConvite(anterior, {
+        email: "futzenha.fixture.nao.existe@gmail.com",
+        emailEnviadoHaMinutos: 5,
+      });
+      const alvo = await criarJogador();
+      const convite = await criarConvite(alvo, {
+        email: "futzenhafixturenaoexiste+festa@gmail.com",
+      });
+      const fetchMock = stubResend();
+
+      const resultado = await enviarConvitePorEmail(convite.token);
+
+      expect(resultado).toEqual({ ok: false, motivo: "envio-recente" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   describe("teto diário", () => {
@@ -175,6 +179,21 @@ describe("enviarConvitePorEmail", () => {
 
       expect(resultado).toEqual({ ok: true });
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("o teto soma os avisos de grupo: 45 + 45 barra o convite de plataforma", async () => {
+      const volume = await criarJogador();
+      await criarVolumeDeConvites(volume, 45, { enviadoHaUmaHora: true });
+      const groupId = await criarGrupo();
+      await criarVolumeDeAvisosDeGrupo(groupId, volume, 45);
+      const alvo = await criarJogador();
+      const convite = await criarConvite(alvo, { email: EMAIL });
+      const fetchMock = stubResend();
+
+      const resultado = await enviarConvitePorEmail(convite.token);
+
+      expect(resultado).toEqual({ ok: false, motivo: "limite" });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 
@@ -230,7 +249,9 @@ describe("enviarConvitePorEmail", () => {
       expect(depois.emailSentAt).toBeNull();
     });
 
-    it("429 devolve limite e email_sent_at continua nulo", async () => {
+    // O corpo fake default ({id:"x"}) não tem `name`, então este 429 cai no
+    // caso terminal — mesmo tratamento da cota diária/mensal.
+    it("429 sem name de rajada devolve limite e email_sent_at continua nulo", async () => {
       const jogador = await criarJogador();
       const convite = await criarConvite(jogador, { email: EMAIL });
       stubResend(429);
@@ -240,6 +261,39 @@ describe("enviarConvitePorEmail", () => {
       expect(resultado).toEqual({ ok: false, motivo: "limite" });
       const depois = await lerConvite(convite.id);
       expect(depois.emailSentAt).toBeNull();
+    });
+
+    it("429 de cota diária não retenta e devolve limite", async () => {
+      const jogador = await criarJogador();
+      const convite = await criarConvite(jogador, { email: EMAIL });
+      const fetchMock = stubResend({ status: 429, corpo: { name: "daily_quota_exceeded" } });
+
+      const resultado = await enviarConvitePorEmail(convite.token);
+
+      expect(resultado).toEqual({ ok: false, motivo: "limite" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    // A rajada real (2 req/s do free tier) é passageira: o transporte espera o
+    // retry-after e reenvia. O "0" mantém o teste rápido — sobra só o jitter.
+    it("429 de rajada seguido de 200 retenta e carimba email_sent_at", async () => {
+      const jogador = await criarJogador();
+      const convite = await criarConvite(jogador, { email: EMAIL });
+      const fetchMock = stubResend(
+        {
+          status: 429,
+          corpo: { name: "rate_limit_exceeded" },
+          headers: { "retry-after": "0" },
+        },
+        200,
+      );
+
+      const resultado = await enviarConvitePorEmail(convite.token);
+
+      expect(resultado).toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const depois = await lerConvite(convite.id);
+      expect(depois.emailSentAt).not.toBeNull();
     });
   });
 });

@@ -6,7 +6,10 @@
 // - attendances sempre com confirmedAt explícito e ESCALONADO — todo mundo no
 //   mesmo instante esconderia erro de ordenação atrás do desempate por id.
 // - E-mails sempre @example.com: se um teste escapar com key configurada, nada
-//   chega a caixa de gente de verdade.
+//   chega a caixa de gente de verdade. Uma exceção, e só ela: a forma canônica
+//   (ponto e +tag) existe só no Gmail, então o teste dessa regra precisa de
+//   @gmail.com — com local part que ninguém registraria (futzenha.fixture.*),
+//   porque ali o domínio deixa de ser a rede de proteção.
 
 import { randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
@@ -116,6 +119,27 @@ export async function confirmarPresenca(
     confirmedAt:
       status === "out" ? null : sql`now() - interval '${sql.raw(String(minutos))} minutes'`,
   });
+}
+
+/**
+ * Volume para o teto diário, inserido DIRETO — nunca via gerarConvite, que
+ * apaga a linha anterior do jogador e subcontaria o total.
+ */
+export async function criarVolumeDeConvites(
+  jogador: Player,
+  quantos: number,
+  opcoes: { enviadoHaUmaHora: boolean },
+): Promise<void> {
+  const lote = randomBytes(4).toString("hex");
+  await db.insert(invites).values(
+    Array.from({ length: quantos }, (_, i) => ({
+      token: randomBytes(32).toString("base64url"),
+      playerId: jogador.id,
+      email: `volume-${lote}-${i}@example.com`,
+      expiresAt: sql`now() + interval '7 days'`,
+      emailSentAt: opcoes.enviadoHaUmaHora ? sql`now() - interval '60 minutes'` : null,
+    })),
+  );
 }
 
 /**
