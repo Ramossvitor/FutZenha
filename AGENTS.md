@@ -16,7 +16,9 @@ Três camadas, da mais barata à mais cara — PR só entra com o check "Verific
 
 - `npm test` — unit (vitest, sem banco). Arquivos `*.test.ts` ao lado do módulo.
 - `npm run test:integration` — integração com banco real (`*.integration.test.ts`; precisa de `docker compose up -d`; o global-setup cria `futzenha_test` na porta 5433 e aplica as migrations sozinho). Harness em `src/test/` (fixtures, cookie-store fake, mocks de `next/*`).
-- `npm run e2e` — smokes Playwright contra o build real (`npm run seed && npm run build` antes).
+- `npm run e2e` — smokes Playwright contra o build real (`npx next build` antes; o global-setup cria, migra e semeia `futzenha_e2e` sozinho).
+
+**Nenhuma das três camadas toca o banco de desenvolvimento.** Unit aponta para uma porta discard inerte; integração usa `futzenha_test`; E2E usa `futzenha_e2e`. As travas moram no `src/test/db-url.mts` (só localhost + sufixo obrigatório no nome do banco) e no `src/db/seed.ts` (só localhost, nunca sob `VERCEL`). Não rode `npm run seed` para o E2E — ele apaga todas as tabelas do banco para onde a `DATABASE_URL` apontar.
 
 `npm run test:coverage` roda unit + integração com cobertura (threshold no `vitest.config.mts`).
 

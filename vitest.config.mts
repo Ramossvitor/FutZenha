@@ -28,6 +28,7 @@ export default defineConfig({
         "src/app/**/*.css",
         "src/db/seed.ts",
         "src/db/migrate.ts",
+        "src/db/preparar-e2e.ts",
       ],
       reporter: ["text-summary", "json-summary", "html"],
       // Baseline medida em 2026-08-09 (unit + integração, 460 testes): 53,9% de
