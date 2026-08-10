@@ -302,6 +302,28 @@
     color: var(--fg);
   }
 
+  /* Zoom que ninguém pediu. O duplo-toque-para-zoom do mobile dispara quando a
+     pessoa toca de novo num botão que ainda não respondeu — e responder devagar
+     é o normal aqui, não a exceção: Server Action leva de 1 a 4s em produção
+     (ver o comentário do button.tsx). A página fica zoomada e cortada até dar
+     zoom out na mão.
+
+     `manipulation` desliga SÓ esse gesto. Pan e pinça seguem valendo, então
+     quem quer dar zoom continua dando — o contrário disso seria `user-scalable=no`
+     no viewport, que é acessibilidade quebrada (WCAG 1.4.4) e está fora de
+     cogitação. De brinde some o atraso de ~300ms que o browser segura em todo
+     toque esperando pelo segundo.
+
+     No body, e não em cada botão, porque touch-action resolve pela INTERSEÇÃO
+     com os ancestrais: uma regra aqui vale para a árvore inteira. É o que pega
+     os alvos sem className própria para editar — os <summary>, as cinco
+     estrelas do avaliar (tocar em sequência rápida é a interação pretendida) e
+     o SubmitDeCartao — e também o vão entre dois botões colados, como o par
+     Vou/Fora da home, que regra por elemento deixaria passar. */
+  body {
+    touch-action: manipulation;
+  }
+
   /* --tabbar-h é contrato com as telas que têm botão fixo no rodapé: sem ele o
      "enviar avaliação" fica por baixo das abas justamente na tela em que o
      toque importa. No desktop não há abas, então zera.

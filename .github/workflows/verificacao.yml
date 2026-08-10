@@ -188,13 +188,16 @@ jobs:
         run: npx next build
 
       # --- Gate 8/8 -----------------------------------------------------------
-      # E2E de fumaça contra o build de verdade. O seed reaproveita o banco
-      # futzenha já migrado (é destrutivo por design e travado em localhost).
-      - name: Seed do banco para o E2E
-        env:
-          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
-        run: npm run seed
-
+      # E2E de fumaça contra o build de verdade, num banco só dele: o
+      # e2e/global-setup.ts cria futzenha_e2e, migra e semeia sozinho. Não há
+      # passo de seed aqui porque o seed é destrutivo, e o banco futzenha deste
+      # runner é o mesmo que os gates 5/8 e 7/8 acabaram de usar.
+      #
+      # Sem DATABASE_URL de propósito: quem aponta o `next start` para o banco
+      # certo é o `webServer.env` do playwright.config.ts. Declarar uma aqui
+      # mascararia a falha — o servidor subiria contra o banco errado e os
+      # specs quebrariam sem dizer por quê, em vez de o src/db/index.ts gritar
+      # "DATABASE_URL não definida".
       - name: Cache dos browsers do Playwright
         uses: actions/cache@v4
         with:
@@ -206,7 +209,10 @@ jobs:
 
       - name: E2E (Playwright)
         env:
-          DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha
+          # Porta 5432 (o runner não tem o conflito que levou o local para a
+          # 5433) e sufixo _e2e, que o resolverUrlDeE2E exige — mesma dupla de
+          # travas do TEST_DATABASE_URL acima.
+          E2E_DATABASE_URL: postgres://futzenha:futzenha@localhost:5432/futzenha_e2e
           SESSION_SECRET: ci-secret-nao-usado-em-producao
           CI: "true"
         run: npm run e2e

@@ -10,8 +10,13 @@ import { cx } from "@/lib/cx";
 // umas com text-sm, outra com foco vermelho, outra sem cor de texto. Agora é
 // uma só, e o foco sai do :focus-visible global do globals.css.
 
+// Os 16px do `pointer-coarse` não são escolha estética: abaixo disso o iOS dá
+// zoom sozinho ao focar o campo, e a página continua zoomada depois que o
+// teclado some. Vale só onde o ponteiro é grosso (dedo) — no desktop o campo
+// segue nos 14px do resto da interface.
 const controle =
-  "w-full rounded-ctl border border-line-strong bg-surface px-3 text-[14px] text-fg " +
+  "w-full rounded-ctl border border-line-strong bg-surface px-3 text-fg " +
+  "text-[14px] pointer-coarse:text-[16px] " +
   "placeholder:text-fg-dim outline-none transition-colors " +
   "focus:border-accent-edge disabled:opacity-55 " +
   "aria-[invalid=true]:border-danger-line";
