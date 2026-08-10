@@ -15,6 +15,8 @@ export function redirectPosEnvio(base: string, envio: ResultadoEnvioDeConvite): 
 
   const motivo = envio.motivo;
   if (motivo === "limite") redirect(`${base}?erro=email-limite`);
+  if (motivo === "limite-do-convidante") redirect(`${base}?erro=email-limite-do-convidante`);
+  if (motivo === "rajada") redirect(`${base}?erro=email-rajada`);
   if (motivo === "envio-recente") redirect(`${base}?erro=email-recente`);
   if (motivo === "convite-inelegivel") redirect(`${base}?erro=convite-nao-reenviavel`);
   // Sem key do Resend (preview, dev) não houve promessa de email — segue o fluxo

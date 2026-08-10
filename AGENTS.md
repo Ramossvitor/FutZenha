@@ -22,7 +22,7 @@ Três camadas, da mais barata à mais cara — PR só entra com o check "Verific
 
 `npm run test:coverage` roda unit + integração com cobertura (threshold no `vitest.config.mts`).
 
-Regras que os testes seguem: timestamps retroativos via `sql\`now() - interval\`` do Postgres (nunca `new Date()` em SQL cru); e-mails de fixture `@example.com`; **`RESEND_API_KEY` ausente em teste/E2E/CI é por design** — a ausência da key é o kill switch do envio real de e-mail, e o setup de integração aborta se ela existir.
+Regras que os testes seguem: timestamps retroativos via `sql\`now() - interval\`` do Postgres (nunca `new Date()` em SQL cru); e-mails de fixture `@example.com` — exceção única: a canonicalização de ponto e `+tag` só existe no Gmail, então o teste dela usa `@gmail.com` com local part `futzenha.fixture.*`, que ninguém registraria; **`RESEND_API_KEY` ausente em teste/E2E/CI é por design** — a ausência da key é o kill switch do envio real de e-mail, e o setup de integração aborta se ela existir.
 
 ## Commits
 

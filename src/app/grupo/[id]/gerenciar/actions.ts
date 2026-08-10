@@ -13,7 +13,8 @@ import {
   groups,
   users,
 } from "@/db/schema";
-import { agendarAvisoDeConviteDeGrupo } from "@/lib/email-convite";
+import { redirectPosEnvio } from "@/app/redirect-pos-envio";
+import { agendarAvisoDeConviteDeGrupo, reenviarAvisoDeGrupo } from "@/lib/email-convite";
 import { parseGrupoForm } from "@/lib/grupos-form";
 import { podePromover, podeRemoverMembro } from "@/lib/grupos-permissions";
 import { gerarLink, papelNoGrupo } from "@/lib/grupos";
@@ -316,7 +317,7 @@ export async function convidarJogador(groupId: number, formData: FormData) {
   if (!Number.isInteger(playerId)) erro(groupId, "dados-invalidos");
 
   const [conta] = await db
-    .select({ id: users.id, email: users.email })
+    .select({ id: users.id })
     .from(users)
     .where(and(eq(users.playerId, playerId), eq(users.active, true)));
   if (!conta) erro(groupId, "sem-conta");
@@ -347,21 +348,30 @@ export async function convidarJogador(groupId: number, formData: FormData) {
   });
 
   // Só quando o convite é novo: reconvidar é no-op e não pode repetir o email.
-  // O agendamento, o freio de repetição e o `.catch` moram na lib (mesmo arranjo
-  // de agendarProcessamento em pendencias.ts).
-  if (conviteId !== null && conta.email) {
-    agendarAvisoDeConviteDeGrupo({
-      invitationId: conviteId,
-      groupId,
-      playerId,
-      para: conta.email,
-      nomeDoGrupo: grupo.name,
-      quemConvidou: session.player.name,
-    });
+  // O agendamento, os freios, a elegibilidade (conta ativa com email) e o
+  // `.catch` moram na lib (mesmo arranjo de agendarProcessamento em
+  // pendencias.ts) — daqui vai só o id.
+  if (conviteId !== null) {
+    agendarAvisoDeConviteDeGrupo(groupId, conviteId);
   }
 
   revalidateGrupo(groupId);
   ok(groupId, "convite-enviado");
+}
+
+/**
+ * Reenvia o aviso por email de um convite pendente — o caminho de recuperação
+ * para quando o disparo automático não saiu (rajada, indisponibilidade do
+ * Resend). A janela de 10 min e a revalidação moram na lib; o resultado vira
+ * banner, como no "Reenviar e-mail" do admin de plataforma.
+ */
+export async function reenviarEmailDoConvite(groupId: number, invitationId: number) {
+  await requireGrupoOrganizador(groupId);
+  if (!Number.isInteger(invitationId)) erro(groupId, "dados-invalidos");
+
+  const envio = await reenviarAvisoDeGrupo(groupId, invitationId);
+  revalidateGrupo(groupId);
+  redirectPosEnvio(`/grupo/${groupId}/gerenciar`, envio);
 }
 
 export async function revogarConvite(groupId: number, invitationId: number) {

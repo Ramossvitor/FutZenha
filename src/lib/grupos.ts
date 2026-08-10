@@ -1,7 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { cache } from "react";
-import { and, asc, count, desc, eq, ilike, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, max, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
 import {
   groupInvitations,
@@ -204,6 +204,20 @@ export async function convitesPendentes(playerId: number) {
 
 /** Convites nominais que este grupo enviou e ainda aguardam resposta. */
 export async function convitesEnviados(groupId: number) {
+  // O selo de e-mail é do PAR (grupo, jogador), não desta linha. Revogar e
+  // reconvidar cria linha nova, e o dedupe do aviso automático olha o histórico
+  // do par: ler só a linha atual mostraria "e-mail não saiu" logo depois de o
+  // dedupe ter, corretamente, decidido não repetir o e-mail para aquela pessoa.
+  const enviosDoPar = db
+    .select({
+      playerId: groupInvitations.playerId,
+      ultimoEnvio: max(groupInvitations.emailSentAt).as("ultimo_envio"),
+    })
+    .from(groupInvitations)
+    .where(eq(groupInvitations.groupId, groupId))
+    .groupBy(groupInvitations.playerId)
+    .as("envios_do_par");
+
   return db
     .select({
       id: groupInvitations.id,
@@ -211,9 +225,17 @@ export async function convitesEnviados(groupId: number) {
       name: players.name,
       nickname: players.nickname,
       createdAt: groupInvitations.createdAt,
+      emailSentAt: enviosDoPar.ultimoEnvio,
+      // Booleano e não o endereço: a tela só precisa saber se há para onde
+      // mandar — mesma forma de `temConta` em listarMembros. O join espelha a
+      // elegibilidade do envio (conta ativa), para o botão não aparecer onde só
+      // devolveria convite-inelegivel.
+      temEmail: sql<boolean>`${users.email} is not null`,
     })
     .from(groupInvitations)
     .innerJoin(players, eq(groupInvitations.playerId, players.id))
+    .leftJoin(users, and(eq(users.playerId, groupInvitations.playerId), eq(users.active, true)))
+    .leftJoin(enviosDoPar, eq(enviosDoPar.playerId, groupInvitations.playerId))
     .where(and(eq(groupInvitations.groupId, groupId), eq(groupInvitations.status, "pending")))
     .orderBy(desc(groupInvitations.createdAt));
 }

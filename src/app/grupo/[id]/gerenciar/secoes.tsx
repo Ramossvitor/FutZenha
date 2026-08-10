@@ -15,6 +15,7 @@ import {
   excluirGrupo,
   gerarLinkDoGrupo,
   recusarPedido,
+  reenviarEmailDoConvite,
   removerMembro,
   revogarConvite,
   revogarLinkDoGrupo,
@@ -276,10 +277,18 @@ export function SecaoConvidar({
   groupId,
   convites,
   candidatos,
+  emailAtivo,
 }: {
   groupId: number;
-  convites: { id: number; name: string; nickname: string | null }[];
+  convites: {
+    id: number;
+    name: string;
+    nickname: string | null;
+    emailSentAt: Date | null;
+    temEmail: boolean;
+  }[];
   candidatos: ItemJogador[];
+  emailAtivo: boolean;
 }) {
   return (
     <Section titulo="Convidar alguém">
@@ -297,6 +306,36 @@ export function SecaoConvidar({
                 <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
                   {c.nickname ?? c.name}
                 </span>
+                {/* O aviso sai num after(): logo depois de convidar, a linha pode
+                    aparecer como "não saiu" até o próximo refresh. Um reenviar
+                    precipitado esbarra na janela de 10 min — se autocura.
+                    `emailSentAt` é do par (grupo, jogador), não desta linha: é o
+                    que impede o selo de mentir "não saiu" quando o dedupe é que
+                    decidiu não repetir o e-mail. */}
+                {c.emailSentAt ? (
+                  <Badge tom="neutral" caixa="normal">
+                    e-mail enviado{" "}
+                    {c.emailSentAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                  </Badge>
+                ) : (
+                  c.temEmail &&
+                  emailAtivo && (
+                    <Badge tom="warn" caixa="normal">
+                      e-mail não saiu
+                    </Badge>
+                  )
+                )}
+                {/* Fora do selo de propósito, como em pelada/[id]/gerenciar e no
+                    admin de jogadores: e-mail entregue também volta como caixa
+                    de spam, e sem o botão aqui não há recuperação. Quem freia é
+                    a janela na lib, não o sumiço do botão. */}
+                {c.temEmail && emailAtivo && (
+                  <form action={reenviarEmailDoConvite.bind(null, groupId, c.id)}>
+                    <SubmitButton variante="secondary" tamanho="sm">
+                      Reenviar e-mail
+                    </SubmitButton>
+                  </form>
+                )}
                 <form action={revogarConvite.bind(null, groupId, c.id)}>
                   <SubmitButton variante="secondary" tamanho="sm">
                     Revogar

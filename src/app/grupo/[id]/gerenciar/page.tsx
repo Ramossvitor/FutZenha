@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/card";
 import type { ItemJogador } from "@/components/ui/busca-jogador";
 import { db } from "@/db";
 import { players, users } from "@/db/schema";
+import { emailConfigurado } from "@/lib/email-envio";
 import { podeGerenciarGrupo } from "@/lib/grupos-permissions";
 import { contarPeladas, convitesEnviados, linkAtivo, listarMembros, pedidosPendentes } from "@/lib/grupos";
 import { requireGrupoOrganizador } from "@/lib/require-grupo";
@@ -100,7 +101,12 @@ export default async function GerenciarGrupoPage({
         <SecaoMembros groupId={groupId} membros={membros} meuPlayerId={session.player.id} />
       )}
       <SecaoLink groupId={groupId} link={link} />
-      <SecaoConvidar groupId={groupId} convites={convites} candidatos={itensCandidatos} />
+      <SecaoConvidar
+        groupId={groupId}
+        convites={convites}
+        candidatos={itensCandidatos}
+        emailAtivo={emailConfigurado()}
+      />
       {souAdmin && (
         <ZonaDePerigoDoGrupo groupId={groupId} grupo={grupo} totalPeladas={totalPeladas} />
       )}
