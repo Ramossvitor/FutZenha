@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { colete, defaultTeamNames } from "./team-colors";
+import { colete, defaultTeamNames, varDoColete } from "./team-colors";
 
 describe("colete", () => {
   it("dá preenchimento e borda para cada cor do sorteio", () => {
@@ -40,5 +40,25 @@ describe("colete", () => {
     const codigo = fonte.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     expect(codigo).not.toMatch(/vest-\$\{/);
     expect(codigo).toContain("bg-vest-preto border-vest-preto-line");
+  });
+});
+
+describe("varDoColete", () => {
+  it("dá a variável CSS de cada cor do sorteio", () => {
+    for (const nome of [...defaultTeamNames, "Amarelo"]) {
+      expect(varDoColete(nome)).toBe(`--vest-${nome.toLowerCase()}`);
+    }
+  });
+
+  it("é indiferente a caixa e a espaço, como o colete()", () => {
+    expect(varDoColete("  AZUL ")).toBe("--vest-azul");
+  });
+
+  it("devolve null para nome inventado — confete não pode mentir sobre a cor", () => {
+    // O chip de um "Roxo" sai cinza de desconhecido; o confete dele tem que
+    // simplesmente não existir, e não cair numa cor de reserva.
+    expect(varDoColete("Roxo")).toBeNull();
+    expect(varDoColete("Time A")).toBeNull();
+    expect(varDoColete("")).toBeNull();
   });
 });

@@ -61,7 +61,7 @@ export function RodadaRecebida({ rodada }: { rodada: RodadaAvaliada }) {
             {delta !== null && delta !== 0 && (
               <span
                 className={cx(
-                  "font-display text-[12px] font-extrabold",
+                  "animate-pulo font-display text-[12px] font-extrabold",
                   delta > 0 ? "text-accent-ink" : "text-danger-ink",
                 )}
               >
@@ -79,13 +79,21 @@ export function RodadaRecebida({ rodada }: { rodada: RodadaAvaliada }) {
           {validas.length === 1 ? "avaliação" : "avaliações"}
         </Eyebrow>
 
-        {contagem.map(({ n, quantas }) => (
+        {contagem.map(({ n, quantas }, i) => (
           <div key={n} className="flex items-center gap-2.5">
             <Estrelas valor={n} className="w-[5.5rem] shrink-0 [&>span]:size-3" />
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-line-soft">
+              {/* Enche de baixo para cima, uma barra atrás da outra — o mesmo
+                  flood da Meter, que estas cinco não usavam. */}
               <div
-                className={cx("h-full rounded-full", quantas > 0 ? "bg-accent" : "bg-transparent")}
-                style={{ width: `${(quantas / maior) * 100}%` }}
+                className={cx(
+                  "h-full origin-left animate-flood rounded-full",
+                  quantas > 0 ? "bg-accent" : "bg-transparent",
+                )}
+                style={{
+                  width: `${(quantas / maior) * 100}%`,
+                  animationDelay: `${Math.min(i, 3) * 40}ms`,
+                }}
               />
             </div>
             <span

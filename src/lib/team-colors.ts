@@ -34,4 +34,37 @@ export function colete(nomeDoTime: string): string {
   return COLETE[chave as keyof typeof COLETE] ?? COLETE_DESCONHECIDO;
 }
 
+/**
+ * As variáveis CSS das mesmas sete cores, para quem precisa do VALOR e não da
+ * classe — hoje só o confete do sorteio, que pinta num <canvas> e por isso não
+ * tem utilitário do Tailwind para usar.
+ *
+ * Literal, e não `--vest-${chave}`, pela mesma razão que o COLETE é literal: a
+ * regra deste arquivo é que nome de token não se monta por interpolação, e o
+ * teste que a tranca lê o fonte inteiro. `Record<keyof typeof COLETE, …>` é o
+ * que impede as duas tabelas de divergirem — colete novo lá sem entrada aqui
+ * não compila.
+ */
+const VARIAVEL: Record<keyof typeof COLETE, string> = {
+  preto: "--vest-preto",
+  branco: "--vest-branco",
+  verde: "--vest-verde",
+  laranja: "--vest-laranja",
+  azul: "--vest-azul",
+  vermelho: "--vest-vermelho",
+  amarelo: "--vest-amarelo",
+};
+
+/**
+ * A variável CSS da cor do colete, ou null para nome inventado.
+ *
+ * Devolver null, e não uma cor de reserva, é de propósito: um time cujo chip
+ * sai cinza de desconhecido não pode virar confete colorido — a chuva mentiria
+ * sobre o que está na tela.
+ */
+export function varDoColete(nomeDoTime: string): string | null {
+  const chave = nomeDoTime.trim().toLowerCase();
+  return VARIAVEL[chave as keyof typeof COLETE] ?? null;
+}
+
 export const defaultTeamNames = ["Preto", "Branco", "Verde", "Laranja", "Azul", "Vermelho"];

@@ -1,16 +1,25 @@
 import Link from "next/link";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { cx } from "@/lib/cx";
 
 export function Card({
   className,
+  style,
   children,
 }: {
   className?: string;
+  /**
+   * Só para o que o Tailwind não consegue gerar: valor calculado em runtime,
+   * hoje o `animationDelay` da cascata dos times. O Tailwind varre o código
+   * para gerar CSS, então `delay-[${i * 70}ms]` nunca existiria na folha — o
+   * mesmo motivo que põe a largura da Meter num style. Cor, padding e raio
+   * continuam fora, aqui como no className.
+   */
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   return (
-    <div className={cx("rounded-card border border-line bg-surface", className)}>
+    <div className={cx("rounded-card border border-line bg-surface", className)} style={style}>
       {children}
     </div>
   );

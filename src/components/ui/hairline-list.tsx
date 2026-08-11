@@ -28,6 +28,12 @@ export function HairlineList({
     <Tag
       className={cx(
         "flex flex-col gap-px overflow-hidden rounded-card border border-line bg-line-soft",
+        // A lista entra como UMA unidade, e não linha a linha. Não é escolha
+        // estética: as "bordas" daqui são o bg-line-soft do pai aparecendo pelos
+        // gap-px, então qualquer transform ou opacity NA LINHA abre o vão e
+        // racha a hairline no meio da animação. O que sobra para a linha é o
+        // fundo dela — ver o `destaque` abaixo.
+        "animate-chegada",
         className,
       )}
     >
@@ -57,7 +63,12 @@ export function HairlineRow({
     <Tag
       className={cx(
         linha,
-        destaque && "bg-accent-tint",
+        // O realce nasce em accent-line e assenta no tint: a sua linha se
+        // acende por um segundo e o olho a encontra sem precisar procurar. É
+        // background-color, a única propriedade que a linha pode animar sem
+        // rachar as hairlines (ver o comentário do HairlineList) — e é uma linha
+        // por lista, uma vez só, então o custo de paint não se acumula.
+        destaque && "animate-realce bg-accent-tint",
         apagado && "text-fg-dim",
         className,
       )}

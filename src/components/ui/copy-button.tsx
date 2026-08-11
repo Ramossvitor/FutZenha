@@ -33,7 +33,12 @@ export function CopyButton({ text, className }: { text: string; className?: stri
         setTimeout(() => setEstado("parado"), 2000);
       }}
     >
-      {rotulo}
+      {/* `key` pelo estado para o rótulo REENTRAR quando ele troca — sem isso o
+          nó persiste e a animação não recomeça. Copiar não devolve nada visível
+          além desta palavra; ela precisa se anunciar. */}
+      <span key={estado} className="animate-chegada">
+        {rotulo}
+      </span>
     </Button>
   );
 }

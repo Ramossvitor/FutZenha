@@ -21,6 +21,7 @@ import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
 import { ChangePasswordForm } from "./change-password-form";
+import { MovimentoToggle } from "./movimento-toggle";
 import { PushToggle } from "./push-toggle";
 import { RodadaRecebida } from "./rodada-recebida";
 
@@ -165,6 +166,8 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
       {/* Some sozinha quando o aparelho não suporta push — a Section mora
           dentro do componente por isso. */}
       <PushToggle />
+
+      <MovimentoToggle />
 
       {/* No celular não há barra lateral, e o cabeçalho só tem o chip do grupo,
           o sino e o avatar. Então é aqui que moram as portas que não couberam

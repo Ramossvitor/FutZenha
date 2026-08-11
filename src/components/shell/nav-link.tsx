@@ -76,7 +76,12 @@ export function NavLink({
       >
         <MioloDoLink className="flex flex-1 flex-col items-center justify-center gap-1">
           <span className="relative">
-            <span className="block size-5">{icone}</span>
+            {/* `key` pelo estado ativo: o ícone da aba que acabou de virar a
+                atual é um nó novo, e é isso que faz o pulo rodar só na troca.
+                No <span> de dentro, nunca no <Link>, que é o alvo de toque. */}
+            <span key={ativo ? "on" : "off"} className={cx("block size-5", ativo && "animate-pulo")}>
+              {icone}
+            </span>
             {selo}
           </span>
           <span className="font-display text-[9.5px] font-extrabold tracking-[.1em] uppercase">

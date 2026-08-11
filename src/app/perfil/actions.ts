@@ -1,12 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { ratingReports, ratingRounds, ratings, users } from "@/db/schema";
 import { createSessionToken } from "@/lib/auth";
 import { isUniqueViolation } from "@/lib/db-errors";
+import {
+  MOVIMENTO_COOKIE,
+  MOVIMENTO_COOKIE_OPTIONS,
+  parseMovimento,
+} from "@/lib/movimento";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
   MIN_AVALIACOES_PARA_DENUNCIAR,
@@ -148,4 +154,25 @@ export async function changePassword(
   // mesma action, senão este usuário se desloga sozinho no próximo request.
   await setSessionCookie(await createSessionToken({ sub: user.id, v: tokenVersion }));
   return { success: true };
+}
+
+/**
+ * Liga, desliga ou devolve ao sistema as animações do app.
+ *
+ * `valor` chega pelo `.bind` — corpo do POST, portanto endereço de cliente — e
+ * por isso passa pelo mesmo `parseMovimento` que o cookie sujo: qualquer coisa
+ * fora dos três valores vira "auto" em silêncio em vez de carimbar lixo no
+ * <html>.
+ *
+ * Sem sessão de propósito. Não há nada a proteger aqui: o cookie não é
+ * credencial, não identifica ninguém, e exigir login faria a preferência sumir
+ * justamente para quem está na tela de login com o movimento incomodando.
+ *
+ * Sem revalidatePath: mexer no cookie dentro de uma Server Action já marca o
+ * request como revalidado, e o Next devolve o RSC novo na mesma resposta — a
+ * mesma razão comentada em grupos/actions.ts.
+ */
+export async function definirMovimento(valor: string) {
+  const store = await cookies();
+  store.set(MOVIMENTO_COOKIE, parseMovimento(valor), MOVIMENTO_COOKIE_OPTIONS);
 }
