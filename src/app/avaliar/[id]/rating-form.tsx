@@ -84,8 +84,9 @@ export function RatingForm({
       )}
 
       {/* Fica colado no rodapé porque a lista é longa e o botão não pode ficar
-          só lá embaixo. O bottom desconta a altura da tab bar — sem isso ele
-          nasce POR BAIXO das abas, justamente na tela em que o toque importa. */}
+          só lá embaixo. O bottom desconta a faixa que a tab bar cobre — ela é
+          `fixed` (ver tab-bar.tsx), então sem esse desconto o botão fica POR
+          BAIXO das abas justamente na tela em que o toque importa. */}
       <div className="sticky bottom-[var(--tabbar-h,0px)] -mx-4 mt-2 flex flex-col gap-2 bg-gradient-to-t from-canvas from-70% px-4 pt-4 pb-3 lg:mx-0 lg:px-0">
         <div className="flex items-center gap-2.5">
           <Meter
