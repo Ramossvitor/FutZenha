@@ -41,6 +41,11 @@ export function CtaInstalarIos({
   if (!ehIOS() || emStandalone()) return null;
   if (snoozeVigente(CHAVE_SNOOZE, DIAS_DE_SNOOZE)) return null;
 
+  // Continua `sticky` mesmo com a TabBar sendo `fixed`: o offset é medido a
+  // partir da borda de baixo da área que rola, e ela não se moveu. E a trava do
+  // sticky (não passar do bloco contentor) casa exatamente com o offset, porque
+  // o `padding-bottom` do body deixa o fim da coluna a --tabbar-h do fim da
+  // tela. Ou seja, o banner estaciona colado em cima das abas, como antes.
   return (
     <div className="sticky bottom-[var(--tabbar-h)] z-20 border-t border-line bg-surface-2 px-4 py-3 lg:hidden">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">

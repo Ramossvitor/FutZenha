@@ -324,25 +324,42 @@
     touch-action: manipulation;
   }
 
-  /* --tabbar-h é contrato com as telas que têm botão fixo no rodapé: sem ele o
-     "enviar avaliação" fica por baixo das abas justamente na tela em que o
-     toque importa. No desktop não há abas, então zera.
+  /* --tabbar-h é a altura da TabBar, e é ela que manda nas TRÊS pontas: a nav
+     declara `h-[var(--tabbar-h)]`, o padding abaixo reserva o espaço que ela
+     deixou de ocupar (a nav é `fixed` — ver tab-bar.tsx) e as telas com botão
+     fixo no rodapé descontam a mesma faixa. Derivar tudo daqui é o que impede
+     de dessincronizar; sem isso o "enviar avaliação" fica por baixo das abas
+     justamente na tela em que o toque importa. No desktop não há abas, então
+     zera — e a reserva zera junto, de graça, pela media query abaixo.
 
-     A conta é a altura real da TabBar: 1px de borda + 6 de padding em cima +
-     56 do alvo de toque + 6 embaixo, mais a safe-area, que também entra no
-     padding de lá. Medido no browser — chutar 64 deixava o botão 5px por baixo
-     da barra.
+     Cada parcela da conta é uma classe do tab-bar.tsx, na ordem em que aparece
+     lá. Escrito termo a termo e não como o 69px que já foi: quem mexer no
+     padding da nav vê qual número atualizar. (Chutar 64 deixava o botão 5px
+     por baixo da barra.)
 
-     Mora aqui e não num `style` no <body> porque declaração em atributo style
-     ganha de qualquer regra de folha de estilo, media query inclusive: com o
-     valor inline, o reset do desktop nunca chegava a valer. 64rem é o `lg` do
-     Tailwind, o mesmo ponto em que a TabBar some. */
+     Mora numa folha de estilo e não num `style` no <body> porque declaração em
+     atributo style ganha de qualquer regra de folha, media query inclusive: com
+     o valor inline, o reset do desktop nunca chegava a valer. E mora no :root,
+     não no body, porque o `scroll-padding-bottom` abaixo precisa dela no <html>
+     — scroll-padding do documento só vale se declarado no elemento raiz.
+     64rem é o `lg` do Tailwind, o mesmo ponto em que a TabBar some. */
+  :root {
+    /* border-t + pt-1.5 + min-h-14 (o alvo de toque do nav-link) + pb-1.5 */
+    --tabbar-h: calc(1px + 0.375rem + 3.5rem + 0.375rem + env(safe-area-inset-bottom));
+    /* Com a barra fora do fluxo, dar Tab num controle perto do fim da página
+       rolava só até a borda do viewport — ou seja, para DEBAIXO da barra. */
+    scroll-padding-bottom: var(--tabbar-h);
+  }
+
   body {
-    --tabbar-h: calc(69px + env(safe-area-inset-bottom));
+    /* O `border-box` do preflight faz o `min-h-full` do body INCLUIR este
+       padding: o body continua com a altura do viewport e quem encolhe é o
+       content box, que é exatamente o que se quer. */
+    padding-bottom: var(--tabbar-h);
   }
 
   @media (width >= 64rem) {
-    body {
+    :root {
       --tabbar-h: 0px;
     }
   }

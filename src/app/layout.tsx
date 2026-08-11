@@ -34,6 +34,20 @@ export const metadata: Metadata = {
 
 // Os dois valores para a barra do navegador combinarem com o canvas em cada
 // tema — sem isso o topo do Chrome no Android fica branco em cima do app escuro.
+//
+// Duas chaves que ESTA versão do Next aceita e que estão de fora de propósito
+// (ver o tipo em next/dist/lib/metadata/types/extra-types.d.ts e a doc em
+// next/dist/docs/01-app/03-api-reference/04-functions/generate-viewport.md):
+//
+// - `viewportFit: "cover"` — o env(safe-area-inset-*) do tab-bar.tsx já está
+//   escrito esperando por ele, mas ligar aqui é escopo próprio: o conteúdo
+//   passa a correr sob a status bar (TopBar precisaria de inset no topo) e, em
+//   landscape no iPhone, sob o notch — pegaria o px-4 do <main>, as sangrias
+//   `-mx-4` do rating-form e dos rankings, e o px-2 da própria nav. É auditoria
+//   de safe-area em todas as páginas, não uma linha.
+// - `interactiveWidget` — só o Chromium implementa; o WebKit ignora. Não faria
+//   nada pelo iOS, e mudaria o comportamento do teclado no Android, onde nada
+//   está quebrado.
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#F4F6F2" },
@@ -77,9 +91,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       lang="pt-BR"
       className={`${archivo.variable} ${instrumentSans.variable} h-full antialiased`}
     >
-      {/* A altura da TabBar sai daqui como --tabbar-h e é o que segura o botão
-          fixo do rodapé fora das abas — a declaração e a conta dela estão em
-          globals.css, na camada base. */}
+      {/* A TabBar é `fixed` e não ocupa espaço no fluxo: o que reserva a faixa
+          dela é o `padding-bottom` do <body>, que sai da mesma --tabbar-h que
+          dá a altura da nav e que os rodapés fixos descontam. A variável, a
+          conta e a reserva estão em globals.css, na camada base. */}
       <body className="flex min-h-full flex-col">
         <div className="flex min-h-full flex-1 lg:gap-0">
           <Sidebar
@@ -103,8 +118,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 lg:max-w-5xl lg:px-8 lg:py-8">
               {children}
             </main>
-            {/* Entre o conteúdo e as abas: gruda logo acima da TabBar (via
-                --tabbar-h) — o lugar mais visto do app sem roubar o topo. */}
+            {/* Entre o conteúdo e as abas: gruda logo acima da faixa que a
+                TabBar cobre (via --tabbar-h) — o lugar mais visto do app sem
+                roubar o topo. */}
             {session && (
               <CtaInstalarIos
                 instalado={session.pwaInstaladoEm !== null}
