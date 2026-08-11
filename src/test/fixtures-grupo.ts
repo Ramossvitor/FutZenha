@@ -31,9 +31,18 @@ export async function criarConviteDeGrupo(
     convidadoPor?: Player;
     status?: "pending" | "accepted" | "declined" | "revoked";
     emailEnviadoHaMinutos?: number;
+    // Para onde o aviso saiu. O envio de verdade grava junto com o carimbo (ver
+    // enviarAvisoDeGrupo); aqui é opcional porque a maioria dos testes só
+    // precisa da data, e nulo é o que existe nas linhas anteriores à coluna.
+    emailEnviadoPara?: string;
   } = {},
 ): Promise<typeof groupInvitations.$inferSelect> {
-  const { convidadoPor, status = "pending", emailEnviadoHaMinutos } = opcoes;
+  const {
+    convidadoPor,
+    status = "pending",
+    emailEnviadoHaMinutos,
+    emailEnviadoPara = null,
+  } = opcoes;
   const [convite] = await db
     .insert(groupInvitations)
     .values({
@@ -45,6 +54,7 @@ export async function criarConviteDeGrupo(
         emailEnviadoHaMinutos === undefined
           ? null
           : sql`now() - interval '${sql.raw(String(Math.trunc(emailEnviadoHaMinutos)))} minutes'`,
+      emailSentTo: emailEnviadoPara,
     })
     .returning();
   return convite;

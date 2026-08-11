@@ -13,10 +13,14 @@ export function ClaimForm({
   token,
   existingUsername,
   suggestedUsername,
+  precisaDeEmail,
 }: {
   token: string;
   existingUsername: string | null;
   suggestedUsername: string;
+  // Quem já tem endereço na conta não redigita. A action revalida por conta
+  // própria — esconder o campo aqui é conveniência, não a regra.
+  precisaDeEmail: boolean;
 }) {
   const [state, formAction, pending] = useActionState(claimInvite.bind(null, token), initialState);
   const ehReset = existingUsername !== null;
@@ -47,6 +51,26 @@ export function ClaimForm({
         </Field>
       )}
 
+      {precisaDeEmail && (
+        <Field
+          htmlFor="contactEmail-claim"
+          label="Seu e-mail"
+          obrigatorio
+          ajuda="Só para receber avisos do fut. Não serve para entrar — quem entra é usuário e senha."
+        >
+          <Input
+            id="contactEmail-claim"
+            name="contactEmail"
+            type="email"
+            required
+            autoFocus={ehReset}
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="email"
+          />
+        </Field>
+      )}
+
       <Field htmlFor="password" label={ehReset ? "Nova senha" : "Senha"} obrigatorio>
         <Input
           id="password"
@@ -54,7 +78,10 @@ export function ClaimForm({
           type="password"
           required
           minLength={6}
-          autoFocus={ehReset}
+          // O foco vai para o primeiro campo da vez: username no cadastro,
+          // e-mail no reset de quem ainda precisa informá-lo, e só sobra para a
+          // senha no reset de quem já tem endereço.
+          autoFocus={ehReset && !precisaDeEmail}
           autoComplete="new-password"
         />
       </Field>

@@ -80,6 +80,23 @@ describe("enviarConvitePorEmail", () => {
       expect(resultado).toEqual({ ok: false, motivo: "convite-inelegivel" });
       expect(fetchMock).not.toHaveBeenCalled();
     });
+
+    // O caso acima passa mesmo se alguém "terminar a migração" e fizer o
+    // convite de plataforma cair no e-mail de contato — lá não existe conta a
+    // que recorrer. Este existe para NÃO passar: é o único e-mail que carrega o
+    // link de resgate, que vale por senha, e o endereço de contato ninguém
+    // verificou. Mandá-lo para lá entregaria a conta a quem digitou.
+    it("conta com e-mail de contato NÃO vira destino do link de resgate", async () => {
+      const jogador = await criarJogador();
+      await criarConta(jogador, { contactEmail: "so-contato@example.com" });
+      const convite = await criarConvite(jogador);
+      const fetchMock = stubResend();
+
+      const resultado = await enviarConvitePorEmail(convite.token);
+
+      expect(resultado).toEqual({ ok: false, motivo: "convite-inelegivel" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   describe("janela por destinatário", () => {

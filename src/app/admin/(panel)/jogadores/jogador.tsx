@@ -9,6 +9,7 @@ import { emailConfigurado } from "@/lib/email-envio";
 import { siteUrl } from "@/lib/site-url";
 import {
   createInvite,
+  definirEmailDeContato,
   reenviarConvitePorEmail,
   revokeInvite,
   setPlatformAdmin,
@@ -162,6 +163,35 @@ export function SecaoDeAcesso({
             <SubmitButton variante="secondary">
               {user ? "Resetar acesso" : conviteExpirado ? "Gerar novo convite" : "Gerar convite"}
             </SubmitButton>
+          </form>
+        )}
+
+        {/* Mora em `users`, então só existe para quem já tem conta. Quem ainda
+            não tem recebe o endereço pelo convite ou digita ao criar a conta. */}
+        {user && (
+          <form
+            action={definirEmailDeContato.bind(null, user.id)}
+            className="flex flex-wrap items-end gap-2"
+          >
+            <Field
+              htmlFor={`contato-${user.id}`}
+              label="E-mail de contato"
+              className="w-60"
+              ajuda={
+                user.email
+                  ? `Os avisos vão para ${user.email} (conta Google) — este campo fica de reserva.`
+                  : "Só para avisos. Não vale para entrar pelo Google."
+              }
+            >
+              <Input
+                id={`contato-${user.id}`}
+                name="contactEmail"
+                type="email"
+                defaultValue={user.contactEmail ?? ""}
+                placeholder="fulano@example.com"
+              />
+            </Field>
+            <SubmitButton variante="secondary">Salvar contato</SubmitButton>
           </form>
         )}
 

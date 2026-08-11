@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { db } from "@/db";
 import { players, users, type Player } from "@/db/schema";
 import { SESSION_COOKIE, SESSION_DURATION_MS, verifySessionToken } from "./auth";
+import { temEmailDeDestino } from "./email-destino";
 import { platformAdminsDoAmbiente } from "./platform-admins";
 
 // Toda sessão é de um jogador — o admin da plataforma é um jogador com flag,
@@ -18,6 +19,11 @@ export type Session = {
   // O layout decide por ela se convida a instalar o app — ver
   // src/components/push/cta-instalar-ios.tsx.
   pwaInstaladoEm: Date | null;
+  // Há para onde mandar e-mail para esta conta? O layout decide por ela se pede
+  // o endereço (ver src/components/shell/aviso-de-email-de-contato.tsx). É
+  // booleano, e não o endereço, porque o layout não precisa dele — e a sessão
+  // atravessa componentes cliente.
+  temEmailDeContato: boolean;
 };
 
 // O DAL de sessão: uma consulta por request (React cache memoiza por render).
@@ -42,6 +48,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
     username: row.user.username,
     player: row.player,
     pwaInstaladoEm: row.user.pwaInstaladoEm,
+    // O mesmo predicado do envio (ver src/lib/email-destino.ts): quem entrou
+    // pelo Google já tem endereço verificado e nunca vê o pedido.
+    temEmailDeContato: temEmailDeDestino(row.user),
     // O `||` da env var é a chave-mestra: um update errado em is_platform_admin
     // trancaria todo mundo do lado de fora de um banco sem shell.
     isPlatformAdmin:

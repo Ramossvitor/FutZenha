@@ -6,6 +6,7 @@ import { CartaoDeEntrada } from "@/components/ui/cartao-de-entrada";
 import { GoogleButton } from "@/components/ui/google-button";
 import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
+import { temEmailDeDestino } from "@/lib/email-destino";
 import { mensagemDeErro } from "@/lib/erros-login";
 import { sugerirUsername } from "@/lib/username";
 import { ClaimForm } from "./claim-form";
@@ -86,6 +87,9 @@ export default async function ConvitePage({
           token={invite.token}
           existingUsername={user?.username ?? null}
           suggestedUsername={sugerirUsername(player.name, player.nickname)}
+          // Mesmo predicado da action (ver claimInvite): conta nova sempre
+          // informa, e conta que já existe só se não tiver endereço nenhum.
+          precisaDeEmail={!user || !temEmailDeDestino(user)}
         />
       </div>
     </CartaoDeEntrada>

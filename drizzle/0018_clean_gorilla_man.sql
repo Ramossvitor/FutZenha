@@ -1,0 +1,1 @@
+ALTER TABLE "group_invitations" ADD COLUMN "email_sent_to" text;

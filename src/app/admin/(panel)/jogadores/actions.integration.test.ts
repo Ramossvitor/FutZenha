@@ -1,8 +1,12 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/db";
-import { invites, players } from "@/db/schema";
-import { createPlayer, reenviarConvitePorEmail } from "@/app/admin/(panel)/jogadores/actions";
+import { invites, players, users } from "@/db/schema";
+import {
+  createPlayer,
+  definirEmailDeContato,
+  reenviarConvitePorEmail,
+} from "@/app/admin/(panel)/jogadores/actions";
 import { reenviarConviteDoFut } from "@/app/fut/[id]/gerenciar/actions";
 import {
   confirmarPresenca,
@@ -27,6 +31,12 @@ function formularioDeJogador(campos: { name: string; email?: string }): FormData
   const fd = new FormData();
   fd.set("name", campos.name);
   if (campos.email !== undefined) fd.set("email", campos.email);
+  return fd;
+}
+
+function formularioDeContato(email: string): FormData {
+  const fd = new FormData();
+  fd.set("contactEmail", email);
   return fd;
 }
 
@@ -155,6 +165,59 @@ describe("reenviarConvitePorEmail", () => {
 
     await esperaNotFound(reenviarConvitePorEmail(jogador.id));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("definirEmailDeContato", () => {
+  it("grava o endereço normalizado sem tocar na coluna de login", async () => {
+    await logarComoAdminDaPlataforma();
+    const { conta } = await criarJogadorComConta({}, { username: "alvo" });
+
+    await definirEmailDeContato(conta.id, formularioDeContato(" Alvo@Example.COM "));
+
+    const [depois] = await db.select().from(users).where(eq(users.id, conta.id));
+    expect(depois.contactEmail).toBe("alvo@example.com");
+    // Um admin digitando aqui não pode promover um palpite a credencial: quem
+    // escreve em `email` é só o retorno verificado do Google.
+    expect(depois.email).toBeNull();
+    expect(depois.tokenVersion).toBe(conta.tokenVersion);
+  });
+
+  it("campo em branco limpa o endereço", async () => {
+    await logarComoAdminDaPlataforma();
+    const { conta } = await criarJogadorComConta(
+      {},
+      { username: "alvo", contactEmail: "errado@example.com" },
+    );
+
+    await definirEmailDeContato(conta.id, formularioDeContato(""));
+
+    const [depois] = await db.select().from(users).where(eq(users.id, conta.id));
+    expect(depois.contactEmail).toBeNull();
+  });
+
+  it("endereço inválido volta com o slug próprio e não grava", async () => {
+    await logarComoAdminDaPlataforma();
+    const { conta } = await criarJogadorComConta({}, { username: "alvo" });
+
+    const url = await esperaRedirect(
+      definirEmailDeContato(conta.id, formularioDeContato("sem-arroba")),
+    );
+
+    expect(url).toBe("/admin/jogadores?erro=email-contato-invalido");
+    const [depois] = await db.select().from(users).where(eq(users.id, conta.id));
+    expect(depois.contactEmail).toBeNull();
+  });
+
+  it("logado sem ser admin da plataforma é barrado", async () => {
+    const { conta } = await criarJogadorComConta();
+    await logarComo(conta);
+    const { conta: alvo } = await criarJogadorComConta({}, { username: "alvo" });
+
+    await esperaNotFound(definirEmailDeContato(alvo.id, formularioDeContato("x@example.com")));
+
+    const [depois] = await db.select().from(users).where(eq(users.id, alvo.id));
+    expect(depois.contactEmail).toBeNull();
   });
 });
 

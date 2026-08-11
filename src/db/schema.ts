@@ -199,6 +199,15 @@ export const groupInvitations = pgTable(
     // dedupe de reenvio, o teto diário combinado e o botão "Reenviar e-mail" —
     // espelho de invites.email_sent_at.
     emailSentAt: timestamp("email_sent_at"),
+    // Para ONDE o aviso saiu, gravado junto com o carimbo. Espelha o papel de
+    // `invites.email`: a janela global por caixa de entrada precisa de um
+    // registro do que foi mandado, não de uma releitura da conta. Sem esta
+    // coluna a janela lia `coalesce(users.email, users.contact_email)` ao vivo,
+    // e qualquer um reescreve o próprio contact_email num request — bastava
+    // trocá-lo depois de receber para a linha antiga parar de resolver para
+    // aquele endereço, e uma segunda conta apontada para a mesma caixa passava
+    // pelo freio dentro da janela.
+    emailSentTo: text("email_sent_to"),
   },
   (t) => [
     // Um pendente por pessoa por grupo. Parcial e não total: quem recusou hoje
@@ -397,6 +406,15 @@ export const users = pgTable("users", {
   // casar o convite e vincular quem já tinha conta de senha.
   email: text("email").unique(),
   googleSub: text("google_sub").unique(),
+  // Endereço para MANDAR e-mail — e só isso. Fica separado de `email` porque
+  // aquele é credencial: um endereço auto-declarado gravado lá seria capturado
+  // pelo login (ver decidirPorContas em src/lib/regras-login-google.ts — email
+  // conhecido sem google_sub vira "vincular"), e bastaria digitar o Gmail de
+  // outra pessoa para herdar a conta dela. Daí também a ausência de unique:
+  // unicidade sobre dado que ninguém provou é ferramenta de bloqueio — eu
+  // reivindico seu endereço e você fica sem. Quem envia lê os dois com
+  // precedência do verificado (ver src/lib/email-destino.ts).
+  contactEmail: text("contact_email"),
   tokenVersion: integer("token_version").notNull().default(1),
   active: boolean("active").notNull().default(true),
   // Admin da plataforma: gerencia contas e convites, julga denúncias de nota

@@ -6,6 +6,8 @@ import { z } from "zod";
 import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
 import { createSessionToken } from "@/lib/auth";
+import { parseEmailDeContato, parseEmailDeContatoOpcional } from "@/lib/email-contato";
+import { temEmailDeDestino } from "@/lib/email-destino";
 import { hashPassword } from "@/lib/password";
 import { platformAdminsDoAmbiente } from "@/lib/platform-admins";
 import { setSessionCookie } from "@/lib/session";
@@ -69,6 +71,21 @@ export async function claimInvite(
   }
 
   const [existingUser] = await db.select().from(users).where(eq(users.playerId, invite.playerId));
+
+  // Este é o único momento em que temos a pessoa na frente do formulário: um
+  // convite sem e-mail é resgatado por quem o admin não sabe o endereço, e não
+  // existe outra tela obrigatória depois. Por isso quem ainda não tem para onde
+  // receber aviso preenche agora — e quem já tem (a conta de Google, ou um
+  // contato de um resgate anterior) não redigita nada.
+  //
+  // O parse vem antes do hashPassword de propósito: scrypt custa dezenas de
+  // milissegundos, e não vale pagar por um formulário que vai ser recusado.
+  const precisaDeEmail = !existingUser || !temEmailDeDestino(existingUser);
+  const contato = precisaDeEmail
+    ? parseEmailDeContato(formData.get("contactEmail"))
+    : parseEmailDeContatoOpcional(formData.get("contactEmail"));
+  if (!contato.ok) return { error: contato.erro };
+
   const passwordHash = await hashPassword(passwordParsed.data);
   const usedAt = new Date();
 
@@ -82,7 +99,14 @@ export async function claimInvite(
     await db.transaction(async (tx) => {
       await tx
         .update(users)
-        .set({ passwordHash, tokenVersion, active: true })
+        .set({
+          passwordHash,
+          tokenVersion,
+          active: true,
+          // Spread condicional: no reset o campo é opcional, e gravar `null`
+          // cru apagaria o endereço que a conta já tinha.
+          ...(contato.email !== null && { contactEmail: contato.email }),
+        })
         .where(eq(users.id, existingUser.id));
       await tx.update(invites).set({ usedAt }).where(eq(invites.id, invite.id));
     });
@@ -101,7 +125,16 @@ export async function claimInvite(
       const created = await db.transaction(async (tx) => {
         const [row] = await tx
           .insert(users)
-          .values({ playerId: invite.playerId, username: usernameParsed.data, passwordHash })
+          // `email` continua fora do insert, e é essa ausência que mantém a
+          // conta invisível para o login pelo Google (ver decidirPorContas em
+          // src/lib/regras-login-google.ts): o endereço que a pessoa acabou de
+          // digitar é contato, não credencial.
+          .values({
+            playerId: invite.playerId,
+            username: usernameParsed.data,
+            passwordHash,
+            contactEmail: contato.email,
+          })
           .returning();
         await tx.update(invites).set({ usedAt }).where(eq(invites.id, invite.id));
         return row;

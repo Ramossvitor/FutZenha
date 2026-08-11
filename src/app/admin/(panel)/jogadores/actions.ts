@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
 import { criarJogadorComConvite, gerarConvite, parseEmailDeConvite } from "@/lib/convites";
 import { isUniqueViolation } from "@/lib/db-errors";
+import { parseEmailDeContatoOpcional } from "@/lib/email-contato";
 import { enviarConvitePorEmail } from "@/lib/email-convite";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import { redirectPosEnvio } from "@/app/redirect-pos-envio";
@@ -139,6 +140,29 @@ export async function setUserActive(userId: number, active: boolean) {
   await requirePlatformAdmin();
   const id = idSchema.parse(userId);
   await db.update(users).set({ active: z.boolean().parse(active) }).where(eq(users.id, id));
+  revalidatePath("/admin/jogadores");
+}
+
+/**
+ * Grava à mão o e-mail em que o jogador recebe aviso.
+ *
+ * Existe para os endereços que o admin já conhece — o auto-serviço (o pedido
+ * que aparece no app, ver salvarEmailDeContato) depende de a pessoa entrar, e
+ * há conta que não entra faz meses.
+ *
+ * Escreve em `contact_email`, nunca em `email`: aquele é credencial do login
+ * pelo Google (ver decidirPorContas em src/lib/regras-login-google.ts), e um
+ * admin digitando lá promoveria um palpite a chave de acesso. Em branco limpa —
+ * é como se desfaz um endereço digitado errado, sem precisar de outro botão.
+ */
+export async function definirEmailDeContato(userId: number, formData: FormData) {
+  await requirePlatformAdmin();
+  const id = idSchema.parse(userId);
+
+  const contato = parseEmailDeContatoOpcional(formData.get("contactEmail"));
+  if (!contato.ok) redirect("/admin/jogadores?erro=email-contato-invalido");
+
+  await db.update(users).set({ contactEmail: contato.email }).where(eq(users.id, id));
   revalidatePath("/admin/jogadores");
 }
 

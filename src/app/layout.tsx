@@ -6,6 +6,8 @@ import { marcarCtaPwaClicado, marcarPwaInstalado } from "@/app/pwa/actions";
 import { CtaInstalarIos } from "@/components/push/cta-instalar-ios";
 import { DetectorStandalone } from "@/components/push/detector-standalone";
 import { RegistrarSw } from "@/components/push/registrar-sw";
+import { salvarEmailDeContato } from "@/app/perfil/actions";
+import { AvisoDeEmailDeContato } from "@/components/shell/aviso-de-email-de-contato";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { TopBar } from "@/components/shell/top-bar";
@@ -124,6 +126,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 encerrar tem um trilho de 20rem ao lado do conteúdo, e em 768px
                 sobrava menos de 26rem para os dois lados do jogo. */}
             <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 lg:max-w-5xl lg:px-8 lg:py-8">
+              {/* No topo do conteúdo, e não no rodapé sticky do CtaInstalarIos:
+                  dois banners grudados acima das abas comem a tela no celular, e
+                  aquele é `lg:hidden` enquanto este precisa aparecer também no
+                  desktop. */}
+              {session && !session.temEmailDeContato && (
+                <AvisoDeEmailDeContato aoSalvar={salvarEmailDeContato} />
+              )}
               {children}
             </main>
             {/* Entre o conteúdo e as abas: gruda logo acima da faixa que a
