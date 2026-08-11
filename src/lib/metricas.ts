@@ -14,10 +14,10 @@ export type MetricasDaPlataforma = {
   jogadoresAtivos: number;
   contasAtivas: number;
   convitesPendentes: number;
-  peladasTotal: number;
-  peladasUltimos30Dias: number;
+  futsTotal: number;
+  futsUltimos30Dias: number;
   organizadores: number;
-  peladasOrfas: number;
+  futsOrfaos: number;
   rodadasAbertas: number;
   votacoesAbertas: number;
 };
@@ -26,9 +26,9 @@ export type MetricasDaPlataforma = {
  * O painel de uso da plataforma. Uma ida ao banco por métrica, todas contagens
  * — o volume aqui é de dezenas de linhas, não de milhares.
  *
- * `organizadores` e `peladasOrfas` são as duas que interessam desde que
- * qualquer jogador cria pelada: a primeira diz se a descentralização pegou, a
- * segunda conta as peladas sem responsável (anteriores ao modelo, ou de criador
+ * `organizadores` e `futsOrfaos` são as duas que interessam desde que
+ * qualquer jogador cria fut: a primeira diz se a descentralização pegou, a
+ * segunda conta os futs sem responsável (anteriores ao modelo, ou de criador
  * apagado), que só a plataforma consegue administrar.
  */
 export async function getMetricas(): Promise<MetricasDaPlataforma> {
@@ -39,10 +39,10 @@ export async function getMetricas(): Promise<MetricasDaPlataforma> {
     jogadoresAtivos,
     contasAtivas,
     convitesPendentes,
-    peladasTotal,
-    peladasUltimos30Dias,
+    futsTotal,
+    futsUltimos30Dias,
     organizadores,
-    peladasOrfas,
+    futsOrfaos,
     rodadasAbertas,
     votacoesAbertas,
   ] = await Promise.all([
@@ -56,7 +56,7 @@ export async function getMetricas(): Promise<MetricasDaPlataforma> {
     ),
     contar(db.select({ total }).from(matchDays)),
     contar(
-      // Com janela dos dois lados: sem o limite superior toda pelada futura —
+      // Com janela dos dois lados: sem o limite superior todo fut futura —
       // e sempre há uma marcada, é o fluxo da home — entrava na conta de
       // "últimos 30 dias". `- 29` porque hoje conta como um dos trinta.
       db
@@ -85,10 +85,10 @@ export async function getMetricas(): Promise<MetricasDaPlataforma> {
     jogadoresAtivos,
     contasAtivas,
     convitesPendentes,
-    peladasTotal,
-    peladasUltimos30Dias,
+    futsTotal,
+    futsUltimos30Dias,
     organizadores,
-    peladasOrfas,
+    futsOrfaos,
     rodadasAbertas,
     votacoesAbertas,
   };

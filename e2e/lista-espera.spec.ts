@@ -1,19 +1,19 @@
 import { expect, test } from "@playwright/test";
-import { criarPelada, loginPelaUI } from "./helpers";
+import { criarFut, loginPelaUI } from "./helpers";
 
-test.describe("pelada lotada do seed", () => {
-  // Estado COMPARTILHADO: a pelada é do seed, não do spec. A segunda passada do
+test.describe("fut lotado do seed", () => {
+  // Estado COMPARTILHADO: o fut é do seed, não do spec. A segunda passada do
   // e2e — e o retry do CI, que não roda o seed de novo — precisa encontrá-la
   // como a primeira encontrou (2 na espera).
   //
   // Por isso a saída mora no afterEach, e não no fim do teste: uma falha no
   // meio deixaria o `du` na espera, e o retry morreria já no "Lista de espera ·
   // 2" — falha determinística, com mensagem que esconde o erro de verdade.
-  let urlDaPelada: string | null = null;
+  let urlDoFut: string | null = null;
 
   test.afterEach(async ({ page }) => {
-    if (!urlDaPelada) return;
-    await page.goto(urlDaPelada);
+    if (!urlDoFut) return;
+    await page.goto(urlDoFut);
     const entrar = page.getByRole("button", { name: "Entrar na espera" });
     const sair = page.getByRole("button", { name: "Fora", exact: true });
     // Espera a página assentar num dos dois estados antes de decidir — sem
@@ -24,19 +24,19 @@ test.describe("pelada lotada do seed", () => {
       await sair.click();
       await expect(entrar).toBeVisible();
     }
-    urlDaPelada = null;
+    urlDoFut = null;
   });
 
-  test("du entra na lista de espera da pelada lotada do seed", async ({ page }) => {
-    // A pelada lotada do seed é a "Próxima pelada" da home (os specs criam as
+  test("du entra na lista de espera do fut lotado do seed", async ({ page }) => {
+    // O fut lotado do seed é a "Próximo fut" da home (os specs criam as
     // deles semanas depois, de propósito, para não roubar esse posto).
     await page.goto("/");
     await page.getByRole("link", { name: /Quadra do Zenha/ }).click();
-    await expect(page).toHaveURL(/\/pelada\/\d+$/);
+    await expect(page).toHaveURL(/\/fut\/\d+$/);
     // A partir daqui o afterEach tem o que desfazer.
-    urlDaPelada = page.url();
+    urlDoFut = page.url();
 
-    await expect(page.getByText("Marcada", { exact: true })).toBeVisible();
+    await expect(page.getByText("Marcado", { exact: true })).toBeVisible();
     await expect(page.getByText("/ 6 vagas")).toBeVisible();
     await expect(page.getByText("Lista de espera · 2")).toBeVisible();
 
@@ -54,7 +54,7 @@ test("quem sai abre vaga e o primeiro da espera sobe, com aviso", async ({ page 
   // Cenário próprio com 2 vagas + 3 contas demo — estável por construção, sem
   // depender de qual jogador do seed cada conta demo virou.
   const local = `Espera E2E ${Date.now()}`;
-  const urlPublica = await criarPelada(page, { local, vagas: 2 });
+  const urlPublica = await criarFut(page, { local, vagas: 2 });
 
   // Troca de usuário na mesma página: limpa os cookies e loga pela UI.
   const trocarPara = async (usuario: string) => {

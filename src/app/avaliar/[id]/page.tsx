@@ -113,7 +113,7 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
       {companheiros.length === 0 ? (
         <EmptyState
           titulo="Ninguém para avaliar"
-          descricao="Seus companheiros de time nesta pelada ainda não têm conta no sistema. A avaliação precisa de três contas ativas do mesmo lado."
+          descricao="Seus companheiros de time neste fut ainda não têm conta no sistema. A avaliação precisa de três contas ativas do mesmo lado."
         />
       ) : encerrada ? (
         <Section titulo="O que você deu">

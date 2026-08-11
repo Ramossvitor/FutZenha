@@ -1,29 +1,29 @@
 import { z } from "zod";
 import type { matchDayStatusEnum } from "@/db/schema";
 
-export type StatusPelada = (typeof matchDayStatusEnum.enumValues)[number];
+export type StatusFut = (typeof matchDayStatusEnum.enumValues)[number];
 
 /**
- * O rótulo de cada estado da pelada.
+ * O rótulo de cada estado do fut.
  *
  * Havia três cópias disto espalhadas — duas capitalizadas e a de
- * /admin/peladas em caixa baixa —, então a mesma pelada aparecia como "Times
+ * /admin/futs em caixa baixa —, então o mesmo fut aparecia como "Times
  * sorteados" numa tela e "times sorteados" na outra.
  */
-export const STATUS_PELADA: Record<StatusPelada, string> = {
-  scheduled: "Marcada",
+export const STATUS_FUT: Record<StatusFut, string> = {
+  scheduled: "Marcado",
   teams_drawn: "Times sorteados",
-  finished: "Encerrada",
+  finished: "Encerrado",
 };
 
-// Compartilhado entre criar (/peladas/nova) e editar (/pelada/[id]/gerenciar):
+// Compartilhado entre criar (/futs/novo) e editar (/fut/[id]/gerenciar):
 // os dois formulários têm os mesmos campos, e duplicar o schema deixaria as
 // validações divergirem na primeira mudança.
 //
-// `groupId` NÃO está aqui de propósito, e é o que torna o grupo da pelada
+// `groupId` NÃO está aqui de propósito, e é o que torna o grupo do fut
 // imutável: `createMatchDay` lê o campo à parte, depois de conferir o papel de
 // quem cria, e `updateMatchDay` — que usa este mesmo parse — simplesmente não
-// tem como recebê-lo. Mover uma pelada encerrada entre grupos reescreveria dois
+// tem como recebê-lo. Mover um fut encerrado entre grupos reescreveria dois
 // rankings de uma vez, sem replay nenhum.
 const matchDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
@@ -35,7 +35,7 @@ const matchDaySchema = z.object({
     .max(500)
     .transform((v) => (v === "" ? null : v)),
   // Quantos cabem. Vazio vira null = sem limite, que é o padrão e o
-  // comportamento de toda pelada anterior à lista de espera. O piso é 2 porque
+  // comportamento de todo fut anterior à lista de espera. O piso é 2 porque
   // abaixo disso não há sorteio possível; o teto é folga para quadra grande,
   // e existe só para o campo não virar porta de número absurdo.
   maxPlayers: z

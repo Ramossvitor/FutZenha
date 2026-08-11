@@ -3,7 +3,7 @@ import { linkWaMe, textoDeConvocacao, textoDeTimes } from "./whatsapp";
 
 // 2026-08-13 é uma quinta-feira — data fixa para o weekday não depender do dia
 // em que o teste roda.
-const pelada = {
+const fut = {
   id: 12,
   date: "2026-08-13",
   startTime: "20:00:00" as string | null,
@@ -12,25 +12,25 @@ const pelada = {
 };
 
 describe("textoDeConvocacao", () => {
-  it("leva dia, hora, local e o link da pelada", () => {
-    const texto = textoDeConvocacao(pelada, "https://futzenha.app");
+  it("leva dia, hora, local e o link do fut", () => {
+    const texto = textoDeConvocacao(fut, "https://futzenha.app");
     expect(texto).toContain("quinta-feira");
     expect(texto).toContain("13/08");
     expect(texto).toContain("às 20:00");
     expect(texto).toContain("Quadra do Zé");
-    expect(texto).toContain("https://futzenha.app/pelada/12");
+    expect(texto).toContain("https://futzenha.app/fut/12");
   });
 
   it("sem horário, não inventa um 'às'", () => {
-    const texto = textoDeConvocacao({ ...pelada, startTime: null }, "https://futzenha.app");
+    const texto = textoDeConvocacao({ ...fut, startTime: null }, "https://futzenha.app");
     expect(texto).not.toContain("às");
   });
 
   // As observações são onde mora o "trazer colete azul" — quando existem,
   // precisam ir junto; quando não, nada de linha vazia sobrando.
   it("observações entram quando existem", () => {
-    const com = textoDeConvocacao({ ...pelada, notes: "Trazer colete azul" }, "https://x.app");
-    const sem = textoDeConvocacao(pelada, "https://x.app");
+    const com = textoDeConvocacao({ ...fut, notes: "Trazer colete azul" }, "https://x.app");
+    const sem = textoDeConvocacao(fut, "https://x.app");
     expect(com).toContain("Trazer colete azul");
     expect(sem.split("\n")).toHaveLength(4);
     expect(com.split("\n")).toHaveLength(5);
@@ -39,11 +39,11 @@ describe("textoDeConvocacao", () => {
 
 describe("textoDeTimes", () => {
   it("um bloco por time, jogadores em lista", () => {
-    const texto = textoDeTimes(pelada, [
+    const texto = textoDeTimes(fut, [
       { nome: "Verde", jogadores: ["Zé", "Tonho"] },
       { nome: "Vermelho", jogadores: ["Juca"] },
     ]);
-    expect(texto).toContain("Times da pelada de quinta-feira");
+    expect(texto).toContain("Times do fut de quinta-feira");
     expect(texto).toContain("Verde:\n- Zé\n- Tonho");
     expect(texto).toContain("Vermelho:\n- Juca");
     // Linha em branco entre os times — sem ela o texto vira um parede no zap.
@@ -53,7 +53,7 @@ describe("textoDeTimes", () => {
 
 describe("linkWaMe", () => {
   it("encoda emoji e quebras de linha para a URL sobreviver", () => {
-    const link = linkWaMe("⚽ Pelada\nQuadra & cia");
+    const link = linkWaMe("⚽ Fut\nQuadra & cia");
     expect(link.startsWith("https://wa.me/?text=")).toBe(true);
     expect(link).toContain("%E2%9A%BD");
     expect(link).toContain("%0A");

@@ -45,8 +45,8 @@ export type ResultadoEnvioDeConvite =
     };
 
 // Freio de mão do envio. Não é otimização de cota: qualquer jogador logado cria
-// uma pelada avulsa e vira admin dela (ver createMatchDay), e daí alcança
-// convidarParaPelada/reenviarConviteDaPelada com nome e endereço à escolha. Sem
+// um fut avulso e vira admin dele (ver createMatchDay), e daí alcança
+// convidarParaFut/reenviarConviteDoFut com nome e endereço à escolha. Sem
 // isto, uma conta sozinha manda email do nosso domínio verificado para qualquer
 // caixa de entrada, quantas vezes quiser — e ainda queima a cota de todo mundo.
 //

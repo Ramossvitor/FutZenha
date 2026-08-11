@@ -60,7 +60,7 @@ export function PainelDeGrupo({
       aria-label="Trocar de grupo"
       className="flex max-h-[min(65svh,26rem)] w-[min(19rem,calc(100vw-1.5rem))] flex-col overflow-y-auto overscroll-contain rounded-card border border-line bg-surface p-0 text-fg shadow-[0_16px_40px_-12px_rgb(0_0_0/.35)] backdrop:bg-black/25"
     >
-      {linha(grupo === null, null, "Todas as peladas")}
+      {linha(grupo === null, null, "Todos os futs")}
       {grupos.map((g) => linha(grupo?.id === g.id, g.id, g.name))}
 
       {/* Convite, descoberta e criar grupo vivem no hub e nada disso cabe

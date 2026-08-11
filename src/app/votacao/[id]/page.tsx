@@ -30,7 +30,7 @@ export default async function VotacaoPage({ params }: PageProps<"/votacao/[id]">
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        titulo="Apagar esta pelada?"
+        titulo="Apagar este fut?"
         selos={
           encerrada ? (
             <Badge tom={votacao.status === "approved" ? "danger" : "neutral"}>
@@ -59,7 +59,7 @@ export default async function VotacaoPage({ params }: PageProps<"/votacao/[id]">
         <CardBody className="flex items-start gap-2.5">
           <IconeAlerta className="mt-0.5 size-5 shrink-0 text-danger" />
           <p className="text-[13px] leading-[1.5] text-fg-2">
-            Se aprovada, a pelada é apagada <strong className="text-fg">para sempre</strong>: gols,
+            Se aprovada, o fut é apagado <strong className="text-fg">para sempre</strong>: gols,
             vitórias, presenças e avaliações daquele dia somem, e a nota de todo mundo é
             recalculada sem eles. Seu voto é <strong className="text-fg">definitivo</strong>, e não
             votar conta como <strong className="text-fg">contra</strong>.
@@ -115,8 +115,8 @@ export default async function VotacaoPage({ params }: PageProps<"/votacao/[id]">
       {encerrada ? (
         <Banner tom="info">
           {votacao.status === "approved"
-            ? "Votação aprovada — a pelada foi apagada."
-            : "Votação rejeitada — a pelada continua no histórico."}
+            ? "Votação aprovada — o fut foi apagado."
+            : "Votação rejeitada — o fut continua no histórico."}
         </Banner>
       ) : votacao.jaVotei ? (
         <Banner tom="ok">

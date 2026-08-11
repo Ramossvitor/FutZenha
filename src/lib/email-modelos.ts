@@ -91,7 +91,7 @@ export function emailDeConvitePlataforma(dados: {
   const html = moldura(
     [
       `<p style="margin:0 0 4px 0;font-size:18px;font-weight:bold;color:${FG};">Você foi convidado para o FutZenha</p>`,
-      `<p style="margin:12px 0;">Olá, <strong>${nome}</strong>! O FutZenha é o app da pelada: presença, times, gols e avaliações, tudo num lugar só.</p>`,
+      `<p style="margin:12px 0;">Olá, <strong>${nome}</strong>! O FutZenha é o app do fut: presença, times, gols e avaliações, tudo num lugar só.</p>`,
       `<p style="margin:20px 0;">${botao(url, "Aceitar convite")}</p>`,
       `<p style="margin:12px 0;">Para aceitar, entre com o Google usando <strong>este endereço</strong> (${email}) — o convite só vale para ele.</p>`,
       `<p style="margin:12px 0 0 0;font-size:12px;color:${FG_MUDO};">O convite expira em ${validade}. Depois disso, peça outro a quem convidou você.</p>`,
@@ -102,7 +102,7 @@ export function emailDeConvitePlataforma(dados: {
   const texto = [
     `Olá, ${dados.nome}!`,
     ``,
-    `Você foi convidado para o FutZenha — o app da pelada.`,
+    `Você foi convidado para o FutZenha — o app do fut.`,
     ``,
     `Aceite o convite neste endereço:`,
     url,

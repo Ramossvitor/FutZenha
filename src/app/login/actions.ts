@@ -50,7 +50,7 @@ export async function logout() {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
   // O grupo em que a pessoa navegava sai junto: num aparelho compartilhado,
-  // quem entrar depois começaria vendo o nome do grupo — e as peladas — de
+  // quem entrar depois começaria vendo o nome do grupo — e os futs — de
   // quem saiu.
   store.delete(GRUPO_COOKIE);
   redirect("/");

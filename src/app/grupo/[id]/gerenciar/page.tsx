@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { players, users } from "@/db/schema";
 import { emailConfigurado } from "@/lib/email-envio";
 import { podeGerenciarGrupo } from "@/lib/grupos-permissions";
-import { contarPeladas, convitesEnviados, linkAtivo, listarMembros, pedidosPendentes } from "@/lib/grupos";
+import { contarFuts, convitesEnviados, linkAtivo, listarMembros, pedidosPendentes } from "@/lib/grupos";
 import { requireGrupoOrganizador } from "@/lib/require-grupo";
 import { convidarJogador } from "./actions";
 import {
@@ -40,20 +40,20 @@ export default async function GerenciarGrupoPage({
 
   const { erro, ok } = await searchParams;
 
-  // `pedidos` e `totalPeladas` só alimentam seções de admin — organizador não
+  // `pedidos` e `totalFuts` só alimentam seções de admin — organizador não
   // paga por elas.
-  const [membros, convites, link, pedidos, totalPeladas] = await Promise.all([
+  const [membros, convites, link, pedidos, totalFuts] = await Promise.all([
     listarMembros(groupId),
     convitesEnviados(groupId),
     linkAtivo(groupId),
     souAdmin ? pedidosPendentes(groupId) : [],
-    souAdmin ? contarPeladas(groupId) : 0,
+    souAdmin ? contarFuts(groupId) : 0,
   ]);
 
   // Candidatos ao convite nominal: quem tem conta ativa e ainda não está no
   // grupo nem tem convite pendente. Quem não tem conta fica de fora de
   // propósito — o convite dele ficaria pendente para sempre, porque não há
-  // ninguém para aceitá-lo (o caminho dessa pessoa é a pelada).
+  // ninguém para aceitá-lo (o caminho dessa pessoa é o fut).
   const excluidos = [...membros.map((m) => m.playerId), ...convites.map((c) => c.playerId)];
   const candidatos = await db
     .select({ id: players.id, name: players.name, nickname: players.nickname })
@@ -85,7 +85,7 @@ export default async function GerenciarGrupoPage({
     <div className="flex flex-col gap-7">
       <PageHeader
         titulo={`Gerenciar ${grupo.name}`}
-        descricao="Papéis, convites e quem entra. Organizadores marcam peladas do grupo; membros confirmam presença e entram no ranking."
+        descricao="Papéis, convites e quem entra. Organizadores marcam futs do grupo; membros confirmam presença e entram no ranking."
         acao={
           <LinkButton href={`/grupo/${groupId}`} variante="secondary" tamanho="sm">
             Ver o grupo
@@ -108,7 +108,7 @@ export default async function GerenciarGrupoPage({
         emailAtivo={emailConfigurado()}
       />
       {souAdmin && (
-        <ZonaDePerigoDoGrupo groupId={groupId} grupo={grupo} totalPeladas={totalPeladas} />
+        <ZonaDePerigoDoGrupo groupId={groupId} grupo={grupo} totalFuts={totalFuts} />
       )}
     </div>
   );

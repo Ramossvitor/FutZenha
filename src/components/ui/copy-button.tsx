@@ -7,7 +7,7 @@ import { Button } from "./button";
  * Copia um link para a área de transferência.
  *
  * Tem três consumidores em áreas diferentes do app (convite de jogador, link
- * do grupo, convite de pelada), e por isso mora no kit e não junto de uma tela.
+ * do grupo, convite de fut), e por isso mora no kit e não junto de uma tela.
  *
  * `navigator.clipboard` exige contexto seguro — em http, fora de localhost, o
  * `writeText` rejeita. Por isso o catch: em vez de engolir o erro e fingir que

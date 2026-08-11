@@ -8,24 +8,24 @@ import { listarMeusGrupos } from "@/lib/grupos";
 import { requirePlayer } from "@/lib/require-player";
 import { createMatchDay } from "./actions";
 
-export const metadata = { title: "Marcar pelada" };
+export const metadata = { title: "Marcar fut" };
 
 const LOCAIS = {
   "dados-invalidos": "Dados inválidos — confira data e local.",
 };
 
-export default async function NovaPeladaPage({ searchParams }: PageProps<"/peladas/nova">) {
+export default async function NovoFutPage({ searchParams }: PageProps<"/futs/novo">) {
   const session = await requirePlayer();
   const { erro, grupo } = await searchParams;
 
-  // Só os grupos em que a pessoa pode criar pelada entram no <select>. A action
+  // Só os grupos em que a pessoa pode criar fut entram no <select>. A action
   // reconfere o papel de qualquer jeito — a lista aqui é conveniência, não trava.
   const meusGrupos = (await listarMeusGrupos(session.player.id)).filter(
     (g) => g.papel === "admin" || g.papel === "organizer",
   );
 
   // O grupo em que a pessoa está navegando vem pré-selecionado: quem entrou no
-  // contexto de um grupo e clicou em "marcar pelada" quase sempre quer marcar
+  // contexto de um grupo e clicou em "marcar fut" quase sempre quer marcar
   // nele. O ?grupo= da URL ainda ganha, para o link vindo da página do grupo.
   const doContexto = await getGroupIdAtual();
   const preSelecionado =
@@ -38,7 +38,7 @@ export default async function NovaPeladaPage({ searchParams }: PageProps<"/pelad
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        titulo="Marcar pelada"
+        titulo="Marcar fut"
         descricao="Você fica responsável por ela: sorteio dos times, presenças, placar, gols e o encerramento."
       />
 
@@ -90,10 +90,10 @@ export default async function NovaPeladaPage({ searchParams }: PageProps<"/pelad
               <Field
                 htmlFor="groupId"
                 label="Grupo"
-                ajuda="Pelada de grupo entra no ranking do grupo. Você continua podendo convidar gente de fora — inclusive quem não tem conta."
+                ajuda="Fut de grupo entra no ranking do grupo. Você continua podendo convidar gente de fora — inclusive quem não tem conta."
               >
                 <Select id="groupId" name="groupId" defaultValue={preSelecionado}>
-                  <option value="">Sem grupo (pelada avulsa)</option>
+                  <option value="">Sem grupo (fut avulso)</option>
                   {meusGrupos.map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.name}
@@ -104,8 +104,8 @@ export default async function NovaPeladaPage({ searchParams }: PageProps<"/pelad
             )}
 
             <div className="flex items-center gap-3">
-              <SubmitButton>Criar pelada</SubmitButton>
-              <LinkButton href="/peladas" variante="ghost">
+              <SubmitButton>Criar fut</SubmitButton>
+              <LinkButton href="/futs" variante="ghost">
                 Cancelar
               </LinkButton>
             </div>

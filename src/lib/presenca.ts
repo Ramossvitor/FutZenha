@@ -17,11 +17,11 @@ import type { Session } from "./session";
 
 /**
  * Os três fatos que decidem se alguém pode ser marcado por outra pessoa nesta
- * pelada. A regra em si é pura e mora em src/lib/permissions.ts.
+ * fut. A regra em si é pura e mora em src/lib/permissions.ts.
  */
 export type AlvoDePresenca = {
   temContaAtiva: boolean;
-  jaEstaNaPelada: boolean;
+  jaEstaNoFut: boolean;
   elegivel: boolean;
 };
 
@@ -40,13 +40,13 @@ async function situacaoDoAlvo(
 
   return {
     temContaAtiva: conta !== undefined,
-    jaEstaNaPelada: presenca !== undefined,
+    jaEstaNoFut: presenca !== undefined,
     elegivel: await ehElegivel(matchDay, playerId),
   };
 }
 
 /**
- * Se esta sessão pode mexer na presença/escalação deste jogador nesta pelada.
+ * Se esta sessão pode mexer na presença/escalação deste jogador neste fut.
  *
  * Consultado pelas actions que recebem `playerId` do cliente — a tela só
  * oferece quem faz sentido, mas Server Action é endpoint público e não passa
@@ -54,7 +54,7 @@ async function situacaoDoAlvo(
  *
  * Recebe o `matchDay`, e não só o id, porque a regra passou a depender do escopo
  * (grupo ou avulsa) e de a lista estar fechada — dois fatos que quem chama já
- * tem em mãos pelo `requirePeladaAdmin`, e que ler de novo aqui seria round-trip
+ * tem em mãos pelo `requireFutAdmin`, e que ler de novo aqui seria round-trip
  * a mais na rota mais pesada do app.
  */
 export async function avaliarMarcacao(
@@ -65,7 +65,7 @@ export async function avaliarMarcacao(
   const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
   const alvo = await situacaoDoAlvo(matchDay, playerId);
   // Marcar por si mesmo é sempre permitido: é o caso normal de quem organiza a
-  // própria pelada e confirma a própria presença pela tela de gestão.
+  // próprio fut e confirma a própria presença pela tela de gestão.
   const permitido =
     playerId === session.player.id ||
     podeDefinirPresencaPor(ator, alvo, listaFechada(matchDay.status));
@@ -75,12 +75,12 @@ export async function avaliarMarcacao(
 /**
  * Se incluir esta pessoa é novidade para ela — e portanto merece aviso.
  *
- * Quem não tem conta não tem onde receber o aviso, e quem já estava na pelada
+ * Quem não tem conta não tem onde receber o aviso, e quem já estava no fut
  * sabe que está nela. Sobra exatamente o caso que a exceção da lista fechada
- * abriu: alguém com conta sendo posto na pelada por outra pessoa.
+ * abriu: alguém com conta sendo posto no fut por outra pessoa.
  */
 export function mereceAviso(session: Session, playerId: number, alvo: AlvoDePresenca): boolean {
-  return playerId !== session.player.id && alvo.temContaAtiva && !alvo.jaEstaNaPelada;
+  return playerId !== session.player.id && alvo.temContaAtiva && !alvo.jaEstaNoFut;
 }
 
 /**
@@ -97,8 +97,8 @@ export function avisoDePromocao(
     playerId,
     type: "pelada_presenca_definida",
     title: "Abriu vaga: você está na lista",
-    body: `Você saiu da espera e entrou na lista da pelada de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
-    href: `/pelada/${matchDay.id}`,
+    body: `Você saiu da espera e entrou na lista do fut de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
+    href: `/fut/${matchDay.id}`,
     dedupeKey: `espera-promovido:${matchDay.id}:${playerId}`,
   };
 }
@@ -117,39 +117,39 @@ export function avisoDePromocao(
 // não podem ficar em janelas separadas.
 // ---------------------------------------------------------------------------
 
-export type PeladaTravada = {
+export type FutTravado = {
   status: "scheduled" | "teams_drawn" | "finished";
   maxPlayers: number | null;
 };
 
 /**
- * Serializa as mexidas na lista desta pelada — e devolve os fatos frescos.
+ * Serializa as mexidas na lista deste fut — e devolve os fatos frescos.
  *
  * Sem o lock, duas pessoas confirmando ao mesmo tempo leem "1 vaga ocupada" e as
- * duas entram como vaga numa pelada de 2 — o `unique(match_day_id, player_id)`
- * não pega, porque são jogadores diferentes. Travar a linha da pelada é o ponto
+ * duas entram como vaga num fut de 2 — o `unique(match_day_id, player_id)`
+ * não pega, porque são jogadores diferentes. Travar a linha do fut é o ponto
  * de serialização mais barato: já é a linha que todo mundo nesta transação lê.
  *
  * Devolver `status` e `maxPlayers` não é cortesia: o snapshot de quem chama é
  * pré-transação, e decidir com ele reabriria a janela que o lock fecha — um
  * "Vou" concorrendo com o sorteio entraria numa lista que acabou de fechar.
  */
-export async function travarPelada(exec: Executor, matchDayId: number): Promise<PeladaTravada> {
-  const [pelada] = await exec
+export async function travarFut(exec: Executor, matchDayId: number): Promise<FutTravado> {
+  const [fut] = await exec
     .select({ status: matchDays.status, maxPlayers: matchDays.maxPlayers })
     .from(matchDays)
     .where(eq(matchDays.id, matchDayId))
     .for("update");
-  if (!pelada) throw new Error(`Pelada ${matchDayId} não existe mais.`);
-  return pelada;
+  if (!fut) throw new Error(`Fut ${matchDayId} não existe mais.`);
+  return fut;
 }
 
 // Encerrada, a escalação e a presença são imutáveis. Quem chega aqui com uma
-// pelada `finished` passou numa guarda pré-transação que o encerramento
+// fut `finished` passou numa guarda pré-transação que o encerramento
 // atropelou no meio do caminho — abortar a transação é o único acerto.
-function exigirNaoEncerrada(pelada: PeladaTravada, matchDayId: number): void {
-  if (pelada.status === "finished") {
-    throw new Error(`Pelada ${matchDayId} foi encerrada no meio da operação.`);
+function exigirNaoEncerrada(fut: FutTravado, matchDayId: number): void {
+  if (fut.status === "finished") {
+    throw new Error(`Fut ${matchDayId} foi encerrado no meio da operação.`);
   }
 }
 
@@ -181,15 +181,15 @@ export async function entrarNaLista(
   matchDayId: number,
   playerId: number,
 ): Promise<void> {
-  const pelada = await travarPelada(exec, matchDayId);
-  exigirNaoEncerrada(pelada, matchDayId);
+  const fut = await travarFut(exec, matchDayId);
+  exigirNaoEncerrada(fut, matchDayId);
   const linhas = await linhasDaLista(exec, matchDayId);
   const atual = linhas.find((l) => l.playerId === playerId);
 
   const ocupadas = linhas.filter((l) => l.status === "in" && l.playerId !== playerId).length;
-  const status = listaFechada(pelada.status)
+  const status = listaFechada(fut.status)
     ? "in"
-    : statusAoConfirmar(ocupadas, pelada.maxPlayers);
+    : statusAoConfirmar(ocupadas, fut.maxPlayers);
   const confirmedAt = atual?.confirmedAt ?? new Date();
 
   await exec
@@ -220,8 +220,8 @@ export async function sairDaLista(
   matchDayId: number,
   playerId: number,
 ): Promise<number | null> {
-  const pelada = await travarPelada(exec, matchDayId);
-  exigirNaoEncerrada(pelada, matchDayId);
+  const fut = await travarFut(exec, matchDayId);
+  exigirNaoEncerrada(fut, matchDayId);
   const linhas = await linhasDaLista(exec, matchDayId);
   const ocupavaVaga = linhas.find((l) => l.playerId === playerId)?.status === "in";
 
@@ -233,14 +233,14 @@ export async function sairDaLista(
       set: { status: "out", confirmedAt: null, updatedAt: new Date() },
     });
 
-  if (!ocupavaVaga || listaFechada(pelada.status)) return null;
+  if (!ocupavaVaga || listaFechada(fut.status)) return null;
   // "Abriu uma vaga" é literal: o limite pode ter sido reduzido para baixo dos
   // confirmados (updateMatchDay aceita, e não rebaixa ninguém), e aí a saída
   // ainda deixa a lista cheia — promover aqui furaria o limite novo.
   const ocupadasAposSaida = linhas.filter(
     (l) => l.status === "in" && l.playerId !== playerId,
   ).length;
-  if (pelada.maxPlayers !== null && ocupadasAposSaida >= pelada.maxPlayers) return null;
+  if (fut.maxPlayers !== null && ocupadasAposSaida >= fut.maxPlayers) return null;
   const proximo = proximoDaEspera(linhas);
   if (!proximo) return null;
 
@@ -261,15 +261,15 @@ export async function sairDaLista(
  *
  * O escopo por `waitlist` no `where` é a guarda: `playerId` vem do cliente, e
  * sem ele isto viraria um "marcar presença" sem passar pelo
- * podeDefinirPresencaPor — daria para pôr na pelada quem tinha marcado "Fora".
+ * podeDefinirPresencaPor — daria para pôr no fut quem tinha marcado "Fora".
  */
 export async function subirDaEspera(
   exec: Executor,
   matchDayId: number,
   playerId: number,
 ): Promise<void> {
-  const pelada = await travarPelada(exec, matchDayId);
-  exigirNaoEncerrada(pelada, matchDayId);
+  const fut = await travarFut(exec, matchDayId);
+  exigirNaoEncerrada(fut, matchDayId);
   await exec
     .update(attendances)
     .set({ status: "in", updatedAt: new Date() })
@@ -295,8 +295,8 @@ export async function registrarFalta(
   playerId: number,
   faltou: boolean,
 ): Promise<void> {
-  const pelada = await travarPelada(exec, matchDayId);
-  exigirNaoEncerrada(pelada, matchDayId);
+  const fut = await travarFut(exec, matchDayId);
+  exigirNaoEncerrada(fut, matchDayId);
   await exec
     .update(attendances)
     .set({ status: faltou ? "no_show" : "in", updatedAt: new Date() })
@@ -323,13 +323,13 @@ export async function preencherVagasAbertas(
   exec: Executor,
   matchDayId: number,
 ): Promise<number[]> {
-  const pelada = await travarPelada(exec, matchDayId);
-  if (listaFechada(pelada.status)) return [];
+  const fut = await travarFut(exec, matchDayId);
+  if (listaFechada(fut.status)) return [];
 
   const linhas = await linhasDaLista(exec, matchDayId);
   const ocupadas = linhas.filter((l) => l.status === "in").length;
   const livres =
-    pelada.maxPlayers === null ? Number.POSITIVE_INFINITY : pelada.maxPlayers - ocupadas;
+    fut.maxPlayers === null ? Number.POSITIVE_INFINITY : fut.maxPlayers - ocupadas;
   if (livres <= 0) return [];
 
   const sobem = ordenarPorChegada(linhas.filter((l) => l.status === "waitlist"))

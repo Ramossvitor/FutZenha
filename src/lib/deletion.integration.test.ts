@@ -1,10 +1,10 @@
-// Exclusão de pelada por votação, de ponta a ponta: abertura pela action do
+// Exclusão de fut por votação, de ponta a ponta: abertura pela action do
 // admin, votos até o quórum, cascades da aprovação (com replay de nota no mesmo
 // commit), prazo vencido sem quórum e a autorização do eleitorado.
 
 import { and, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { abrirVotacaoExclusao } from "@/app/pelada/[id]/gerenciar/actions";
+import { abrirVotacaoExclusao } from "@/app/fut/[id]/gerenciar/actions";
 import { votar } from "@/app/votacao/[id]/actions";
 import { db } from "@/db";
 import {
@@ -28,7 +28,7 @@ import {
   confirmarPresenca,
   criarJogador,
   criarJogadorComConta,
-  criarPelada,
+  criarFut,
   logarComo,
 } from "@/test/fixtures";
 import { esperaRedirect } from "@/test/navigation-fake";
@@ -38,28 +38,28 @@ const MOTIVO = "Placar lançado errado e sem janela de correção";
 type Logavel = Awaited<ReturnType<typeof criarJogadorComConta>>;
 
 /**
- * Pelada encerrada em que três contas ativas jogaram (o eleitorado) e um quarto
+ * Fut encerrado em que três contas ativas jogaram (o eleitorado) e um quarto
  * jogador sem conta entrou em campo — afetado, mas fora do eleitorado.
  */
-async function montarPeladaEncerrada() {
+async function montarFutEncerrado() {
   const admin = await criarJogadorComConta();
   const beto = await criarJogadorComConta();
   const caio = await criarJogadorComConta();
   const semConta = await criarJogador();
 
-  const pelada = await criarPelada({ status: "finished", createdByPlayerId: admin.jogador.id });
+  const fut = await criarFut({ status: "finished", createdByPlayerId: admin.jogador.id });
 
   const [timeA] = await db
     .insert(teams)
-    .values({ matchDayId: pelada.id, name: "Preto", sortOrder: 0 })
+    .values({ matchDayId: fut.id, name: "Preto", sortOrder: 0 })
     .returning();
   const [timeB] = await db
     .insert(teams)
-    .values({ matchDayId: pelada.id, name: "Branco", sortOrder: 1 })
+    .values({ matchDayId: fut.id, name: "Branco", sortOrder: 1 })
     .returning();
   const [jogo] = await db
     .insert(games)
-    .values({ matchDayId: pelada.id, teamAId: timeA.id, teamBId: timeB.id, scoreA: 2, scoreB: 1 })
+    .values({ matchDayId: fut.id, teamAId: timeA.id, teamBId: timeB.id, scoreA: 2, scoreB: 1 })
     .returning();
   await db.insert(gamePlayers).values([
     { gameId: jogo.id, playerId: admin.jogador.id, side: "A" },
@@ -69,23 +69,23 @@ async function montarPeladaEncerrada() {
   ]);
   await db.insert(goals).values({ gameId: jogo.id, playerId: beto.jogador.id, quantity: 2 });
 
-  await confirmarPresenca(pelada, admin.jogador, { minutosAtras: 40 });
-  await confirmarPresenca(pelada, beto.jogador, { minutosAtras: 30 });
-  await confirmarPresenca(pelada, caio.jogador, { minutosAtras: 20 });
-  await confirmarPresenca(pelada, semConta, { minutosAtras: 10 });
+  await confirmarPresenca(fut, admin.jogador, { minutosAtras: 40 });
+  await confirmarPresenca(fut, beto.jogador, { minutosAtras: 30 });
+  await confirmarPresenca(fut, caio.jogador, { minutosAtras: 20 });
+  await confirmarPresenca(fut, semConta, { minutosAtras: 10 });
 
-  return { pelada, admin, beto, caio, semConta };
+  return { fut, admin, beto, caio, semConta };
 }
 
 /**
  * Rodada já apurada com uma nota fora do 5,0 — é ela que denuncia se o replay
  * rodou junto com o delete. 5★ de média 10,0: nova = (2×5 + 10) / 3 = 6,7.
  */
-async function apurarRodadaComNota(pelada: MatchDay, avaliador: Logavel, avaliado: Logavel) {
+async function apurarRodadaComNota(fut: MatchDay, avaliador: Logavel, avaliado: Logavel) {
   const [rodada] = await db
     .insert(ratingRounds)
     .values({
-      matchDayId: pelada.id,
+      matchDayId: fut.id,
       status: "closed",
       deadlineAt: sql`now() - interval '2 days'`,
       closedAt: sql`now() - interval '1 day'`,
@@ -109,8 +109,8 @@ async function apurarRodadaComNota(pelada: MatchDay, avaliador: Logavel, avaliad
   await db.update(players).set({ skill: 6.7 }).where(eq(players.id, avaliado.jogador.id));
 }
 
-async function abrirVotacaoDe(pelada: MatchDay, proponente: Logavel): Promise<number> {
-  const abertura = await abrirVotacao(pelada.id, MOTIVO, proponente.jogador.id);
+async function abrirVotacaoDe(fut: MatchDay, proponente: Logavel): Promise<number> {
+  const abertura = await abrirVotacao(fut.id, MOTIVO, proponente.jogador.id);
   if (abertura.tipo !== "votacao") throw new Error(`abertura inesperada: ${abertura.tipo}`);
   return abertura.voteId;
 }
@@ -123,20 +123,20 @@ async function getVotacaoNoBanco(voteId: number) {
   return votacao;
 }
 
-describe("exclusão de pelada por votação", () => {
-  it("aprovada no quórum: apaga a pelada com os filhos e recalcula as notas", async () => {
-    const { pelada, admin, beto, caio } = await montarPeladaEncerrada();
-    await apurarRodadaComNota(pelada, admin, beto);
+describe("exclusão de fut por votação", () => {
+  it("aprovada no quórum: apaga o fut com os filhos e recalcula as notas", async () => {
+    const { fut, admin, beto, caio } = await montarFutEncerrado();
+    await apurarRodadaComNota(fut, admin, beto);
 
     await logarComo(admin.conta);
     const form = new FormData();
     form.set("reason", MOTIVO);
-    expect(await esperaRedirect(abrirVotacaoExclusao(pelada.id, form))).toBe(
-      `/pelada/${pelada.id}/gerenciar`,
+    expect(await esperaRedirect(abrirVotacaoExclusao(fut.id, form))).toBe(
+      `/fut/${fut.id}/gerenciar`,
     );
 
     const [votacao] = await db.select().from(matchDayDeletionVotes);
-    expect(votacao.matchDayId).toBe(pelada.id);
+    expect(votacao.matchDayId).toBe(fut.id);
     // quem jogou sem conta é afetado, mas não entra no eleitorado congelado
     expect(votacao.eligibleCount).toBe(3);
     expect(votacao.requiredYes).toBe(3); // ceil(0,85 × 3)
@@ -150,7 +150,7 @@ describe("exclusão de pelada por votação", () => {
     await logarComo(beto.conta);
     expect(await votar(votacao.id, true)).toEqual({ success: true });
 
-    // 2 de 3 ainda não decide: votação aberta e pelada de pé
+    // 2 de 3 ainda não decide: votação aberta e fut de pé
     expect((await getVotacaoNoBanco(votacao.id)).status).toBe("open");
     expect(await db.select().from(matchDays)).toHaveLength(1);
 
@@ -179,12 +179,12 @@ describe("exclusão de pelada por votação", () => {
       .from(notifications)
       .where(eq(notifications.type, "deletion_vote_resolved"));
     expect(desfechos).toHaveLength(3);
-    for (const aviso of desfechos) expect(aviso.title).toBe("Pelada excluída pelo grupo");
+    for (const aviso of desfechos) expect(aviso.title).toBe("Fut excluído pelo grupo");
   });
 
   it("voto repetido devolve ja-votou e não conta duas vezes", async () => {
-    const { pelada, admin, beto } = await montarPeladaEncerrada();
-    const voteId = await abrirVotacaoDe(pelada, admin);
+    const { fut, admin, beto } = await montarFutEncerrado();
+    const voteId = await abrirVotacaoDe(fut, admin);
 
     expect(await registrarVoto(voteId, beto.jogador.id, true)).toBe("registrado");
     // definitivo: repetir não regrava nem inverte o voto
@@ -216,8 +216,8 @@ describe("exclusão de pelada por votação", () => {
   });
 
   it("vencida sem quórum: voto atrasado não conta e o varredor rejeita sem apagar", async () => {
-    const { pelada, admin, beto } = await montarPeladaEncerrada();
-    const voteId = await abrirVotacaoDe(pelada, admin);
+    const { fut, admin, beto } = await montarFutEncerrado();
+    const voteId = await abrirVotacaoDe(fut, admin);
     expect(await registrarVoto(voteId, admin.jogador.id, true)).toBe("registrado");
 
     await db
@@ -243,19 +243,19 @@ describe("exclusão de pelada por votação", () => {
       .from(notifications)
       .where(eq(notifications.type, "deletion_vote_resolved"));
     expect(desfechos).toHaveLength(3);
-    for (const aviso of desfechos) expect(aviso.title).toBe("Pelada mantida");
+    for (const aviso of desfechos) expect(aviso.title).toBe("Fut mantido");
   });
 
   it("quem não é do eleitorado não vota", async () => {
-    const { pelada, admin } = await montarPeladaEncerrada();
+    const { fut, admin } = await montarFutEncerrado();
     const deFora = await criarJogadorComConta();
-    const voteId = await abrirVotacaoDe(pelada, admin);
+    const voteId = await abrirVotacaoDe(fut, admin);
 
     expect(await registrarVoto(voteId, deFora.jogador.id, true)).toBe("nao-elegivel");
 
     await logarComo(deFora.conta);
     expect(await votar(voteId, true)).toEqual({
-      error: "Você não jogou esta pelada, então não vota nela.",
+      error: "Você não jogou este fut, então não vota nele.",
     });
 
     const linhas = await db
@@ -265,17 +265,17 @@ describe("exclusão de pelada por votação", () => {
     expect(linhas).toHaveLength(0);
   });
 
-  it("uma votação por pelada: reabrir devolve ja-existe", async () => {
-    const { pelada, admin, beto } = await montarPeladaEncerrada();
-    await abrirVotacaoDe(pelada, admin);
+  it("uma votação por fut: reabrir devolve ja-existe", async () => {
+    const { fut, admin, beto } = await montarFutEncerrado();
+    await abrirVotacaoDe(fut, admin);
 
-    expect(await abrirVotacao(pelada.id, MOTIVO, beto.jogador.id)).toEqual({ tipo: "ja-existe" });
+    expect(await abrirVotacao(fut.id, MOTIVO, beto.jogador.id)).toEqual({ tipo: "ja-existe" });
     expect(await db.select().from(matchDayDeletionVotes)).toHaveLength(1);
   });
 
   it("rejeita na hora quando nem todos os pendentes votando SIM fechariam o quórum", async () => {
-    const { pelada, admin, beto, caio } = await montarPeladaEncerrada();
-    const voteId = await abrirVotacaoDe(pelada, admin);
+    const { fut, admin, beto, caio } = await montarFutEncerrado();
+    const voteId = await abrirVotacaoDe(fut, admin);
 
     // 3 eleitores exigem 3 SIM: um único NÃO já torna o quórum impossível
     expect(await registrarVoto(voteId, beto.jogador.id, false)).toBe("registrado");

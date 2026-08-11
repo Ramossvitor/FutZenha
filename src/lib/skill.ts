@@ -2,7 +2,7 @@
 // fórmula e o arredondamento fiquem travados por teste (ver skill.test.ts).
 //
 // A nota de um jogador é sempre o replay completo do histórico: começa em 5,0 e
-// aplica, na ordem das peladas, a média das avaliações válidas que ele recebeu
+// aplica, na ordem dos futs, a média das avaliações válidas que ele recebeu
 // em cada rodada. Nada de delta incremental — descartar uma avaliação antiga é
 // só rodar o replay de novo sem ela.
 
@@ -86,7 +86,7 @@ export type RatingInput = {
 export type RoundInput = {
   roundId: number;
   matchDayId: number;
-  /** "YYYY-MM-DD" — a data da pelada, que é o que ordena o replay. */
+  /** "YYYY-MM-DD" — a data do fut, que é o que ordena o replay. */
   matchDayDate: string;
   /** Só as avaliações válidas. Filtrar as descartadas é do chamador. */
   ratings: RatingInput[];
@@ -115,7 +115,7 @@ export type ReplayResult = {
 };
 
 /**
- * Ordem canônica das rodadas: data da pelada, depois id da pelada, depois id da
+ * Ordem canônica das rodadas: data do fut, depois id do fut, depois id da
  * rodada. Nunca a data de apuração — a nota tem que ser função das avaliações
  * válidas, não de quando o admin clicou em apurar. É o que torna o replay
  * auditável e o resultado independente da ordem em que as rodadas chegam.
@@ -207,7 +207,7 @@ export type MudancaDeNota = { id: number; antes: number; depois: number };
  *
  * A regra que não é óbvia: **quem não aparece em `skillByPlayer` voltou para
  * 5,0**, não "ficou como estava". Sumir do replay é exatamente o que acontece
- * quando a única pelada em que o jogador foi avaliado é apagada pelo grupo, ou
+ * quando o único fut em que o jogador foi avaliado é apagado pelo grupo, ou
  * quando todas as notas que ele recebeu são descartadas por denúncia aceita.
  * Nesses casos a nota tem que desandar junto: deixá-la parada guardaria um
  * valor calculado a partir de avaliação que não existe mais, e é justamente

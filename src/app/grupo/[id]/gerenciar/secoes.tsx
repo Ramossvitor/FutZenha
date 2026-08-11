@@ -22,7 +22,7 @@ import {
   transferirAdministracao,
 } from "./actions";
 
-// Mesma decomposição do painel da pelada, pelo mesmo motivo: eram 422 linhas
+// Mesma decomposição do painel do fut, pelo mesmo motivo: eram 422 linhas
 // com seis seções empilhadas num arquivo só.
 
 type Membro = {
@@ -325,7 +325,7 @@ export function SecaoConvidar({
                     </Badge>
                   )
                 )}
-                {/* Fora do selo de propósito, como em pelada/[id]/gerenciar e no
+                {/* Fora do selo de propósito, como em fut/[id]/gerenciar e no
                     admin de jogadores: e-mail entregue também volta como caixa
                     de spam, e sem o botão aqui não há recuperação. Quem freia é
                     a janela na lib, não o sumiço do botão. */}
@@ -354,8 +354,8 @@ export function SecaoConvidar({
       />
 
       <p className="text-[12px] leading-[1.45] text-fg-4">
-        Só aparece aqui quem já tem conta. Para trazer alguém sem conta, inclua a pessoa numa
-        pelada — de lá sai o link de cadastro dela.
+        Só aparece aqui quem já tem conta. Para trazer alguém sem conta, inclua a pessoa num
+        fut — de lá sai o link de cadastro dela.
       </p>
     </Section>
   );
@@ -364,11 +364,11 @@ export function SecaoConvidar({
 export function ZonaDePerigoDoGrupo({
   groupId,
   grupo,
-  totalPeladas,
+  totalFuts,
 }: {
   groupId: number;
   grupo: Group;
-  totalPeladas: number;
+  totalFuts: number;
 }) {
   return (
     <Section titulo="Zona de perigo">
@@ -381,9 +381,9 @@ export function ZonaDePerigoDoGrupo({
         <CardBody className="flex flex-col gap-3">
           <p className="text-[13px] leading-[1.5] text-fg-2">
             Membros, convites e pedidos são apagados.{" "}
-            {totalPeladas === 0
-              ? "O grupo não tem peladas."
-              : `As ${totalPeladas} peladas do grupo continuam existindo, mas viram peladas avulsas — placares, gols e notas ficam como estão.`}{" "}
+            {totalFuts === 0
+              ? "O grupo não tem futs."
+              : `Os ${totalFuts} futs do grupo continuam existindo, mas viram futs avulsos — placares, gols e notas ficam como estão.`}{" "}
             <strong className="text-fg">Não tem desfazer.</strong>
           </p>
           <form action={excluirGrupo.bind(null, groupId)} className="flex flex-col gap-3">

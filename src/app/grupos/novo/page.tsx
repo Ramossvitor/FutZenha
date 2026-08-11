@@ -35,7 +35,7 @@ export default async function NovoGrupoPage({ searchParams }: PageProps<"/grupos
                 required
                 minLength={3}
                 maxLength={60}
-                placeholder="Pelada da firma"
+                placeholder="Fut da firma"
               />
             </Field>
 

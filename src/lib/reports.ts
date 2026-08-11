@@ -13,13 +13,13 @@ import { notificar } from "./notifications";
 import { aplicarReplay } from "./ratings-engine";
 
 /**
- * O julgador jogou a pelada de onde saiu esta rodada?
+ * O julgador jogou o fut de onde saiu esta rodada?
  *
  * O admin da plataforma é jogador como qualquer outro (ver src/db/schema.ts), e
- * isso o põe em conflito sempre que a denúncia nasce de uma pelada que ele
+ * isso o põe em conflito sempre que a denúncia nasce de um fut que ele
  * jogou: julgaria a própria rodada e, pior, leria em `raterName` o nome de quem
  * lhe deu cada estrela — inclusive denunciando uma nota própria só para abrir a
- * lista. É o mesmo motivo que tira o admin da pelada do julgamento (ver
+ * lista. É o mesmo motivo que tira o admin do fut do julgamento (ver
  * README § Nota injusta); a diferença é que ali o impedimento é estrutural e
  * aqui precisa ser consultado.
  */
@@ -130,7 +130,7 @@ export type DenunciaNaFila = {
    * Quem deu a nota reclamada — `null` quando o julgador jogou a rodada.
    *
    * O anonimato é entre jogadores. Quem julga precisa saber de quem partiu a
-   * nota, e pode saber enquanto for alguém de fora daquela pelada; para o
+   * nota, e pode saber enquanto for alguém de fora daquele fut; para o
    * julgador impedido o campo não existe, e a tela cai na forma anônima.
    */
   raterName: string | null;

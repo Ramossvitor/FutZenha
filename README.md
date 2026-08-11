@@ -1,18 +1,18 @@
 # ⚽ FutZenha
 
-Site para organizar a pelada semanal do grupo: confirmação de presença, sorteio de times balanceado, resultados, artilharia e rankings.
+Site para organizar o fut semanal do grupo: confirmação de presença, sorteio de times balanceado, resultados, artilharia e rankings.
 
 **Modelo de uso:** cada jogador tem uma conta (criada via link de convite entregue no WhatsApp) e marca **apenas a própria presença**. As páginas continuam públicas para consulta. Sem e-mail, sem serviço externo — o convite é o único canal de cadastro e também serve de reset de senha.
 
 **Dois papéis de admin**, e um jogador pode ser os dois:
 
-| | Admin da pelada | Admin da plataforma |
+| | Admin do fut | Admin da plataforma |
 |---|---|---|
-| Quem é | quem **criou** aquela pelada | jogador com a flag `is_platform_admin` |
-| Onde | `/pelada/[id]/gerenciar` | `/admin` |
-| Pode | presenças, sorteio, placar, gols, encerrar, abrir votação de exclusão, cadastrar jogador novo | contas e convites, julgar denúncias de nota injusta, ver o uso do sistema, excluir pelada fabricada — e é fallback em qualquer pelada |
+| Quem é | quem **criou** aquele fut | jogador com a flag `is_platform_admin` |
+| Onde | `/fut/[id]/gerenciar` | `/admin` |
+| Pode | presenças, sorteio, placar, gols, encerrar, abrir votação de exclusão, cadastrar jogador novo | contas e convites, julgar denúncias de nota injusta, ver o uso do sistema, excluir fut fabricado — e é fallback em qualquer fut |
 
-Qualquer jogador logado marca uma pelada em `/peladas/nova` e vira admin **dela**.
+Qualquer jogador logado marca um fut em `/futs/novo` e vira admin **dele**.
 
 ## Stack
 
@@ -59,62 +59,62 @@ Acesse http://localhost:3000. O seed imprime os logins demo; o primeiro deles é
 | `npm run db:studio` | UI para inspecionar o banco |
 | `npm run seed` | **Apaga tudo** e repopula com dados de exemplo (só banco local) |
 
-## Fluxo de uma pelada
+## Fluxo de um fut
 
-1. Qualquer jogador logado cria a pelada em `/peladas/nova` (data, hora, local) e vira o **admin dela**.
-2. O link público (`/pelada/[id]`) vai no grupo do WhatsApp; cada um entra na conta e marca **Vou / Fora** (só a própria presença). O admin da pelada marca por **quem ainda não tem acesso** e cadastra quem chegou de última hora; quem já tem conta ativa entra e marca sozinho — depois disso o admin também ajusta a presença dessa pessoa. É o que impede alguém de marcar uma pelada e escalar gente que nunca soube do jogo, mexendo na presença e no V/E/D dela.
-3. No dia, o admin da pelada sorteia os times (balanceado por nota, goleiros separados) e ajusta manualmente se quiser.
+1. Qualquer jogador logado cria o fut em `/futs/novo` (data, hora, local) e vira o **admin dele**.
+2. O link público (`/fut/[id]`) vai no grupo do WhatsApp; cada um entra na conta e marca **Vou / Fora** (só a própria presença). O admin do fut marca por **quem ainda não tem acesso** e cadastra quem chegou de última hora; quem já tem conta ativa entra e marca sozinho — depois disso o admin também ajusta a presença dessa pessoa. É o que impede alguém de marcar um fut e escalar gente que nunca soube do jogo, mexendo na presença e no V/E/D dela.
+3. No dia, o admin do fut sorteia os times (balanceado por nota, goleiros separados) e ajusta manualmente se quiser.
 4. Durante/depois, ele lança os jogos, placares e gols.
-5. **Conferir escalação e encerrar**: revisa quem jogou em qual time, jogo a jogo, e confirma. Isso trava a pelada, faz os números contarem na artilharia, nos rankings e na presença, e **abre a rodada de avaliação**.
+5. **Conferir escalação e encerrar**: revisa quem jogou em qual time, jogo a jogo, e confirma. Isso trava o fut, faz os números contarem na artilharia, nos rankings e na presença, e **abre a rodada de avaliação**.
 
 ### Depois de encerrar
 
-A escalação confirmada é **imutável** — é ela que define quem avalia quem, e mexer nela invalidaria avaliações já enviadas. Placar e gols ainda podem ser corrigidos por **24h**. Passado isso, a única forma de mexer numa pelada é **excluí-la**, o que exige votação (ver abaixo). Não existe "reabrir pelada".
+A escalação confirmada é **imutável** — é ela que define quem avalia quem, e mexer nela invalidaria avaliações já enviadas. Placar e gols ainda podem ser corrigidos por **24h**. Passado isso, a única forma de mexer num fut é **excluí-la**, o que exige votação (ver abaixo). Não existe "reabrir fut".
 
 ## Avaliação entre companheiros
 
 A nota do jogador é **100% calculada** — o admin não digita mais. Todo mundo começa em **5,0**.
 
-1. Encerrada a pelada, cada jogador com conta recebe uma notificação e tem **2 dias** para dar de 1 a 5 estrelas aos companheiros com quem dividiu o lado em algum jogo daquele dia. A avaliação só acontece em **grupo de 3 ou mais com conta ativa no mesmo lado** — abaixo disso o time joga e conta para placar, artilharia e presença, mas não mexe em nota nenhuma. É a trava contra nota fabricada: sem ela, duas contas combinadas subiriam de 5,0 a 9,3 em cinco peladas de mentira.
+1. Encerrada o fut, cada jogador com conta recebe uma notificação e tem **2 dias** para dar de 1 a 5 estrelas aos companheiros com quem dividiu o lado em algum jogo daquele dia. A avaliação só acontece em **grupo de 3 ou mais com conta ativa no mesmo lado** — abaixo disso o time joga e conta para placar, artilharia e presença, mas não mexe em nota nenhuma. É a trava contra nota fabricada: sem ela, duas contas combinadas subiriam de 5,0 a 9,3 em cinco futs de mentira.
 2. A rodada é apurada quando **todos avaliam** ou quando o prazo vence — o que vier primeiro.
-3. As estrelas viram nota numa escala linear (1★ = 1,0 · 2★ = 3,25 · 3★ = 5,5 · 4★ = 7,75 · 5★ = 10,0), e a nota nova é `(2 × nota atual + média recebida) / 3`. Ou seja, uma pelada pesa **1/3**.
+3. As estrelas viram nota numa escala linear (1★ = 1,0 · 2★ = 3,25 · 3★ = 5,5 · 4★ = 7,75 · 5★ = 10,0), e a nota nova é `(2 × nota atual + média recebida) / 3`. Ou seja, um fut pesa **1/3**.
 4. Todo mundo é notificado da mudança, e a nota nova aparece em `/rankings` e no perfil.
 
 Detalhes que valem conhecer:
 
-- **A nota é sempre recalculada do zero**, desde 5,0, a partir das avaliações que ainda valem. Não existe delta acumulado — é isso que faz descartar uma avaliação ou apagar uma pelada funcionarem sem código de desfazimento.
-- A ordem do replay é a **data das peladas**, nunca a data de apuração: a nota é função das avaliações, não de quando o admin clicou.
-- 10,0 e 1,0 só são alcançáveis com unanimidade sustentada (~10 peladas seguidas), e uma única avaliação fora do padrão já tira o jogador do extremo.
+- **A nota é sempre recalculada do zero**, desde 5,0, a partir das avaliações que ainda valem. Não existe delta acumulado — é isso que faz descartar uma avaliação ou apagar um fut funcionarem sem código de desfazimento.
+- A ordem do replay é a **data dos futs**, nunca a data de apuração: a nota é função das avaliações, não de quando o admin clicou.
+- 10,0 e 1,0 só são alcançáveis com unanimidade sustentada (~10 futs seguidas), e uma única avaliação fora do padrão já tira o jogador do extremo.
 - Quem tem convite pendente **joga normalmente** (presença, gols, escalação), mas não entra nos rankings e não avalia nem é avaliado. Ao resgatar o acesso, todo o histórico dele aparece de uma vez — a nota, porém, começa em 5,0: não há avaliação retroativa.
 
 ### Nota injusta
 
-O jogador vê no perfil cada estrela que recebeu, **sem saber quem deu**, e pode reportar uma delas em até 2 dias após a apuração (a partir de 2 avaliações recebidas). Quem julga é o **admin da plataforma**, em `/admin/avaliacoes`, e ele tem 3 dias; **se não responder, a denúncia é aceita automaticamente**. Descartar uma avaliação recalcula a nota de todo mundo daquela pelada em diante.
+O jogador vê no perfil cada estrela que recebeu, **sem saber quem deu**, e pode reportar uma delas em até 2 dias após a apuração (a partir de 2 avaliações recebidas). Quem julga é o **admin da plataforma**, em `/admin/avaliacoes`, e ele tem 3 dias; **se não responder, a denúncia é aceita automaticamente**. Descartar uma avaliação recalcula a nota de todo mundo daquele fut em diante.
 
-Julgar denúncia **não** é do admin da pelada, de propósito: ele quase sempre jogou a rodada, então poderia julgar a própria denúncia — e, pior, descobriria de quem partiu a nota contestada. Aceitar uma denúncia também dispara o replay que recalcula a nota de todo mundo, o que é decisão de plataforma, não de pelada.
+Julgar denúncia **não** é do admin do fut, de propósito: ele quase sempre jogou a rodada, então poderia julgar a própria denúncia — e, pior, descobriria de quem partiu a nota contestada. Aceitar uma denúncia também dispara o replay que recalcula a nota de todo mundo, o que é decisão de plataforma, não de fut.
 
-Quem julga **vê o nome de quem avaliou** — o anonimato é entre jogadores, e para decidir é preciso saber de quem partiu a nota. Por isso a mesma regra vale para o admin da plataforma: **ele não julga denúncia de pelada que jogou**. Ele é jogador como qualquer outro, então sem essa trava bastaria denunciar a própria nota para abrir a lista de quem lhe deu cada estrela. Nessas denúncias ele vê que existem e que o prazo corre, sem os nomes e sem os botões; decide outro admin da plataforma, ou o prazo vence e o auto-aceite resolve.
+Quem julga **vê o nome de quem avaliou** — o anonimato é entre jogadores, e para decidir é preciso saber de quem partiu a nota. Por isso a mesma regra vale para o admin da plataforma: **ele não julga denúncia de fut que jogou**. Ele é jogador como qualquer outro, então sem essa trava bastaria denunciar a própria nota para abrir a lista de quem lhe deu cada estrela. Nessas denúncias ele vê que existem e que o prazo corre, sem os nomes e sem os botões; decide outro admin da plataforma, ou o prazo vence e o auto-aceite resolve.
 
 O anonimato tem um cuidado que não é óbvio: `ratings.id` é sequencial, então expor o id entregaria a ordem de envio. A tela trabalha com a **posição** na lista (ordenada por nota, com desempate por hash), e o id nunca sai do servidor.
 
-### Excluir uma pelada
+### Excluir um fut
 
-Pelada **não encerrada** o admin dela apaga direto. Pelada **encerrada** exige votação: o admin da pelada abre com justificativa, e passa com **85% de SIM em 48h** entre quem jogou e tem conta. Não votar conta como **contra**, o voto é **definitivo**, e há **uma votação por pelada** — rejeitada, ela fica no histórico para sempre. Aprovada, a pelada é apagada com tudo que gerou e as notas são recalculadas.
+Fut **não encerrado** o admin dele apaga direto. Fut **encerrado** exige votação: o admin do fut abre com justificativa, e passa com **85% de SIM em 48h** entre quem jogou e tem conta. Não votar conta como **contra**, o voto é **definitivo**, e há **uma votação por fut** — rejeitada, ela fica no histórico para sempre. Aprovada, o fut é apagado com tudo que gerou e as notas são recalculadas.
 
-Fora disso, o **admin da plataforma** pode excluir uma pelada direto em `/admin/peladas`, sem votação. É a contrapartida de qualquer um poder criar pelada: contra uma pelada fabricada não adianta votação, porque quem votaria são os "jogadores" dela. A tela mostra quem criou cada pelada, quantos jogaram e quantos tinham conta ativa — que é o que denuncia fabricação. Como a exclusão é unilateral e irreversível, o motivo escrito é obrigatório e vai para o log do servidor junto com quem apertou o botão.
+Fora disso, o **admin da plataforma** pode excluir um fut direto em `/admin/futs`, sem votação. É a contrapartida de qualquer um poder criar fut: contra um fut fabricado não adianta votação, porque quem votaria são os "jogadores" dele. A tela mostra quem criou cada fut, quantos jogaram e quantos tinham conta ativa — que é o que denuncia fabricação. Como a exclusão é unilateral e irreversível, o motivo escrito é obrigatório e vai para o log do servidor junto com quem apertou o botão.
 
 Enquanto a votação corre, quem propôs vê só **quantos** faltam votar — não o placar parcial nem os nomes. Com os dois, bastava recarregar antes e depois de alguém votar para saber como aquela pessoa votou, num voto que é definitivo.
 
 ## Contas de jogador
 
-- **Criar conta**: em `/admin/jogadores`, o admin da plataforma clica em **Gerar convite** e manda o link no WhatsApp do jogador. O admin de uma pelada também cadastra gente nova pela própria tela de gestão, e o link do convite aparece ali mesmo, em **Convites para entregar** — só de quem ainda não tem conta, porque convite para quem já tem é reset de acesso e isso é da plataforma. O link (`/convite/[token]`) vale 7 dias e é de uso único. Nada é consumido ao abrir o link — só ao resgatar de verdade (bots de preview do WhatsApp não estragam o convite).
+- **Criar conta**: em `/admin/jogadores`, o admin da plataforma clica em **Gerar convite** e manda o link no WhatsApp do jogador. O admin de um fut também cadastra gente nova pela própria tela de gestão, e o link do convite aparece ali mesmo, em **Convites para entregar** — só de quem ainda não tem conta, porque convite para quem já tem é reset de acesso e isso é da plataforma. O link (`/convite/[token]`) vale 7 dias e é de uso único. Nada é consumido ao abrir o link — só ao resgatar de verdade (bots de preview do WhatsApp não estragam o convite).
 - **Convite com e-mail = convite de Google**: preenchendo o campo **E-mail (conta Google)** ao gerar o convite, o link só é resgatado por *aquela* conta Google — o formulário de usuário e senha nem aparece. É o que impede quem pegou o link no grupo de virar conta: o token sozinho não basta. Deixando o campo vazio, o convite segue no fluxo antigo, em que o jogador escolhe usuário e senha. Errou o e-mail? Revogue e gere outro; o convite trava no endereço digitado.
 - **Entrar pelo Google**: quem tem conta Google vinculada entra pelo botão no `/login`. Quem já tinha usuário e senha vincula a própria conta em `/perfil` → **Conectar conta Google** (isso encerra as sessões nos outros aparelhos, como uma troca de senha). Conta nascida pelo Google não tem senha, e por isso não mostra "Trocar senha" no perfil. A identidade guardada é o `sub` do Google, não o e-mail: trocar de endereço não perde a conta.
 - **Esqueceu a senha**: o admin da plataforma clica em **Resetar acesso (novo convite)** no mesmo lugar — o link redefine o acesso, derruba as sessões antigas e reativa a conta se estava desativada.
 - **Desativar conta**: derruba a sessão do jogador no próximo acesso (a conta some sem apagar histórico; desativar o *jogador* é outra coisa — tira das listas mas a conta continua entrando).
-- **Meu perfil** (`/perfil`): nota atual, estatísticas próprias (só peladas encerradas), as estrelas recebidas em cada rodada e troca de senha.
+- **Meu perfil** (`/perfil`): nota atual, estatísticas próprias (só futs encerrados), as estrelas recebidas em cada rodada e troca de senha.
 - Cadastrar um jogador **já gera o convite** — ninguém nasce sem acesso a caminho. Com e-mail preenchido e `RESEND_API_KEY` configurada, o convite **já sai por e-mail** (e dá para reenviar); sem isso, o link segue saindo no WhatsApp como sempre. Quem já tem conta recebe o texto de **redefinir acesso**, não o de boas-vindas — é o mesmo botão de "Resetar acesso".
-- **Freio do envio**: o mesmo endereço só recebe convite de 10 em 10 minutos, e o app para no 90º e-mail do dia (a cota do Resend é 100). Não é economia: qualquer jogador logado marca uma pelada e vira admin dela, e daí alcançaria o cadastro com e-mail à escolha — sem freio, uma conta sozinha mandaria e-mail do nosso domínio para qualquer caixa de entrada e ainda queimaria a cota de todo mundo. Barrado, o banner manda copiar o link e mandar no WhatsApp.
+- **Freio do envio**: o mesmo endereço só recebe convite de 10 em 10 minutos, e o app para no 90º e-mail do dia (a cota do Resend é 100). Não é economia: qualquer jogador logado marca um fut e vira admin dele, e daí alcançaria o cadastro com e-mail à escolha — sem freio, uma conta sozinha mandaria e-mail do nosso domínio para qualquer caixa de entrada e ainda queimaria a cota de todo mundo. Barrado, o banner manda copiar o link e mandar no WhatsApp.
 - Logins de exemplo do seed: quatro contas com `senha123`, impressas no console (a primeira é o admin da plataforma) + um convite pendente.
 - **Admin da plataforma**: `PLATFORM_ADMIN_USERNAMES` (lista por vírgula) vale como chave-mestra em runtime **e** liga a flag `users.is_platform_admin` a cada build. É o que impede ficar trancado do lado de fora de um banco sem shell. O build também **cria a conta** de quem está na lista e ainda não existe, imprimindo o link para definir a senha — é assim que nasce o primeiro admin de uma instalação nova. Esses usernames ficam **reservados**: ninguém consegue escolhê-los ao resgatar um convite, senão bastaria digitar o nome certo para sair admin.
 - **Promover e rebaixar**: em `/admin/jogadores` dá para tornar outra conta admin da plataforma, ou tirar o papel. Mexer nisso encerra a sessão em curso da pessoa (`token_version + 1`). Ninguém se rebaixa sozinho, e quem está em `PLATFORM_ADMIN_USERNAMES` continua admin de qualquer jeito — a env var vence o banco.
@@ -178,17 +178,17 @@ Limites esperados do free tier: o Neon dorme após ~5 min sem uso, então a prim
 
 ## Modelo de dados (resumo)
 
-`players` → `attendances` ← `match_days` (com `created_by_player_id` = o admin daquela pelada; nulo = órfã — anterior a este modelo ou de criador apagado — e só a plataforma administra, sem dono inventado por backfill) → `teams` → `team_players`; `games` (time A × time B com placar) → `goals` (autor + quantidade) e `game_players` (quem jogou de qual lado **naquele jogo**). O placar digitado não precisa bater com a soma dos gols — cobre gol contra e gol sem autor lembrado.
+`players` → `attendances` ← `match_days` (com `created_by_player_id` = o admin daquele fut; nulo = órfão — anterior a este modelo ou de criador apagado — e só a plataforma administra, sem dono inventado por backfill) → `teams` → `team_players`; `games` (time A × time B com placar) → `goals` (autor + quantidade) e `game_players` (quem jogou de qual lado **naquele jogo**). O placar digitado não precisa bater com a soma dos gols — cobre gol contra e gol sem autor lembrado.
 
-`game_players` é a fonte de verdade de quem jogou: `teams` guarda só o colete da pelada. É dela que saem o V/E/D e os "companheiros" da avaliação.
+`game_players` é a fonte de verdade de quem jogou: `teams` guarda só o colete do fut. É dela que saem o V/E/D e os "companheiros" da avaliação.
 
-Avaliação: `rating_rounds` (uma por pelada) → `rating_round_raters` (o denominador congelado de quem deve avaliar) e `ratings` (`discarded_at` nulo = vale) → `rating_reports`. `skill_history` é **projeção** do replay, reescrita inteira a cada recálculo. `notifications` tem unique em `(player_id, dedupe_key)`, o que torna notificar idempotente.
+Avaliação: `rating_rounds` (uma por fut) → `rating_round_raters` (o denominador congelado de quem deve avaliar) e `ratings` (`discarded_at` nulo = vale) → `rating_reports`. `skill_history` é **projeção** do replay, reescrita inteira a cada recálculo. `notifications` tem unique em `(player_id, dedupe_key)`, o que torna notificar idempotente.
 
-Exclusão por votação: `match_day_deletion_votes` (uma por pelada) → `match_day_deletion_voters` (eleitorado congelado + o voto).
+Exclusão por votação: `match_day_deletion_votes` (uma por fut) → `match_day_deletion_voters` (eleitorado congelado + o voto).
 
 Acesso: `users` (um por `player`) guarda `password_hash` **ou** `google_sub`, os dois nulos-a-nulo mas nunca ambos vazios — conta nascida pelo Google não tem senha, conta de senha só ganha `google_sub` ao vincular. `email` e `google_sub` são unique, e é o `sub` que identifica a pessoa (o e-mail pode trocar de dono num domínio corporativo). `invites.email` preenchido trava o convite naquela conta Google; nulo, é o convite antigo de usuário e senha.
 
-Estatísticas são derivadas por query (`src/lib/stats.ts`), contando só peladas encerradas e só jogadores com conta ativa.
+Estatísticas são derivadas por query (`src/lib/stats.ts`), contando só futs encerrados e só jogadores com conta ativa.
 
 ### Prazos e o varredor
 
@@ -197,7 +197,7 @@ Prazos são timestamps absolutos gravados na criação, comparados sempre com o 
 ## Grupos
 
 Um grupo reúne quem joga junto. Quem cria vira **administrador**; ele promove
-**organizadores** (que marcam peladas do grupo e convidam gente) e todo o resto
+**organizadores** (que marcam futs do grupo e convidam gente) e todo o resto
 entra como **membro** — confirma presença e aparece no ranking do grupo.
 
 Cada grupo escolhe como é encontrado:
@@ -213,18 +213,18 @@ com teto), convite nominal a quem já tem conta (a pessoa aceita em `/grupos`) e
 pedido de entrada. O link **não cria conta** — quem não tem passa antes pelo
 cadastro normal.
 
-Marcar uma pelada dentro do grupo não fecha a pelada para o grupo: o organizador
+Marcar um fut dentro do grupo não fecha o fut para o grupo: o organizador
 continua podendo convidar gente de fora, inclusive quem não tem conta (o que
 gera o link de cadastro de sempre).
 
 **Ranking do grupo** (`/grupo/[id]/ranking`) tem presença, artilharia,
-aproveitamento e notas, contando **só as peladas daquele grupo** — e contando
+aproveitamento e notas, contando **só os futs daquele grupo** — e contando
 todo mundo que jogou nelas, membro ou não. Os rankings gerais da plataforma
 continuam existindo e continuam somando tudo. A nota mostrada no grupo é a nota
 global do jogador: não existe nota por grupo, e a lista apenas recorta quem
 jogou ali.
 
-Pelada sem grupo continua funcionando como sempre — `match_days.group_id` é
+Fut sem grupo continua funcionando como sempre — `match_days.group_id` é
 nulo, e o grupo é definido na criação e não muda depois.
 
 ## Roadmap (fase 2)

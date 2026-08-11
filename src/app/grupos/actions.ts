@@ -22,10 +22,10 @@ import { requirePlayer } from "@/lib/require-player";
  * não um path livre: aceitar string do cliente aqui seria um open redirect de
  * graça, no endpoint que a gente acabou de blindar contra id forjado.
  *
- * `null` volta para "todas as peladas", que é o estado sem cookie.
+ * `null` volta para "todos os futs", que é o estado sem cookie.
  *
  * O padrão é FICAR. Quem troca pelo seletor do cabeçalho está no meio de outra
- * coisa — em /rankings ou /peladas a troca é para comparar, e mandar para o
+ * coisa — em /rankings ou /futs a troca é para comparar, e mandar para o
  * início jogaria fora exatamente o contexto que ela pediu. O hub /grupos é a
  * exceção: lá escolher um grupo É a tarefa, e o fim dela é entrar nele.
  */

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
-import { setMyAttendance } from "@/app/pelada/[id]/actions";
+import { setMyAttendance } from "@/app/fut/[id]/actions";
 import { votar } from "@/app/votacao/[id]/actions";
 import { AvatarPilha } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ import { getVotacoesAbertasDoJogador } from "@/lib/deletion";
 import { ehElegivel } from "@/lib/elegiveis";
 import { formatDateShort, formatTime, todayISO } from "@/lib/format";
 import { getGrupoAtual } from "@/lib/grupo-atual";
-import { STATUS_PELADA } from "@/lib/match-day-form";
+import { STATUS_FUT } from "@/lib/match-day-form";
 import { posicoes } from "@/lib/posicao";
 import { getRodadasAbertasDoJogador } from "@/lib/ratings";
 import { getSession } from "@/lib/session";
@@ -77,7 +77,7 @@ export default async function HomePage() {
     : [];
   const confirmados = presencas.filter((p) => p.status === "in");
   const naEspera = presencas.filter((p) => p.status === "waitlist");
-  // Mesma regra da página da pelada: com "Todas as peladas" no seletor, a
+  // Mesma regra da página do fut: com "Todos os futs" no seletor, a
   // próxima pode ser de um grupo que não é meu — e aí o botão não é meu.
   const souElegivel =
     session && nextMatch ? await ehElegivel(nextMatch, session.player.id) : false;
@@ -127,7 +127,7 @@ export default async function HomePage() {
               Avalia a rapaziada
             </span>
             <span className="block truncate font-display text-[11px] font-bold opacity-75">
-              pelada de {formatDateShort(rodadaPendente.matchDayDate)} · {rodadaPendente.location}
+              fut de {formatDateShort(rodadaPendente.matchDayDate)} · {rodadaPendente.location}
             </span>
           </span>
           <Prazo horas={rodadaPendente.horasRestantes} sobre="accent" />
@@ -141,7 +141,7 @@ export default async function HomePage() {
             <IconeAlerta className="mt-0.5 size-5 shrink-0 text-danger" />
             <div className="min-w-0 flex-1">
               <p className="font-display text-[15px] leading-[1.25] font-extrabold font-stretch-112% text-fg">
-                Querem apagar a pelada de {formatDateShort(votacaoPendente.matchDayDate)}
+                Querem apagar o fut de {formatDateShort(votacaoPendente.matchDayDate)}
               </p>
               <p className="mt-1 text-[13px] leading-[1.45] text-fg-2">
                 {votacaoPendente.reason}
@@ -180,12 +180,12 @@ export default async function HomePage() {
       )}
 
       <Section
-        titulo="Próxima pelada"
-        acao={nextMatch ? <Badge tom="accent">{STATUS_PELADA[nextMatch.status]}</Badge> : undefined}
+        titulo="Próximo fut"
+        acao={nextMatch ? <Badge tom="accent">{STATUS_FUT[nextMatch.status]}</Badge> : undefined}
       >
         {nextMatch ? (
           <Card>
-            <Link href={`/pelada/${nextMatch.id}`} className="block p-4 hover:bg-surface-2">
+            <Link href={`/fut/${nextMatch.id}`} className="block p-4 hover:bg-surface-2">
               <div className="flex items-start gap-3.5">
                 <BlocoDeData data={nextMatch.date} />
                 <div className="min-w-0 flex-1">
@@ -223,7 +223,7 @@ export default async function HomePage() {
             </Link>
 
             {/* Presença própria só existe antes do sorteio — depois dele, quem
-                mexe é quem organiza. É a mesma regra da página da pelada. */}
+                mexe é quem organiza. É a mesma regra da página do fut. */}
             {session && souElegivel && nextMatch.status === "scheduled" && (
               <div className="flex border-t border-line">
                 <form action={setMyAttendance.bind(null, nextMatch.id, "in")} className="flex-1">
@@ -235,7 +235,7 @@ export default async function HomePage() {
                     className="w-full rounded-none rounded-bl-card border-0 border-r border-line"
                   >
                     {/* O botão diz o que vai acontecer, não o que a pessoa
-                        gostaria: clicar "Vou" numa pelada lotada põe na espera,
+                        gostaria: clicar "Vou" num fut lotado põe na espera,
                         e descobrir isso só depois é a pior versão disto. */}
                     {minhaPresenca === "waitlist"
                       ? "Na espera"
@@ -261,7 +261,7 @@ export default async function HomePage() {
             {!session && nextMatch.status === "scheduled" && (
               <div className="border-t border-line px-4 py-3">
                 <Link
-                  href={`/login?next=/pelada/${nextMatch.id}`}
+                  href={`/login?next=/fut/${nextMatch.id}`}
                   className="text-[13px] font-semibold text-accent-ink hover:underline"
                 >
                   Entre na sua conta para confirmar presença
@@ -271,7 +271,7 @@ export default async function HomePage() {
           </Card>
         ) : (
           <EmptyState
-            titulo="Nenhuma pelada marcada"
+            titulo="Nenhum fut marcado"
             descricao={
               grupo
                 ? "Ninguém marcou nada neste grupo ainda."
@@ -279,8 +279,8 @@ export default async function HomePage() {
             }
             acao={
               session ? (
-                <LinkButton href="/peladas/nova" variante="primary" tamanho="sm">
-                  Marcar pelada
+                <LinkButton href="/futs/novo" variante="primary" tamanho="sm">
+                  Marcar fut
                 </LinkButton>
               ) : undefined
             }
@@ -289,13 +289,13 @@ export default async function HomePage() {
       </Section>
 
       {recentDays.length > 0 && (
-        <Section titulo="Últimos resultados" acao={<SectionLink href="/peladas">Ver todas</SectionLink>}>
+        <Section titulo="Últimos resultados" acao={<SectionLink href="/futs">Ver todas</SectionLink>}>
           <HairlineList as="ul">
             {recentDays.map((day) => {
               const dayGames = recentGames.filter((g) => g.matchDayId === day.id);
               return (
                 <li key={day.id}>
-                  <HairlineRowLink href={`/pelada/${day.id}`} className="items-start">
+                  <HairlineRowLink href={`/fut/${day.id}`} className="items-start">
                     <span className="w-11 shrink-0 pt-0.5 font-display text-[11px] font-bold text-fg-4">
                       {formatDateShort(day.date).slice(0, 5)}
                     </span>

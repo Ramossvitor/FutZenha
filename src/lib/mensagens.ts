@@ -21,13 +21,13 @@ export const MENSAGENS: Record<string, string> = {
   "dados-invalidos": "Dados inválidos — confira os campos.",
   "sem-permissao": "Você não pode fazer isso.",
   "sem-permissao-no-grupo":
-    "Você não pode marcar pelada nesse grupo — só o administrador e os organizadores.",
+    "Você não pode marcar fut nesse grupo — só o administrador e os organizadores.",
   "nome-duplicado": "Já existe um jogador com esse nome.",
   "email-invalido": "E-mail inválido — confira o endereço da conta Google.",
   "auto-rebaixamento":
     "Você não pode tirar o próprio papel de admin da plataforma — peça a outro admin.",
 
-  // pelada
+  // fut
   "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
   "jogos-lancados": "Já existem jogos lançados — apague os jogos antes de re-sortear.",
   "jogo-sem-time": "Todo jogo precisa de pelo menos um jogador de cada lado.",
@@ -37,18 +37,18 @@ export const MENSAGENS: Record<string, string> = {
     "Enquanto a lista está aberta, quem tem conta ativa marca a própria presença. Depois do sorteio você pode incluir quem for do grupo.",
   "lista-aberta": "Isso só vale depois de fechar a lista — sorteie os times primeiro.",
   "escalacao-travada":
-    "A pelada já foi encerrada e a escalação não muda mais. Para corrigir, é preciso excluir a pelada — o que exige votação dos jogadores.",
+    "O fut já foi encerrado e a escalação não muda mais. Para corrigir, é preciso excluir o fut — o que exige votação dos jogadores.",
   "janela-encerrada":
-    "As 24h para corrigir placar e gols já passaram. Para alterar, é preciso excluir a pelada — o que exige votação dos jogadores.",
+    "As 24h para corrigir placar e gols já passaram. Para alterar, é preciso excluir o fut — o que exige votação dos jogadores.",
   "precisa-votacao":
-    "Pelada encerrada não se apaga direto — abra a votação de exclusão para o grupo decidir.",
+    "Fut encerrado não se apaga direto — abra a votação de exclusão para o grupo decidir.",
   "motivo-curto": "Escreva o motivo com pelo menos 10 caracteres.",
 
   // grupo
   "entrada-fechada": "Este grupo não está aceitando entradas agora.",
   "admin-precisa-transferir":
     "Você administra o grupo. Transfira a administração para outra pessoa antes de sair.",
-  "sem-conta": "Esse jogador ainda não tem conta — convide-o por uma pelada primeiro.",
+  "sem-conta": "Esse jogador ainda não tem conta — convide-o por um fut primeiro.",
   "ja-membro": "Essa pessoa já está no grupo.",
   "alvo-nao-e-membro": "Só dá para transferir para alguém que já está no grupo.",
   "alvo-ja-e-admin": "Essa pessoa já administra o grupo.",
@@ -94,9 +94,9 @@ export const MENSAGENS: Record<string, string> = {
     "Membro removido. O link do grupo foi revogado junto — gere outro para continuar convidando.",
   "link-gerado": "Link novo gerado — o anterior deixou de valer.",
   "link-revogado": "Link revogado.",
-  excluida: "Pelada excluída. As notas de todo mundo foram recalculadas do zero.",
-  "excluida-sem-votacao":
-    "Pelada apagada direto: ninguém com conta jogou, então não havia quem votasse. As notas foram recalculadas.",
+  excluido: "Fut excluído. As notas de todo mundo foram recalculadas do zero.",
+  "excluido-sem-votacao":
+    "Fut apagado direto: ninguém com conta jogou, então não havia quem votasse. As notas foram recalculadas.",
 };
 
 /**

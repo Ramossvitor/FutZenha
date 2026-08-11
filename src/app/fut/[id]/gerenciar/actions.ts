@@ -22,8 +22,8 @@ import { criarJogadorComConvite, parseEmailDeConvite } from "@/lib/convites";
 import { enviarConvitePorEmail } from "@/lib/email-convite";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { redirectPosEnvio } from "@/app/redirect-pos-envio";
-import { avisoDeTimesSorteados } from "@/lib/avisos-pelada";
-import { abrirVotacao, apagarPelada, motivoExclusaoSchema } from "@/lib/deletion";
+import { avisoDeTimesSorteados } from "@/lib/avisos-fut";
+import { abrirVotacao, apagarFut, motivoExclusaoSchema } from "@/lib/deletion";
 import { drawTeams } from "@/lib/draw";
 import { formatDate } from "@/lib/format";
 import { listaFechada } from "@/lib/lista-presenca";
@@ -40,13 +40,13 @@ import {
   subirDaEspera,
 } from "@/lib/presenca";
 import { agendarDespachoDePush } from "@/lib/push-envio";
-import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
+import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
 
 export async function updateMatchDay(matchDayId: number, formData: FormData) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  const { matchDay } = await requireFutAdmin(matchDayId);
   const parsed = parseMatchDayForm(formData);
-  if (!parsed.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  if (!parsed.success) redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
 
   const houvePromocao = await db.transaction(async (tx) => {
     await tx.update(matchDays).set(parsed.data).where(eq(matchDays.id, matchDayId));
@@ -62,69 +62,74 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
   });
   if (houvePromocao) agendarDespachoDePush(true);
   revalidatePath("/");
-  revalidatePath(`/pelada/${matchDayId}/gerenciar`);
-  revalidatePath(`/pelada/${matchDayId}`);
+  revalidatePath(`/fut/${matchDayId}/gerenciar`);
+  revalidatePath(`/fut/${matchDayId}`);
 }
 
 /**
- * Apaga a pelada. Só vale para pelada não encerrada — nela não há gol, V/E/D
- * nem avaliação de ninguém em jogo. Encerrada, quem decide é quem jogou, pela
+ * Apaga o fut. Só vale para fut não encerrado — nele não há gol, V/E/D
+ * nem avaliação de ninguém em jogo. Encerrado, quem decide é quem jogou, pela
  * votação (ver abrirVotacaoExclusao).
  */
 export async function deleteMatchDay(matchDayId: number) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  const { matchDay } = await requireFutAdmin(matchDayId);
   if (matchDay.status === "finished") {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=precisa-votacao`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=precisa-votacao`);
   }
 
   await db.delete(matchDays).where(eq(matchDays.id, matchDayId));
   revalidatePath("/");
-  revalidatePath("/peladas");
-  redirect("/peladas");
+  revalidatePath("/futs");
+  redirect("/futs");
 }
 
 /**
- * Abre a votação para apagar uma pelada encerrada. Sem ninguém com conta que
+ * Abre a votação para apagar um fut encerrado. Sem ninguém com conta que
  * tenha jogado, não há quem seja afetado — aí o admin apaga direto.
  */
 export async function abrirVotacaoExclusao(matchDayId: number, formData: FormData) {
-  const { session, matchDay } = await requirePeladaAdmin(matchDayId);
+  const { session, matchDay } = await requireFutAdmin(matchDayId);
   const parsed = motivoExclusaoSchema.safeParse(formData.get("reason") ?? "");
-  if (!parsed.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=motivo-curto`);
+  if (!parsed.success) redirect(`/fut/${matchDayId}/gerenciar?erro=motivo-curto`);
 
   if (matchDay.status !== "finished") {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
   const resultado = await abrirVotacao(matchDayId, parsed.data, session.player.id);
   if (resultado.tipo === "sem-eleitores") {
-    // Mesmo sem eleitor, a pelada pode ter rodada apurada e avaliações válidas
+    // Mesmo sem eleitor, o fut pode ter rodada apurada e avaliações válidas
     // — basta as contas de quem jogou terem sido desativadas depois. O delete
     // leva as avaliações por cascade, então o replay tem que rodar no mesmo
     // commit, como em resolverVotacao(). Sem ele a nota de todo mundo ficaria
-    // com a contribuição de uma pelada que não existe mais.
-    await db.transaction((tx) => apagarPelada(tx, matchDayId, `nota:pelada-apagada:${matchDayId}`));
+    // com a contribuição de um fut que não existe mais.
+    //
+    // O `pelada-` da chave é o nome antigo do domínio, mantido de propósito:
+    // ela vira dedupe_key, e a unique (player_id, dedupe_key) é o que impede
+    // re-notificar. Renomear sem backfill reavisaria todo mundo. Mesma regra
+    // dos prefixos em avisos-fut.ts.
+    await db.transaction((tx) => apagarFut(tx, matchDayId, `nota:pelada-apagada:${matchDayId}`));
     revalidatePath("/");
-    revalidatePath("/peladas");
+    revalidatePath("/futs");
     revalidatePath("/rankings");
-    redirect("/peladas?ok=excluida-sem-votacao");
+    redirect("/futs?ok=excluido-sem-votacao");
   }
 
   revalidateMatchDay(matchDayId);
-  redirect(`/pelada/${matchDayId}/gerenciar`);
+  redirect(`/fut/${matchDayId}/gerenciar`);
 }
 
 // A escalação (times, jogos, quem jogou) é imutável depois do encerramento —
 // é ela que define quem avalia quem, e mexer nela invalidaria avaliações já
-// enviadas. Corrigir escalação errada só excluindo a pelada.
+// enviadas. Corrigir escalação errada só excluindo o fut.
 function assertEscalacaoEditavel(matchDay: MatchDay) {
   if (matchDay.status === "finished") {
-    redirect(`/pelada/${matchDay.id}/gerenciar?erro=escalacao-travada`);
+    redirect(`/fut/${matchDay.id}/gerenciar?erro=escalacao-travada`);
   }
 }
 
 // Placar e gols não mexem em quem avalia quem, então ganham uma janela de 24h
-// depois do encerramento. `finished_at` nulo numa pelada encerrada conta como
+// depois do encerramento. `finished_at` nulo num fut encerrado conta como
 // fora da janela: sem marco temporal não há o que liberar.
 const JANELA_CORRECAO = sql`
   ${matchDays.status} <> 'finished'
@@ -136,26 +141,26 @@ async function assertPlacarEditavel(matchDayId: number) {
     .select({ dentroDaJanela: sql<boolean>`${JANELA_CORRECAO}` })
     .from(matchDays)
     .where(eq(matchDays.id, matchDayId));
-  // O requirePeladaAdmin viu a pelada existir, mas ela pode ter sido apagada
+  // O requireFutAdmin viu o fut existir, mas ele pode ter sido apagado
   // entre o guard e esta query (votação aprovada, admin da plataforma) — sem o
   // `!row`, isso virava TypeError em vez de mensagem.
   if (!row || !row.dentroDaJanela) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=janela-encerrada`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=janela-encerrada`);
   }
 }
 
 function revalidateMatchDay(matchDayId: number) {
   revalidatePath("/");
-  revalidatePath("/peladas");
-  revalidatePath(`/pelada/${matchDayId}/gerenciar`);
-  revalidatePath(`/pelada/${matchDayId}`);
+  revalidatePath("/futs");
+  revalidatePath(`/fut/${matchDayId}/gerenciar`);
+  revalidatePath(`/fut/${matchDayId}`);
 }
 
 export async function drawTeamsAction(matchDayId: number, formData: FormData) {
-  const { session, matchDay } = await requirePeladaAdmin(matchDayId);
+  const { session, matchDay } = await requireFutAdmin(matchDayId);
   const teamCount = Number(formData.get("teamCount"));
   if (!Number.isInteger(teamCount) || teamCount < 2 || teamCount > 6) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
   assertEscalacaoEditavel(matchDay);
@@ -163,7 +168,7 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
   // Re-sortear apagaria os jogos por cascade — exige apagar os jogos antes.
   const existingGames = await db.select().from(games).where(eq(games.matchDayId, matchDayId));
   if (existingGames.length > 0) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=jogos-lancados`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=jogos-lancados`);
   }
 
   const confirmed = await db
@@ -178,7 +183,7 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
     .where(and(eq(attendances.matchDayId, matchDayId), eq(attendances.status, "in")));
 
   if (confirmed.length < teamCount) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=poucos-jogadores`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=poucos-jogadores`);
   }
 
   const drawn = drawTeams(confirmed, teamCount);
@@ -223,11 +228,11 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
   agendarDespachoDePush(true);
 
   revalidateMatchDay(matchDayId);
-  redirect(`/pelada/${matchDayId}/gerenciar`);
+  redirect(`/fut/${matchDayId}/gerenciar`);
 }
 
 export async function swapPlayersAction(matchDayId: number, formData: FormData) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  const { matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
   const playerA = Number(formData.get("playerA"));
   const playerB = Number(formData.get("playerB"));
@@ -260,7 +265,7 @@ export async function swapPlayersAction(matchDayId: number, formData: FormData) 
 }
 
 export async function createGame(matchDayId: number, formData: FormData) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  const { matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
   const teamAId = Number(formData.get("teamAId"));
   const teamBId = Number(formData.get("teamBId"));
@@ -275,18 +280,18 @@ export async function createGame(matchDayId: number, formData: FormData) {
     scoreA < 0 ||
     scoreB < 0
   ) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
   const dayTeams = await db.select().from(teams).where(eq(teams.matchDayId, matchDayId));
   const teamIds = new Set(dayTeams.map((t) => t.id));
   if (!teamIds.has(teamAId) || !teamIds.has(teamBId)) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
   const existing = await db.select().from(games).where(eq(games.matchDayId, matchDayId));
 
-  // A escalação do jogo é um snapshot dos times da pelada tirado agora. Depois
+  // A escalação do jogo é um snapshot dos times do fut tirado agora. Depois
   // disso ela é editável por jogo e independente do colete.
   const lineup = await db
     .select({ playerId: teamPlayers.playerId, teamId: teamPlayers.teamId })
@@ -312,12 +317,12 @@ export async function createGame(matchDayId: number, formData: FormData) {
 }
 
 export async function updateGameScore(matchDayId: number, gameId: number, formData: FormData) {
-  await requirePeladaAdmin(matchDayId);
+  await requireFutAdmin(matchDayId);
   await assertPlacarEditavel(matchDayId);
   const scoreA = Number(formData.get("scoreA"));
   const scoreB = Number(formData.get("scoreB"));
   if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
   await db
     .update(games)
@@ -327,45 +332,45 @@ export async function updateGameScore(matchDayId: number, gameId: number, formDa
 }
 
 export async function deleteGame(matchDayId: number, gameId: number) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  const { matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
   await db.delete(games).where(and(eq(games.id, gameId), eq(games.matchDayId, matchDayId)));
   revalidateMatchDay(matchDayId);
 }
 
 export async function addGoal(matchDayId: number, gameId: number, formData: FormData) {
-  await requirePeladaAdmin(matchDayId);
+  await requireFutAdmin(matchDayId);
   await assertPlacarEditavel(matchDayId);
   const playerId = Number(formData.get("playerId"));
   const quantity = Number(formData.get("quantity") ?? 1);
   if (!Number.isInteger(playerId) || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
   const [game] = await db
     .select()
     .from(games)
     .where(and(eq(games.id, gameId), eq(games.matchDayId, matchDayId)));
-  if (!game) redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  if (!game) redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
 
   // Escopo pelo jogo, na mesma linha do que deleteGoal faz com o goalId:
   // `playerId` vem do cliente, e sem isto daria para pendurar gol em quem nem
   // entrou em campo — a artilharia (src/lib/stats.ts) conta toda linha de gol
-  // de pelada encerrada, então seria placar inventado no ranking de alguém.
+  // de fut encerrado, então seria placar inventado no ranking de alguém.
   const [escalado] = await db
     .select({ playerId: gamePlayers.playerId })
     .from(gamePlayers)
     .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerId, playerId)));
-  if (!escalado) redirect(`/pelada/${matchDayId}/gerenciar?erro=artilheiro-fora-do-jogo`);
+  if (!escalado) redirect(`/fut/${matchDayId}/gerenciar?erro=artilheiro-fora-do-jogo`);
 
   await db.insert(goals).values({ gameId, playerId, quantity });
   revalidateMatchDay(matchDayId);
 }
 
 export async function deleteGoal(matchDayId: number, goalId: number) {
-  await requirePeladaAdmin(matchDayId);
+  await requireFutAdmin(matchDayId);
   await assertPlacarEditavel(matchDayId);
-  // Escopo pela pelada: `goalId` vem do cliente, e sem o filtro um id de outra
-  // pelada — encerrada há meses — seria apagado por esta mesma chamada.
+  // Escopo pelo fut: `goalId` vem do cliente, e sem o filtro um id de outra
+  // fut — encerrado há meses — seria apagado por esta mesma chamada.
   await db.delete(goals).where(
     and(
       eq(goals.id, goalId),
@@ -380,7 +385,7 @@ export async function deleteGoal(matchDayId: number, goalId: number) {
 
 // Encerrar mora em ./[id]/encerrar/actions.ts: passa pela conferência da
 // escalação, que é o que trava a base da avaliação. Não existe "reabrir" —
-// escalação errada só se conserta excluindo a pelada.
+// escalação errada só se conserta excluindo o fut.
 
 const convidadoSchema = z.object({
   name: z.string().trim().min(1, "Nome é obrigatório").max(60),
@@ -388,25 +393,25 @@ const convidadoSchema = z.object({
 });
 
 /**
- * Cadastra alguém novo e já marca a presença dele nesta pelada.
+ * Cadastra alguém novo e já marca a presença dele neste fut.
  *
- * É o que torna o admin de pelada autônomo: apareceu gente nova na quadra, ele
+ * É o que torna o admin de fut autônomo: apareceu gente nova na quadra, ele
  * resolve sem depender da plataforma. Só cria jogador **novo** — e jogador novo
  * nunca tem conta, então nunca é reset de senha disfarçado. O convite sai junto
  * e o link aparece na própria tela de gestão, para o organizador entregar na
  * mão, como sempre.
  */
-export async function convidarParaPelada(matchDayId: number, formData: FormData) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+export async function convidarParaFut(matchDayId: number, formData: FormData) {
+  const { matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
 
   const parsed = convidadoSchema.safeParse({
     name: formData.get("name") ?? "",
     isGoalkeeper: formData.get("isGoalkeeper") === "on",
   });
-  if (!parsed.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  if (!parsed.success) redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   const email = parseEmailDeConvite(formData.get("email"));
-  if (!email.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=email-invalido`);
+  if (!email.success) redirect(`/fut/${matchDayId}/gerenciar?erro=email-invalido`);
 
   let token: string;
   try {
@@ -417,7 +422,7 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
         isGoalkeeper: parsed.data.isGoalkeeper,
         email: email.data,
       });
-      // Passa pela lista como qualquer um: com a pelada lotada e a lista aberta,
+      // Passa pela lista como qualquer um: com o fut lotado e a lista aberta,
       // o convidado entra na espera. Um insert cru de `status: "in"` aqui furaria
       // o limite pelo caminho que ninguém olha.
       await entrarNaLista(tx, matchDay.id, criado.playerId);
@@ -425,7 +430,7 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      redirect(`/pelada/${matchDayId}/gerenciar?erro=nome-duplicado`);
+      redirect(`/fut/${matchDayId}/gerenciar?erro=nome-duplicado`);
     }
     throw error;
   }
@@ -434,15 +439,15 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
   // rollback depois do envio mandaria um convite que não existe.
   const envio = email.data ? await enviarConvitePorEmail(token) : null;
   revalidateMatchDay(matchDayId);
-  if (envio) redirectPosEnvio(`/pelada/${matchDayId}/gerenciar`, envio);
+  if (envio) redirectPosEnvio(`/fut/${matchDayId}/gerenciar`, envio);
 }
 
 /**
  * Reenvia por email um convite da lista "Convites para entregar" — mesmo token,
  * sem reemitir: o link já copiado segue valendo.
  *
- * O escopo pela presença nesta pelada é obrigatório: `playerId` vem do cliente,
- * e sem esse filtro um admin de pelada reenviaria o convite de qualquer jogador
+ * O escopo pela presença neste fut é obrigatório: `playerId` vem do cliente,
+ * e sem esse filtro um admin de fut reenviaria o convite de qualquer jogador
  * da plataforma. O leftJoin com `users` mantém a regra da lista: convite de quem
  * já tem conta é reset de senha, e isso é da plataforma. O escopo não é freio de
  * repetição — presença é auto-servível (ver definirPresenca); quem segura o
@@ -451,10 +456,10 @@ export async function convidarParaPelada(matchDayId: number, formData: FormData)
  * Vencido ou sem email não aparece aqui: essa regra é do enviarConvitePorEmail,
  * que devolve `convite-inelegivel` para o mesmo banner.
  */
-export async function reenviarConviteDaPelada(matchDayId: number, playerId: number) {
-  await requirePeladaAdmin(matchDayId);
+export async function reenviarConviteDoFut(matchDayId: number, playerId: number) {
+  await requireFutAdmin(matchDayId);
   if (!Number.isInteger(playerId)) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
   const [invite] = await db
@@ -470,11 +475,11 @@ export async function reenviarConviteDaPelada(matchDayId: number, playerId: numb
         isNull(users.id),
       ),
     );
-  if (!invite) redirect(`/pelada/${matchDayId}/gerenciar?erro=convite-nao-reenviavel`);
+  if (!invite) redirect(`/fut/${matchDayId}/gerenciar?erro=convite-nao-reenviavel`);
 
   const envio = await enviarConvitePorEmail(invite.token);
   revalidateMatchDay(matchDayId);
-  redirectPosEnvio(`/pelada/${matchDayId}/gerenciar`, envio);
+  redirectPosEnvio(`/fut/${matchDayId}/gerenciar`, envio);
 }
 
 export async function definirPresenca(
@@ -482,17 +487,17 @@ export async function definirPresenca(
   playerId: number,
   status: "in" | "out",
 ) {
-  const { session, matchDay } = await requirePeladaAdmin(matchDayId);
+  const { session, matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
   if (!Number.isInteger(playerId)) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
   // `playerId` vem do cliente: quem tem conta ativa e ainda não entrou nesta
-  // pelada marca a si mesmo enquanto a lista está aberta; com ela fechada, o
+  // fut marca a si mesmo enquanto a lista está aberta; com ela fechada, o
   // admin inclui quem é elegível (ver podeDefinirPresencaPor em permissions.ts).
   const { permitido, alvo } = await avaliarMarcacao(session, matchDay, playerId);
   if (!permitido) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=precisa-confirmar`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=precisa-confirmar`);
   }
 
   // O aviso é o contrapeso da exceção da lista fechada, e por isso vai no MESMO
@@ -517,9 +522,9 @@ export async function definirPresenca(
         {
           playerId,
           type: "pelada_presenca_definida",
-          title: "Marcaram sua presença numa pelada",
-          body: `${session.player.name} incluiu você na pelada de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
-          href: `/pelada/${matchDayId}`,
+          title: "Marcaram sua presença num fut",
+          body: `${session.player.name} incluiu você no fut de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
+          href: `/fut/${matchDayId}`,
           dedupeKey: `presenca:${matchDayId}:${playerId}`,
         },
       ]);
@@ -528,8 +533,8 @@ export async function definirPresenca(
   if (houveAviso) agendarDespachoDePush(true);
 
   revalidatePath("/");
-  revalidatePath(`/pelada/${matchDayId}/gerenciar`);
-  revalidatePath(`/pelada/${matchDayId}`);
+  revalidatePath(`/fut/${matchDayId}/gerenciar`);
+  revalidatePath(`/fut/${matchDayId}`);
 }
 
 /**
@@ -541,13 +546,13 @@ export async function definirPresenca(
  * sabe nada.
  */
 export async function promoverDaEspera(matchDayId: number, playerId: number) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  const { matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
   if (!listaFechada(matchDay.status)) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=lista-aberta`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=lista-aberta`);
   }
   if (!Number.isInteger(playerId)) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
   await db.transaction((tx) => subirDaEspera(tx, matchDayId, playerId));
@@ -557,7 +562,7 @@ export async function promoverDaEspera(matchDayId: number, playerId: number) {
 /**
  * Registra que alguém confirmou e não apareceu — ou desfaz o registro.
  *
- * Só a partir do sorteio: antes dele a pelada nem aconteceu, e quem desistiu
+ * Só a partir do sorteio: antes dele o fut nem aconteceu, e quem desistiu
  * marca "Fora" sozinho. Tirar da vaga NÃO promove ninguém da espera, pelo mesmo
  * motivo do promoverDaEspera acima.
  *
@@ -565,13 +570,13 @@ export async function promoverDaEspera(matchDayId: number, playerId: number) {
  * (drawTeamsAction só lê `in`) e não conta presença no ranking (src/lib/stats.ts).
  */
 export async function marcarFalta(matchDayId: number, playerId: number, faltou: boolean) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  const { matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
   if (!listaFechada(matchDay.status)) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=lista-aberta`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=lista-aberta`);
   }
   if (!Number.isInteger(playerId)) {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
   await db.transaction((tx) => registrarFalta(tx, matchDayId, playerId, faltou));

@@ -6,7 +6,7 @@ import { Button } from "./button";
 /**
  * Compartilha um texto pronto no WhatsApp (convocação, times sorteados).
  *
- * Dois consumidores em telas diferentes da pelada, por isso mora no kit, como o
+ * Dois consumidores em telas diferentes do fut, por isso mora no kit, como o
  * CopyButton. No celular, `navigator.share` abre o sheet do sistema — a pessoa
  * escolhe o grupo e pronto. Onde não existe (desktop, WebView antiga), o wa.me
  * abre o WhatsApp Web com a mensagem montada. Cancelar o sheet é AbortError e

@@ -84,7 +84,7 @@ const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7;
  *
  * O segundo é **destravar a instalação nova**. Sem `ADMIN_PASSWORD` não sobrou
  * ninguém que pudesse gerar o primeiro convite: `createInvite` exige admin da
- * plataforma e `convidarParaPelada` exige jogador logado. O convite impresso
+ * plataforma e `convidarParaFut` exige jogador logado. O convite impresso
  * aqui é a única porta de entrada de um banco vazio.
  *
  * A senha nasce aleatória e é descartada — só se entra pelo convite, que para
@@ -176,15 +176,15 @@ async function materializarPlatformAdmins(conn: postgres.Sql) {
   }
 }
 
-// Pelada anterior a este modelo fica órfã mesmo — não há backfill de dono.
+// Fut anterior a este modelo fica órfão mesmo — não há backfill de dono.
 //
 // Houve aqui um passo que atribuía as órfãs ao primeiro admin da plataforma,
-// gateado por "nenhuma pelada tem criador". O gate não era one-shot de verdade:
+// gateado por "nenhum fut tem criador". O gate não era one-shot de verdade:
 // bastava sobrarem só órfãs (todas as com dono apagadas) para o build seguinte
 // redistribuir tudo de novo — e este arquivo roda a cada `npm run build`, fora
 // do journal do drizzle. O passo também não era necessário: o admin da
-// plataforma já administra pelada órfã por regra (ver podeGerenciarPelada em
-// src/lib/permissions.ts), e /admin/peladas rotula e conta as órfãs. Dono
+// plataforma já administra fut órfão por regra (ver podeGerenciarFut em
+// src/lib/permissions.ts), e /admin/futs rotula e conta os órfãos. Dono
 // inventado só apagaria essa informação.
 
 main().catch((error) => {

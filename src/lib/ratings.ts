@@ -19,7 +19,7 @@ import { companheirosPorJogador, gruposElegiveis, type EscalacaoRow } from "./li
 
 // Prazos do ciclo de avaliação, em dias. São gravados como timestamp absoluto na
 // criação de cada rodada/denúncia — mudar aqui não mexe no que já está em curso.
-export const PRAZO_AVALIACAO_DIAS = 2; // encerrar a pelada → avaliar
+export const PRAZO_AVALIACAO_DIAS = 2; // encerrar o fut → avaliar
 export const PRAZO_DENUNCIA_DIAS = 2; // apurar a rodada → reportar nota injusta
 export const PRAZO_ADMIN_DIAS = 3; // reportar → admin responder (silêncio = aceita)
 
@@ -34,11 +34,11 @@ export function prazoEmDias(dias: number) {
 
 /**
  * Recebe o executor porque roda tanto solto (telas de avaliação) quanto dentro
- * da transação de encerrar a pelada — e usar o `db` global de dentro de uma
+ * da transação de encerrar o fut — e usar o `db` global de dentro de uma
  * transação, com pool pequeno, é pedir para a query esperar a conexão que a
  * própria transação reservou (deadlock de encerramento que travava produção).
  */
-export async function getEscalacaoDaPelada(
+export async function getEscalacaoDoFut(
   exec: Executor,
   matchDayId: number,
 ): Promise<EscalacaoRow[]> {
@@ -61,7 +61,7 @@ export type Companheiro = {
 };
 
 /**
- * Quem o jogador avalia nesta pelada: todos que dividiram o lado com ele em
+ * Quem o jogador avalia neste fut: todos que dividiram o lado com ele em
  * algum jogo **e têm conta ativa**. Quem ainda não resgatou o convite jogou,
  * mas não é avaliado — e por isso nem aparece na lista. Vazio se ele não jogou
  * ou se nenhum companheiro tem conta.
@@ -70,7 +70,7 @@ export async function getCompanheiros(
   matchDayId: number,
   playerId: number,
 ): Promise<Companheiro[]> {
-  const companheiros = companheirosPorJogador(await getEscalacaoDaPelada(db, matchDayId));
+  const companheiros = companheirosPorJogador(await getEscalacaoDoFut(db, matchDayId));
   const ids = [...(companheiros.get(playerId) ?? [])];
   if (ids.length === 0) return [];
 
@@ -90,7 +90,7 @@ export async function getCompanheiros(
 export type RaterElegivel = { playerId: number; userId: number };
 
 /**
- * Quem pode avaliar numa pelada: jogou, tem conta ativa e dividiu o lado com
+ * Quem pode avaliar num fut: jogou, tem conta ativa e dividiu o lado com
  * gente com conta suficiente para o grupo chegar a `MIN_GRUPO_AVALIACAO`. Vira
  * o denominador congelado do "todos já avaliaram".
  *
@@ -98,14 +98,14 @@ export type RaterElegivel = { playerId: number; userId: number };
  * cujos companheiros estejam todos com o convite pendente entraria como
  * avaliador de uma lista vazia, sem ter o que enviar — e a rodada nunca
  * fecharia por completude. O segundo é o que a abertura do "qualquer um cria
- * pelada" exigiu: com o mínimo em 2, duas contas combinadas fabricavam nota
+ * fut" exigiu: com o mínimo em 2, duas contas combinadas fabricavam nota
  * (ver src/lib/lineup.ts).
  */
 export async function getRatersElegiveis(
   exec: Executor,
   matchDayId: number,
 ): Promise<RaterElegivel[]> {
-  const companheiros = companheirosPorJogador(await getEscalacaoDaPelada(exec, matchDayId));
+  const companheiros = companheirosPorJogador(await getEscalacaoDoFut(exec, matchDayId));
   const jogaram = [...companheiros.keys()];
   if (jogaram.length === 0) return [];
 

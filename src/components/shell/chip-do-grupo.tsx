@@ -26,13 +26,13 @@ export function ChipDoGrupo({
    * Se existe painel para abrir. Sem grupo nenhum não há o que escolher — abrir
    * um painel de uma opção só seria a mesma promessa vazia que a seta fazia
    * antes, então o chip vira o atalho para o hub, agora sem seta. O corte é em
-   * zero e não em um: com um grupo, alternar para "todas as peladas" ainda é
+   * zero e não em um: com um grupo, alternar para "todos os futs" ainda é
    * uma escolha de verdade.
    */
   temSeletor: boolean;
   className?: string;
 }) {
-  const rotulo = grupo ? grupo.name : "Todas as peladas";
+  const rotulo = grupo ? grupo.name : "Todos os futs";
 
   const caixa = cx(
     "flex min-w-0 items-center gap-2.5 rounded-ctl border border-line bg-surface px-2.5 py-1.5 text-left transition-colors hover:border-line-hover hover:bg-surface-2",

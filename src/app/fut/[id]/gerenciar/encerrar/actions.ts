@@ -7,11 +7,11 @@ import { db, type Executor } from "@/db";
 import { attendances, gamePlayers, games, matchDays } from "@/db/schema";
 import { formatDate } from "@/lib/format";
 import { notificar } from "@/lib/notifications";
-import { avaliarMarcacao, entrarNaLista, mereceAviso, travarPelada } from "@/lib/presenca";
+import { avaliarMarcacao, entrarNaLista, mereceAviso, travarFut } from "@/lib/presenca";
 import { abrirRodada } from "@/lib/ratings-engine";
-import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
+import { requireFutAdmin } from "@/lib/require-fut-admin";
 
-// A escalação só é editável enquanto a pelada não foi encerrada. Depois da
+// A escalação só é editável enquanto o fut não foi encerrado. Depois da
 // confirmação ela é imutável — é ela que define quem avalia quem, e mexer
 // nela invalidaria avaliações já enviadas.
 async function assertEditavel(matchDayId: number, gameId: number) {
@@ -21,20 +21,20 @@ async function assertEditavel(matchDayId: number, gameId: number) {
     .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
     .where(and(eq(games.id, gameId), eq(games.matchDayId, matchDayId)));
 
-  if (!row) redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  if (!row) redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   if (row.status === "finished") {
-    redirect(`/pelada/${matchDayId}/gerenciar?erro=escalacao-travada`);
+    redirect(`/fut/${matchDayId}/gerenciar?erro=escalacao-travada`);
   }
 }
 
 function revalidar(matchDayId: number) {
-  revalidatePath(`/pelada/${matchDayId}/gerenciar/encerrar`);
-  revalidatePath(`/pelada/${matchDayId}/gerenciar`);
-  revalidatePath(`/pelada/${matchDayId}`);
+  revalidatePath(`/fut/${matchDayId}/gerenciar/encerrar`);
+  revalidatePath(`/fut/${matchDayId}/gerenciar`);
+  revalidatePath(`/fut/${matchDayId}`);
 }
 
 export async function moverLado(matchDayId: number, gameId: number, playerId: number) {
-  await requirePeladaAdmin(matchDayId);
+  await requireFutAdmin(matchDayId);
   await assertEditavel(matchDayId, gameId);
 
   await db
@@ -44,10 +44,10 @@ export async function moverLado(matchDayId: number, gameId: number, playerId: nu
   revalidar(matchDayId);
 }
 
-// Tirar do jogo não tira a presença: dá para ter ido à pelada e não ter jogado
+// Tirar do jogo não tira a presença: dá para ter ido ao fut e não ter jogado
 // aquela partida.
 export async function removerDoJogo(matchDayId: number, gameId: number, playerId: number) {
-  await requirePeladaAdmin(matchDayId);
+  await requireFutAdmin(matchDayId);
   await assertEditavel(matchDayId, gameId);
 
   await db
@@ -64,19 +64,19 @@ export async function incluirNoJogo(
   side: "A" | "B",
   playerId: number,
 ) {
-  const { session, matchDay } = await requirePeladaAdmin(matchDayId);
+  const { session, matchDay } = await requireFutAdmin(matchDayId);
   // A mesma guarda das actions irmãs: id não-inteiro (ou lado inventado) morre
   // aqui com o banner, e não como erro cru do banco no meio da transação.
   if (!Number.isInteger(gameId) || !Number.isInteger(playerId) || (side !== "A" && side !== "B")) {
-    redirect(`/pelada/${matchDayId}/gerenciar/encerrar?erro=dados-invalidos`);
+    redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=dados-invalidos`);
   }
   await assertEditavel(matchDayId, gameId);
   // Escalar marca presença junto, então vale o mesmo limite do definirPresenca:
-  // quem tem conta ativa e nunca entrou nesta pelada só é escalado por outro se
+  // quem tem conta ativa e nunca entrou neste fut só é escalado por outro se
   // for elegível — e aqui a lista está sempre fechada, porque já existe jogo.
   const { permitido, alvo } = await avaliarMarcacao(session, matchDay, playerId);
   if (!permitido) {
-    redirect(`/pelada/${matchDayId}/gerenciar/encerrar?erro=precisa-confirmar`);
+    redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=precisa-confirmar`);
   }
   const avisar = mereceAviso(session, playerId, alvo);
 
@@ -98,9 +98,9 @@ export async function incluirNoJogo(
         {
           playerId,
           type: "pelada_presenca_definida",
-          title: "Marcaram sua presença numa pelada",
-          body: `${session.player.name} escalou você na pelada de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
-          href: `/pelada/${matchDayId}`,
+          title: "Marcaram sua presença num fut",
+          body: `${session.player.name} escalou você no fut de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
+          href: `/fut/${matchDayId}`,
           dedupeKey: `presenca:${matchDayId}:${playerId}`,
         },
       ]);
@@ -115,7 +115,7 @@ export async function incluirNoJogo(
  * A escalação por jogo (`game_players`) é o registro mais fiel de quem esteve
  * na quadra: ela sobrevive a troca de colete, a quem chegou atrasado e a quem o
  * admin incluiu na mão. Se alguém está `in` e não aparece em nenhum jogo da
- * pelada, ou não foi, ou o admin esqueceu de desmarcar — e nos dois casos contar
+ * fut, ou não foi, ou o admin esqueceu de desmarcar — e nos dois casos contar
  * presença é mentira no ranking.
  *
  * Roda no commit do encerramento, e não antes, porque até ali a escalação ainda
@@ -124,8 +124,8 @@ export async function incluirNoJogo(
  * confirmar — e é lá que se conserta, incluindo a pessoa no jogo.
  *
  * `totalDeJogos` vem de quem chama porque a consulta já foi feita. E ele é a
- * guarda que importa: **pelada sem jogo lançado não marca falta em ninguém**.
- * Sem isso, encerrar uma pelada em que o placar não foi registrado zeraria a
+ * guarda que importa: **fut sem jogo lançado não marca falta em ninguém**.
+ * Sem isso, encerrar um fut em que o placar não foi registrado zeraria a
  * presença de todo mundo que estava lá.
  */
 async function marcarFaltasAutomaticas(
@@ -159,8 +159,8 @@ async function marcarFaltasAutomaticas(
 }
 
 export async function confirmarEncerramento(matchDayId: number) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
-  if (matchDay.status === "finished") redirect(`/pelada/${matchDayId}/gerenciar`);
+  const { matchDay } = await requireFutAdmin(matchDayId);
+  if (matchDay.status === "finished") redirect(`/fut/${matchDayId}/gerenciar`);
 
   // Um jogo sem gente dos dois lados não tem placar que faça sentido, nem
   // companheiro para avaliar.
@@ -176,18 +176,18 @@ export async function confirmarEncerramento(matchDayId: number) {
     .groupBy(games.id);
 
   if (lados.some((l) => l.ladoA === 0 || l.ladoB === 0)) {
-    redirect(`/pelada/${matchDayId}/gerenciar/encerrar?erro=jogo-sem-time`);
+    redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=jogo-sem-time`);
   }
 
   // Encerrar com a escalação confirmada é o gatilho da avaliação, e as duas
-  // coisas têm que ser o mesmo commit: uma pelada que ficasse `finished` sem
+  // coisas têm que ser o mesmo commit: um fut que ficasse `finished` sem
   // rodada seria um beco sem saída — a checagem de `finished` acima impede repetir a ação, o
-  // varredor só fecha rodada que já existe, e não existe "reabrir pelada".
+  // varredor só fecha rodada que já existe, e não existe "reabrir fut".
   await db.transaction(async (tx) => {
     // O mesmo lock das escritas da lista: sem ele, uma inclusão concorrente
     // passa entre o marcarFaltasAutomaticas e o commit — e entra `in` numa
-    // pelada que acabou de encerrar, sem ter jogado.
-    await travarPelada(tx, matchDayId);
+    // fut que acabou de encerrar, sem ter jogado.
+    await travarFut(tx, matchDayId);
     await marcarFaltasAutomaticas(tx, matchDayId, lados.length);
 
     await tx
@@ -199,9 +199,9 @@ export async function confirmarEncerramento(matchDayId: number) {
   });
 
   revalidatePath("/");
-  revalidatePath("/peladas");
+  revalidatePath("/futs");
   revalidatePath("/artilharia");
   revalidatePath("/rankings");
   revalidar(matchDayId);
-  redirect(`/pelada/${matchDayId}/gerenciar`);
+  redirect(`/fut/${matchDayId}/gerenciar`);
 }

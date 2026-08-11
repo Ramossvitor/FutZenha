@@ -52,12 +52,12 @@ describe("payloadDePush", () => {
 
   it("passa o corpo normal intacto", () => {
     const { body } = JSON.parse(
-      payloadDePush({ title: "Pelada marcada", body: "13/08, em Quadra do Zé", href: "/pelada/7" }),
+      payloadDePush({ title: "Fut marcado", body: "13/08, em Quadra do Zé", href: "/fut/7" }),
     );
     expect(body).toBe("13/08, em Quadra do Zé");
   });
 
-  // O corpo sai de campo livre (`location`) e o aviso de pelada avulsa vai para
+  // O corpo sai de campo livre (`location`) e o aviso de fut avulso vai para
   // TODA conta ativa: sem isto, qualquer jogador escreve o que quiser — em
   // quantas linhas quiser — na tela de bloqueio de todo mundo.
   it("achata quebras de linha e caracteres de controle num espaço só", () => {

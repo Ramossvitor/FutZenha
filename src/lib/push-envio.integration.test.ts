@@ -58,9 +58,9 @@ async function avisar(jogador: Player, chave = "teste:1") {
       {
         playerId: jogador.id,
         type: "pelada_criada",
-        title: "Pelada marcada",
+        title: "Fut marcado",
         body: "quinta, 20h",
-        href: "/pelada/1",
+        href: "/fut/1",
         dedupeKey: chave,
       },
     ]),
@@ -102,7 +102,7 @@ describe("despacharPush", () => {
     expect(resultado).toEqual({ ...zerado, enviadas: 2, ignoradasPorIdade: 0 });
     expect(await pendentes()).toHaveLength(0);
     const payload = JSON.parse(String(enviar.mock.calls[0][1]));
-    expect(payload).toMatchObject({ title: "Pelada marcada", href: "/pelada/1" });
+    expect(payload).toMatchObject({ title: "Fut marcado", href: "/fut/1" });
 
     enviar.mockClear();
     expect(await despacharPush()).toEqual({ ...zerado, ignoradasPorIdade: 0 });
@@ -129,7 +129,7 @@ describe("despacharPush", () => {
         JSON.parse(String(payload)).href,
       ]),
     );
-    expect(porEndpoint.get("https://fcm.googleapis.com/fcm/send/device-ana")).toBe("/pelada/1");
+    expect(porEndpoint.get("https://fcm.googleapis.com/fcm/send/device-ana")).toBe("/fut/1");
     expect(porEndpoint.size).toBe(2);
     // Duas notificações × dois devices seriam 4 chamadas — o escopo é o que
     // mantém em 2.
@@ -200,7 +200,7 @@ describe("despacharPush", () => {
     await db.insert(notifications).values({
       playerId: jogador.id,
       type: "pelada_criada",
-      title: "Pelada de antigamente",
+      title: "Fut de antigamente",
       dedupeKey: "teste:velho",
       createdAt: sql`now() - interval '3 days'`,
     });
@@ -210,7 +210,7 @@ describe("despacharPush", () => {
 
     expect(resultado).toEqual({ ...zerado, enviadas: 1, ignoradasPorIdade: 1 });
     expect(await pendentes()).toHaveLength(0);
-    expect(JSON.parse(String(enviar.mock.calls[0][1])).title).toBe("Pelada marcada");
+    expect(JSON.parse(String(enviar.mock.calls[0][1])).title).toBe("Fut marcado");
   });
 
   it("sem assinatura nenhuma, o claim marca mesmo assim — at-most-once", async () => {
@@ -281,7 +281,7 @@ describe("agendarDespachoDePush", () => {
     expect(await pendentes()).toHaveLength(1);
 
     // É para isto que serve o `true` nas actions sensíveis a tempo (vaga
-    // aberta, pelada nova): o aviso sai nesta invocação, não daqui a um minuto.
+    // aberta, fut novo): o aviso sai nesta invocação, não daqui a um minuto.
     agendarDespachoDePush(true);
     await flushAfter();
     expect(enviar).toHaveBeenCalledTimes(2);
@@ -301,7 +301,7 @@ describe("agendarDespachoDePush", () => {
           playerId: jogador.id,
           type: "pelada_times_sorteados",
           title: "Times sorteados",
-          href: "/pelada/9",
+          href: "/fut/9",
           dedupeKey: "pelada:9:sorteada",
         },
       ]),
@@ -310,7 +310,7 @@ describe("agendarDespachoDePush", () => {
     await flushAfter();
 
     expect(enviar).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(String(enviar.mock.calls[0][1])).href).toBe("/pelada/9");
+    expect(JSON.parse(String(enviar.mock.calls[0][1])).href).toBe("/fut/9");
   });
 
   it("sem chaves não agenda nada", async () => {

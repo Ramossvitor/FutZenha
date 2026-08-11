@@ -9,7 +9,7 @@ import { siteUrl } from "../lib/site-url";
 import * as schema from "./schema";
 
 // Este script APAGA todas as tabelas antes de popular. A trava evita destruir a
-// pelada real por uma DATABASE_URL de produção esquecida no terminal.
+// fut real por uma DATABASE_URL de produção esquecida no terminal.
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error("DATABASE_URL não definida — o seed só roda contra o banco local.");
@@ -159,7 +159,7 @@ async function seedPastMatchDay(
   return matchDay;
 }
 
-// Abre a rodada de avaliação de uma pelada já encerrada. Repete os inserts do
+// Abre a rodada de avaliação de um fut já encerrado. Repete os inserts do
 // abrirRodada() em vez de importá-lo porque src/lib/ratings-engine.ts é
 // "server-only" e não carrega num script tsx solto. A regra que importa —
 // quem é companheiro de quem — vem do módulo puro compartilhado.
@@ -234,12 +234,12 @@ async function main() {
   console.log(`Inserindo ${seedPlayers.length} jogadores...`);
   const inserted = await db.insert(schema.players).values(seedPlayers).returning();
 
-  console.log("Criando 3 peladas passadas encerradas...");
+  console.log("Criando 3 futs passados encerrados...");
   await seedPastMatchDay(inserted, wednesdayShift(-3), 0);
   await seedPastMatchDay(inserted, wednesdayShift(-2), 5);
-  const ultimaPelada = await seedPastMatchDay(inserted, wednesdayShift(-1), 9);
+  const ultimoFut = await seedPastMatchDay(inserted, wednesdayShift(-1), 9);
 
-  console.log("Criando a próxima pelada com algumas presenças...");
+  console.log("Criando o próximo fut com algumas presenças...");
   const [next] = await db
     .insert(schema.matchDays)
     .values({
@@ -264,14 +264,14 @@ async function main() {
   console.log("Criando contas demo e um convite pendente...");
   const byName = new Map(inserted.map((p) => [p.name, p]));
 
-  // As contas demo vão para quatro jogadores do MESMO lado da última pelada.
+  // As contas demo vão para quatro jogadores do MESMO lado do último fut.
   // A avaliação exige grupo de 3 com conta (ver MIN_GRUPO_AVALIACAO): espalhar
   // as contas por times diferentes faria o seed nascer sem rodada nenhuma.
   const [ladoDaUltima] = await db
     .select({ playerId: schema.gamePlayers.playerId })
     .from(schema.gamePlayers)
     .innerJoin(schema.games, eq(schema.gamePlayers.gameId, schema.games.id))
-    .where(eq(schema.games.matchDayId, ultimaPelada.id))
+    .where(eq(schema.games.matchDayId, ultimoFut.id))
     .limit(1);
   const mesmoLado = await db
     .select({ playerId: schema.gamePlayers.playerId })
@@ -279,11 +279,11 @@ async function main() {
     .innerJoin(schema.games, eq(schema.gamePlayers.gameId, schema.games.id))
     .where(
       and(
-        eq(schema.games.matchDayId, ultimaPelada.id),
+        eq(schema.games.matchDayId, ultimoFut.id),
         eq(
           schema.gamePlayers.side,
           sql`(select side from game_players gp join games g on g.id = gp.game_id
-               where g.match_day_id = ${ultimaPelada.id} and gp.player_id = ${ladoDaUltima.playerId}
+               where g.match_day_id = ${ultimoFut.id} and gp.player_id = ${ladoDaUltima.playerId}
                limit 1)`,
         ),
       ),
@@ -305,8 +305,8 @@ async function main() {
   const nomePorId = new Map(inserted.map((p) => [p.id, p.name]));
   const demo = usernames.map((u, i) => `${u} (${nomePorId.get(mesmoLado[i].playerId)})`);
 
-  // Toda pelada precisa de um admin: sem isso, o ambiente local nasce só com
-  // peladas órfãs e não dá para exercitar o papel de admin de pelada.
+  // Todo fut precisa de um admin: sem isso, o ambiente local nasce só com
+  // futs órfãos e não dá para exercitar o papel de admin de fut.
   await db
     .update(schema.matchDays)
     .set({ createdByPlayerId: mesmoLado[0].playerId })
@@ -321,10 +321,10 @@ async function main() {
   console.log(`Admin da plataforma: ${usernames[0]}`);
   console.log(`Convite de teste (Rafael Torres): ${siteUrl()}/convite/${inviteToken}`);
 
-  const rodada = await seedRatingRound(ultimaPelada.id);
+  const rodada = await seedRatingRound(ultimoFut.id);
   if (rodada) {
     console.log(
-      `Rodada de avaliação #${rodada.round.id} aberta na pelada de ${ultimaPelada.date} ` +
+      `Rodada de avaliação #${rodada.round.id} aberta no fut de ${ultimoFut.date} ` +
         `(${rodada.raters} avaliadores): ${siteUrl()}/avaliar/${rodada.round.id}`,
     );
   }

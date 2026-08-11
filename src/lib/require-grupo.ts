@@ -2,7 +2,7 @@ import "server-only";
 import { notFound, redirect } from "next/navigation";
 import type { Group } from "@/db/schema";
 import {
-  podeCriarPeladaNoGrupo,
+  podeCriarFutNoGrupo,
   podeGerenciarGrupo,
   podeVerGrupo,
   podeVerRankingDoGrupo,
@@ -18,7 +18,7 @@ export type GrupoContexto = { session: Session; grupo: Group; papel: Vinculo };
  * pode falhar.
  *
  * Grupo inexistente e grupo que o ator não enxerga dão o **mesmo 404** — mesma
- * decisão de `requirePeladaAdmin`. Aqui ela pesa mais: sem isso, varrer
+ * decisão de `requireFutAdmin`. Aqui ela pesa mais: sem isso, varrer
  * `/grupo/1`, `/grupo/2`, ... distinguiria "não existe" de "existe e é
  * privado", que já é meio vazamento — e a diferença entre 403 e 404 é
  * exatamente o que um script precisa para mapear a plataforma.
@@ -55,15 +55,15 @@ export async function requireGrupoMembro(groupId: number): Promise<GrupoContexto
 }
 
 /**
- * Exige quem cria pelada e convida: admin ou organizador do grupo.
+ * Exige quem cria fut e convida: admin ou organizador do grupo.
  *
- * Um teste só, e não o `&&` de `podeCriarPeladaNoGrupo` com
+ * Um teste só, e não o `&&` de `podeCriarFutNoGrupo` com
  * `podeConvidarParaGrupo`: os dois predicados têm o mesmo corpo, então o segundo
  * nunca discordava do primeiro — só dava a impressão de que poderia.
  */
 export async function requireGrupoOrganizador(groupId: number): Promise<GrupoContexto> {
   const ctx = await carregar(groupId);
-  if (!podeCriarPeladaNoGrupo(ator(ctx.session), ctx.papel)) notFound();
+  if (!podeCriarFutNoGrupo(ator(ctx.session), ctx.papel)) notFound();
   return ctx;
 }
 

@@ -8,7 +8,7 @@ import { requirePlayer } from "@/lib/require-player";
 const mensagens = {
   registrado: undefined,
   "ja-votou": "Você já votou nesta votação, e o voto é definitivo.",
-  "nao-elegivel": "Você não jogou esta pelada, então não vota nela.",
+  "nao-elegivel": "Você não jogou este fut, então não vota nele.",
   encerrada: "Esta votação já foi encerrada.",
 } as const;
 
@@ -20,7 +20,7 @@ export async function votar(voteId: number, aFavor: boolean): Promise<VotarState
 
   revalidatePath(`/votacao/${voteId}`);
   revalidatePath("/avaliar");
-  revalidatePath("/peladas");
+  revalidatePath("/futs");
   revalidatePath("/rankings");
 
   const erro = mensagens[resultado];

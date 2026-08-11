@@ -6,7 +6,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { enviarAvaliacoes } from "@/app/avaliar/[id]/actions";
-import { confirmarEncerramento } from "@/app/pelada/[id]/gerenciar/encerrar/actions";
+import { confirmarEncerramento } from "@/app/fut/[id]/gerenciar/encerrar/actions";
 import { db } from "@/db";
 import {
   attendances,
@@ -32,26 +32,26 @@ import {
   confirmarPresenca,
   criarJogador,
   criarJogadorComConta,
-  criarPelada,
+  criarFut,
   logarComo,
 } from "@/test/fixtures";
 import { esperaRedirect } from "@/test/navigation-fake";
 
 let sequenciaDeTimes = 0;
 
-async function criarJogo(pelada: MatchDay, ladoA: Player[], ladoB: Player[]): Promise<Game> {
+async function criarJogo(fut: MatchDay, ladoA: Player[], ladoB: Player[]): Promise<Game> {
   sequenciaDeTimes += 1;
   const [timeA] = await db
     .insert(teams)
-    .values({ matchDayId: pelada.id, name: `Time ${sequenciaDeTimes}A`, sortOrder: 0 })
+    .values({ matchDayId: fut.id, name: `Time ${sequenciaDeTimes}A`, sortOrder: 0 })
     .returning();
   const [timeB] = await db
     .insert(teams)
-    .values({ matchDayId: pelada.id, name: `Time ${sequenciaDeTimes}B`, sortOrder: 1 })
+    .values({ matchDayId: fut.id, name: `Time ${sequenciaDeTimes}B`, sortOrder: 1 })
     .returning();
   const [jogo] = await db
     .insert(games)
-    .values({ matchDayId: pelada.id, teamAId: timeA.id, teamBId: timeB.id })
+    .values({ matchDayId: fut.id, teamAId: timeA.id, teamBId: timeB.id })
     .returning();
   await db.insert(gamePlayers).values([
     ...ladoA.map((p) => ({ gameId: jogo.id, playerId: p.id, side: "A" as const })),
@@ -90,11 +90,11 @@ function formularioDeNotas(companheiros: { playerId: number }[], estrelas: numbe
   return form;
 }
 
-async function rodadaDaPelada(pelada: MatchDay) {
+async function rodadaDoFut(fut: MatchDay) {
   const [rodada] = await db
     .select()
     .from(ratingRounds)
-    .where(eq(ratingRounds.matchDayId, pelada.id));
+    .where(eq(ratingRounds.matchDayId, fut.id));
   return rodada;
 }
 
@@ -106,11 +106,11 @@ async function notaDoJogador(jogador: Player): Promise<number> {
   return linha.skill;
 }
 
-async function statusDaPresenca(pelada: MatchDay, jogador: Player): Promise<string> {
+async function statusDaPresenca(fut: MatchDay, jogador: Player): Promise<string> {
   const [linha] = await db
     .select({ status: attendances.status })
     .from(attendances)
-    .where(and(eq(attendances.matchDayId, pelada.id), eq(attendances.playerId, jogador.id)));
+    .where(and(eq(attendances.matchDayId, fut.id), eq(attendances.playerId, jogador.id)));
   return linha.status;
 }
 
@@ -120,18 +120,18 @@ async function statusDaPresenca(pelada: MatchDay, jogador: Player): Promise<stri
  * regra para cá faria este teste comparar a cópia com o servidor, e a prévia de
  * verdade poderia derivar com o teste verde.
  */
-async function previaViraFalta(pelada: MatchDay): Promise<number[]> {
-  const jogosDaPelada = await db
+async function previaViraFalta(fut: MatchDay): Promise<number[]> {
+  const jogosDoFut = await db
     .select({ id: games.id })
     .from(games)
-    .where(eq(games.matchDayId, pelada.id));
+    .where(eq(games.matchDayId, fut.id));
 
   const confirmados = await db
     .select({ playerId: attendances.playerId })
     .from(attendances)
-    .where(and(eq(attendances.matchDayId, pelada.id), eq(attendances.status, "in")));
+    .where(and(eq(attendances.matchDayId, fut.id), eq(attendances.status, "in")));
   const escalacao =
-    jogosDaPelada.length === 0
+    jogosDoFut.length === 0
       ? []
       : await db
           .select({ playerId: gamePlayers.playerId })
@@ -139,12 +139,12 @@ async function previaViraFalta(pelada: MatchDay): Promise<number[]> {
           .where(
             inArray(
               gamePlayers.gameId,
-              jogosDaPelada.map((g) => g.id),
+              jogosDoFut.map((g) => g.id),
             ),
           );
 
   return quemViraFalta({
-    temJogo: jogosDaPelada.length > 0,
+    temJogo: jogosDoFut.length > 0,
     confirmados: confirmados.map((a) => a.playerId),
     escalados: escalacao.map((e) => e.playerId),
   }).sort((a, b) => a - b);
@@ -152,15 +152,15 @@ async function previaViraFalta(pelada: MatchDay): Promise<number[]> {
 
 describe("abrirRodada", () => {
   it("cria a rodada com os raters elegíveis e notifica cada um", async () => {
-    const pelada = await criarPelada();
+    const fut = await criarFut();
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
-    await criarJogo(pelada, timeA.jogadores, timeB.jogadores);
+    await criarJogo(fut, timeA.jogadores, timeB.jogadores);
 
-    const rodadaId = await abrirRodada(db, pelada.id);
+    const rodadaId = await abrirRodada(db, fut.id);
     expect(rodadaId).not.toBeNull();
 
-    const rodada = await rodadaDaPelada(pelada);
+    const rodada = await rodadaDoFut(fut);
     expect(rodada.id).toBe(rodadaId);
     expect(rodada.status).toBe("open");
 
@@ -182,21 +182,21 @@ describe("abrirRodada", () => {
     expect(avisos.map((a) => a.href)).toContain(`/avaliar/${rodada.id}`);
   });
 
-  it("abrir duas vezes na mesma pelada não duplica rodada, raters nem avisos", async () => {
-    const pelada = await criarPelada();
+  it("abrir duas vezes no mesmo fut não duplica rodada, raters nem avisos", async () => {
+    const fut = await criarFut();
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
-    await criarJogo(pelada, timeA.jogadores, timeB.jogadores);
+    await criarJogo(fut, timeA.jogadores, timeB.jogadores);
 
-    const primeira = await abrirRodada(db, pelada.id);
-    const segunda = await abrirRodada(db, pelada.id);
+    const primeira = await abrirRodada(db, fut.id);
+    const segunda = await abrirRodada(db, fut.id);
     expect(primeira).not.toBeNull();
     expect(segunda).toBeNull();
 
     const rodadas = await db
       .select()
       .from(ratingRounds)
-      .where(eq(ratingRounds.matchDayId, pelada.id));
+      .where(eq(ratingRounds.matchDayId, fut.id));
     expect(rodadas).toHaveLength(1);
     const raters = await db
       .select()
@@ -211,11 +211,11 @@ describe("abrirRodada", () => {
   });
 
   it("fechar a rodada grava skill_history, move players.skill e notifica quem mudou", async () => {
-    const pelada = await criarPelada();
+    const fut = await criarFut();
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
-    await criarJogo(pelada, timeA.jogadores, timeB.jogadores);
-    const rodadaId = (await abrirRodada(db, pelada.id))!;
+    await criarJogo(fut, timeA.jogadores, timeB.jogadores);
+    const rodadaId = (await abrirRodada(db, fut.id))!;
 
     await avaliarTrio(rodadaId, timeA.jogadores, 5);
     await avaliarTrio(rodadaId, timeB.jogadores, 1);
@@ -223,7 +223,7 @@ describe("abrirRodada", () => {
     const fechou = await db.transaction((tx) => fecharRodada(tx, rodadaId, "admin"));
     expect(fechou).toBe(true);
 
-    const rodada = await rodadaDaPelada(pelada);
+    const rodada = await rodadaDoFut(fut);
     expect(rodada.status).toBe("closed");
     expect(rodada.closeReason).toBe("admin");
     expect(rodada.closedAt).not.toBeNull();
@@ -259,19 +259,19 @@ describe("abrirRodada", () => {
 
 describe("enviarAvaliacoes", () => {
   async function montarRodadaComTrio() {
-    const pelada = await criarPelada();
+    const fut = await criarFut();
     const trio = await criarTrioComConta();
     const semConta = [await criarJogador(), await criarJogador(), await criarJogador()];
-    await criarJogo(pelada, trio.jogadores, semConta);
-    const rodadaId = (await abrirRodada(db, pelada.id))!;
-    return { pelada, trio, rodadaId };
+    await criarJogo(fut, trio.jogadores, semConta);
+    const rodadaId = (await abrirRodada(db, fut.id))!;
+    return { fut, trio, rodadaId };
   }
 
   it("com sessão logada grava as notas e marca o envio", async () => {
-    const { pelada, trio, rodadaId } = await montarRodadaComTrio();
+    const { fut, trio, rodadaId } = await montarRodadaComTrio();
 
     await logarComo(trio.contas[0]);
-    const companheiros = await getCompanheiros(pelada.id, trio.jogadores[0].id);
+    const companheiros = await getCompanheiros(fut.id, trio.jogadores[0].id);
     expect(companheiros).toHaveLength(2);
 
     const resultado = await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 4));
@@ -296,20 +296,20 @@ describe("enviarAvaliacoes", () => {
     expect(rater.submittedAt).not.toBeNull();
 
     // Faltam dois avaliadores: a rodada continua aberta.
-    expect((await rodadaDaPelada(pelada)).status).toBe("open");
+    expect((await rodadaDoFut(fut)).status).toBe("open");
   });
 
   it("quando o último avaliador envia, a rodada fecha e as notas saem", async () => {
-    const { pelada, trio, rodadaId } = await montarRodadaComTrio();
+    const { fut, trio, rodadaId } = await montarRodadaComTrio();
 
     for (const [i, conta] of trio.contas.entries()) {
       await logarComo(conta);
-      const companheiros = await getCompanheiros(pelada.id, trio.jogadores[i].id);
+      const companheiros = await getCompanheiros(fut.id, trio.jogadores[i].id);
       const resultado = await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 4));
       expect(resultado).toEqual({ success: true });
     }
 
-    const rodada = await rodadaDaPelada(pelada);
+    const rodada = await rodadaDoFut(fut);
     expect(rodada.status).toBe("closed");
     expect(rodada.closeReason).toBe("todos_avaliaram");
 
@@ -338,25 +338,25 @@ describe("enviarAvaliacoes", () => {
 });
 
 describe("confirmarEncerramento", () => {
-  it("admin da pelada encerra e abre a rodada de avaliação junto", async () => {
+  it("admin do fut encerra e abre a rodada de avaliação junto", async () => {
     const admin = await criarJogadorComConta();
-    const pelada = await criarPelada({ createdByPlayerId: admin.jogador.id });
+    const fut = await criarFut({ createdByPlayerId: admin.jogador.id });
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
-    await criarJogo(pelada, timeA.jogadores, timeB.jogadores);
+    await criarJogo(fut, timeA.jogadores, timeB.jogadores);
     for (const [i, j] of [...timeA.jogadores, ...timeB.jogadores].entries()) {
-      await confirmarPresenca(pelada, j, { minutosAtras: 60 - i * 5 });
+      await confirmarPresenca(fut, j, { minutosAtras: 60 - i * 5 });
     }
 
     await logarComo(admin.conta);
-    const destino = await esperaRedirect(confirmarEncerramento(pelada.id));
-    expect(destino).toBe(`/pelada/${pelada.id}/gerenciar`);
+    const destino = await esperaRedirect(confirmarEncerramento(fut.id));
+    expect(destino).toBe(`/fut/${fut.id}/gerenciar`);
 
-    const [encerrada] = await db.select().from(matchDays).where(eq(matchDays.id, pelada.id));
+    const [encerrada] = await db.select().from(matchDays).where(eq(matchDays.id, fut.id));
     expect(encerrada.status).toBe("finished");
     expect(encerrada.finishedAt).not.toBeNull();
 
-    const rodada = await rodadaDaPelada(pelada);
+    const rodada = await rodadaDoFut(fut);
     expect(rodada.status).toBe("open");
     const raters = await db
       .select()
@@ -369,7 +369,7 @@ describe("confirmarEncerramento", () => {
 describe("faltas automáticas no encerramento", () => {
   it("quem confirmou e não entrou em nenhum jogo vira falta; escalado, espera e fora ficam como estão", async () => {
     const admin = await criarJogadorComConta();
-    const pelada = await criarPelada({ createdByPlayerId: admin.jogador.id });
+    const fut = await criarFut({ createdByPlayerId: admin.jogador.id });
     const escalado1 = await criarJogador();
     const escalado2 = await criarJogador();
     const soNoSegundoJogo = await criarJogador();
@@ -377,105 +377,105 @@ describe("faltas automáticas no encerramento", () => {
     const espera = await criarJogador();
     const fora = await criarJogador();
 
-    await criarJogo(pelada, [escalado1], [escalado2]);
-    await criarJogo(pelada, [soNoSegundoJogo], [escalado1]);
+    await criarJogo(fut, [escalado1], [escalado2]);
+    await criarJogo(fut, [soNoSegundoJogo], [escalado1]);
 
-    await confirmarPresenca(pelada, escalado1, { minutosAtras: 60 });
-    await confirmarPresenca(pelada, escalado2, { minutosAtras: 50 });
-    await confirmarPresenca(pelada, soNoSegundoJogo, { minutosAtras: 40 });
-    await confirmarPresenca(pelada, sumido, { minutosAtras: 30 });
-    await confirmarPresenca(pelada, espera, { status: "waitlist", minutosAtras: 20 });
-    await confirmarPresenca(pelada, fora, { status: "out" });
+    await confirmarPresenca(fut, escalado1, { minutosAtras: 60 });
+    await confirmarPresenca(fut, escalado2, { minutosAtras: 50 });
+    await confirmarPresenca(fut, soNoSegundoJogo, { minutosAtras: 40 });
+    await confirmarPresenca(fut, sumido, { minutosAtras: 30 });
+    await confirmarPresenca(fut, espera, { status: "waitlist", minutosAtras: 20 });
+    await confirmarPresenca(fut, fora, { status: "out" });
 
     await logarComo(admin.conta);
-    await esperaRedirect(confirmarEncerramento(pelada.id));
+    await esperaRedirect(confirmarEncerramento(fut.id));
 
-    expect(await statusDaPresenca(pelada, sumido)).toBe("no_show");
-    expect(await statusDaPresenca(pelada, escalado1)).toBe("in");
-    expect(await statusDaPresenca(pelada, escalado2)).toBe("in");
+    expect(await statusDaPresenca(fut, sumido)).toBe("no_show");
+    expect(await statusDaPresenca(fut, escalado1)).toBe("in");
+    expect(await statusDaPresenca(fut, escalado2)).toBe("in");
     // Entrar em qualquer UM dos jogos basta.
-    expect(await statusDaPresenca(pelada, soNoSegundoJogo)).toBe("in");
-    expect(await statusDaPresenca(pelada, espera)).toBe("waitlist");
-    expect(await statusDaPresenca(pelada, fora)).toBe("out");
+    expect(await statusDaPresenca(fut, soNoSegundoJogo)).toBe("in");
+    expect(await statusDaPresenca(fut, espera)).toBe("waitlist");
+    expect(await statusDaPresenca(fut, fora)).toBe("out");
   });
 
-  it("pelada com confirmados mas sem jogo lançado encerra sem marcar falta em ninguém", async () => {
+  it("fut com confirmados mas sem jogo lançado encerra sem marcar falta em ninguém", async () => {
     const admin = await criarJogadorComConta();
-    const pelada = await criarPelada({ createdByPlayerId: admin.jogador.id });
+    const fut = await criarFut({ createdByPlayerId: admin.jogador.id });
     const confirmado1 = await criarJogador();
     const confirmado2 = await criarJogador();
-    await confirmarPresenca(pelada, confirmado1, { minutosAtras: 20 });
-    await confirmarPresenca(pelada, confirmado2, { minutosAtras: 10 });
+    await confirmarPresenca(fut, confirmado1, { minutosAtras: 20 });
+    await confirmarPresenca(fut, confirmado2, { minutosAtras: 10 });
 
     await logarComo(admin.conta);
-    await esperaRedirect(confirmarEncerramento(pelada.id));
+    await esperaRedirect(confirmarEncerramento(fut.id));
 
-    const [encerrada] = await db.select().from(matchDays).where(eq(matchDays.id, pelada.id));
+    const [encerrada] = await db.select().from(matchDays).where(eq(matchDays.id, fut.id));
     expect(encerrada.status).toBe("finished");
-    expect(await statusDaPresenca(pelada, confirmado1)).toBe("in");
-    expect(await statusDaPresenca(pelada, confirmado2)).toBe("in");
+    expect(await statusDaPresenca(fut, confirmado1)).toBe("in");
+    expect(await statusDaPresenca(fut, confirmado2)).toBe("in");
     // Sem escalação também não há o que avaliar.
-    expect(await rodadaDaPelada(pelada)).toBeUndefined();
+    expect(await rodadaDoFut(fut)).toBeUndefined();
   });
 
-  it("escalação em outra pelada não conta: o jogador vira falta nesta", async () => {
+  it("escalação em outro fut não conta: o jogador vira falta nesta", async () => {
     const admin = await criarJogadorComConta();
-    const outraPelada = await criarPelada({ date: "2026-08-05" });
+    const outroFut = await criarFut({ date: "2026-08-05" });
     const viajante = await criarJogador();
     const rival = await criarJogador();
-    await criarJogo(outraPelada, [viajante], [rival]);
-    await confirmarPresenca(outraPelada, viajante, { minutosAtras: 90 });
+    await criarJogo(outroFut, [viajante], [rival]);
+    await confirmarPresenca(outroFut, viajante, { minutosAtras: 90 });
 
-    const pelada = await criarPelada({ createdByPlayerId: admin.jogador.id });
+    const fut = await criarFut({ createdByPlayerId: admin.jogador.id });
     const escaladoA = await criarJogador();
     const escaladoB = await criarJogador();
-    await criarJogo(pelada, [escaladoA], [escaladoB]);
-    await confirmarPresenca(pelada, viajante, { minutosAtras: 30 });
-    await confirmarPresenca(pelada, escaladoA, { minutosAtras: 20 });
-    await confirmarPresenca(pelada, escaladoB, { minutosAtras: 10 });
+    await criarJogo(fut, [escaladoA], [escaladoB]);
+    await confirmarPresenca(fut, viajante, { minutosAtras: 30 });
+    await confirmarPresenca(fut, escaladoA, { minutosAtras: 20 });
+    await confirmarPresenca(fut, escaladoB, { minutosAtras: 10 });
 
     await logarComo(admin.conta);
-    await esperaRedirect(confirmarEncerramento(pelada.id));
+    await esperaRedirect(confirmarEncerramento(fut.id));
 
-    expect(await statusDaPresenca(pelada, viajante)).toBe("no_show");
-    // A presença dele na pelada em que jogou fica intacta.
-    expect(await statusDaPresenca(outraPelada, viajante)).toBe("in");
+    expect(await statusDaPresenca(fut, viajante)).toBe("no_show");
+    // A presença dele no fut em que jogou fica intacta.
+    expect(await statusDaPresenca(outroFut, viajante)).toBe("in");
   });
 
   it("a prévia da tela de encerrar bate com o que o encerramento grava", async () => {
     const admin = await criarJogadorComConta();
-    const pelada = await criarPelada({ createdByPlayerId: admin.jogador.id });
+    const fut = await criarFut({ createdByPlayerId: admin.jogador.id });
     const emCampo1 = await criarJogador();
     const emCampo2 = await criarJogador();
     const arquibancada1 = await criarJogador();
     const arquibancada2 = await criarJogador();
     const espera = await criarJogador();
 
-    await criarJogo(pelada, [emCampo1], [emCampo2]);
-    await confirmarPresenca(pelada, emCampo1, { minutosAtras: 50 });
-    await confirmarPresenca(pelada, emCampo2, { minutosAtras: 40 });
-    await confirmarPresenca(pelada, arquibancada1, { minutosAtras: 30 });
-    await confirmarPresenca(pelada, arquibancada2, { minutosAtras: 20 });
-    await confirmarPresenca(pelada, espera, { status: "waitlist", minutosAtras: 10 });
+    await criarJogo(fut, [emCampo1], [emCampo2]);
+    await confirmarPresenca(fut, emCampo1, { minutosAtras: 50 });
+    await confirmarPresenca(fut, emCampo2, { minutosAtras: 40 });
+    await confirmarPresenca(fut, arquibancada1, { minutosAtras: 30 });
+    await confirmarPresenca(fut, arquibancada2, { minutosAtras: 20 });
+    await confirmarPresenca(fut, espera, { status: "waitlist", minutosAtras: 10 });
 
-    const previa = await previaViraFalta(pelada);
+    const previa = await previaViraFalta(fut);
     expect(previa).toEqual([arquibancada1.id, arquibancada2.id].sort((a, b) => a - b));
 
     await logarComo(admin.conta);
-    await esperaRedirect(confirmarEncerramento(pelada.id));
+    await esperaRedirect(confirmarEncerramento(fut.id));
 
     const faltas = await db
       .select({ playerId: attendances.playerId })
       .from(attendances)
-      .where(and(eq(attendances.matchDayId, pelada.id), eq(attendances.status, "no_show")));
+      .where(and(eq(attendances.matchDayId, fut.id), eq(attendances.status, "no_show")));
     expect(faltas.map((f) => f.playerId).sort((a, b) => a - b)).toEqual(previa);
   });
 });
 
 describe("getAttendanceStats", () => {
-  it("só pelada encerrada entra no denominador; espera e falta não contam presença", async () => {
-    const encerrada = await criarPelada({ status: "finished", date: "2026-08-05" });
-    const futura = await criarPelada();
+  it("só fut encerrado entra no denominador; espera e falta não contam presença", async () => {
+    const encerrada = await criarFut({ status: "finished", date: "2026-08-05" });
+    const futura = await criarFut();
     const assidua = await criarJogadorComConta();
     const faltosa = await criarJogadorComConta();
     const naEspera = await criarJogadorComConta();

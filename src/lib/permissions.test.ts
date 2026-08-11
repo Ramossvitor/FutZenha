@@ -1,79 +1,79 @@
 import { describe, expect, it } from "vitest";
-import { podeDefinirPresencaPor, podeGerenciarPelada, podeJulgarDenuncia } from "./permissions";
+import { podeDefinirPresencaPor, podeGerenciarFut, podeJulgarDenuncia } from "./permissions";
 
 const criador = { playerId: 10, isPlatformAdmin: false };
 const outro = { playerId: 20, isPlatformAdmin: false };
 const plataforma = { playerId: 99, isPlatformAdmin: true };
 
-describe("podeGerenciarPelada", () => {
-  it("o criador gerencia a própria pelada", () => {
-    expect(podeGerenciarPelada(criador, { createdByPlayerId: 10 })).toBe(true);
+describe("podeGerenciarFut", () => {
+  it("o criador gerencia o próprio fut", () => {
+    expect(podeGerenciarFut(criador, { createdByPlayerId: 10 })).toBe(true);
   });
 
-  it("jogador qualquer não gerencia a pelada de outro", () => {
-    expect(podeGerenciarPelada(outro, { createdByPlayerId: 10 })).toBe(false);
+  it("jogador qualquer não gerencia o fut de outro", () => {
+    expect(podeGerenciarFut(outro, { createdByPlayerId: 10 })).toBe(false);
   });
 
-  it("admin da plataforma gerencia a pelada de qualquer um", () => {
-    expect(podeGerenciarPelada(plataforma, { createdByPlayerId: 10 })).toBe(true);
+  it("admin da plataforma gerencia o fut de qualquer um", () => {
+    expect(podeGerenciarFut(plataforma, { createdByPlayerId: 10 })).toBe(true);
   });
 
-  // Pelada órfã: anterior ao modelo, ou de criador apagado (FK `set null`).
-  it("admin da plataforma gerencia pelada órfã", () => {
-    expect(podeGerenciarPelada(plataforma, { createdByPlayerId: null })).toBe(true);
+  // Fut órfão: anterior ao modelo, ou de criador apagado (FK `set null`).
+  it("admin da plataforma gerencia fut órfão", () => {
+    expect(podeGerenciarFut(plataforma, { createdByPlayerId: null })).toBe(true);
   });
 
   // O caso que uma comparação frouxa liberaria para o grupo inteiro.
-  it("pelada órfã NÃO fica aberta para jogador comum", () => {
-    expect(podeGerenciarPelada(outro, { createdByPlayerId: null })).toBe(false);
-    expect(podeGerenciarPelada({ playerId: 0, isPlatformAdmin: false }, { createdByPlayerId: null }))
+  it("fut órfão NÃO fica aberto para jogador comum", () => {
+    expect(podeGerenciarFut(outro, { createdByPlayerId: null })).toBe(false);
+    expect(podeGerenciarFut({ playerId: 0, isPlatformAdmin: false }, { createdByPlayerId: null }))
       .toBe(false);
   });
 });
 
-describe("podeGerenciarPelada em pelada de grupo", () => {
-  // Pelada criada pelo organizador `criador` (id 10) dentro do grupo 7.
-  const peladaDoGrupo = { createdByPlayerId: 10, groupId: 7 };
+describe("podeGerenciarFut em fut de grupo", () => {
+  // Fut criado pelo organizador `criador` (id 10) dentro do grupo 7.
+  const futDoGrupo = { createdByPlayerId: 10, groupId: 7 };
 
-  it("o admin do grupo gerencia a pelada criada pelo organizador", () => {
-    expect(podeGerenciarPelada(outro, peladaDoGrupo, "admin")).toBe(true);
+  it("o admin do grupo gerencia o fut criado pelo organizador", () => {
+    expect(podeGerenciarFut(outro, futDoGrupo, "admin")).toBe(true);
   });
 
-  // O ataque: reescrever placar, gols e escalação de pelada alheia mexe no
+  // O ataque: reescrever placar, gols e escalação de fut alheia mexe no
   // V/E/D e na artilharia de todo mundo que jogou. O poder do organizador é
   // criar — e, ao criar, ele já vira o criador.
-  it("organizador NÃO gerencia a pelada de outro organizador", () => {
-    expect(podeGerenciarPelada(outro, peladaDoGrupo, "organizer")).toBe(false);
+  it("organizador NÃO gerencia o fut de outro organizador", () => {
+    expect(podeGerenciarFut(outro, futDoGrupo, "organizer")).toBe(false);
   });
 
   it("membro do grupo não gerencia nada", () => {
-    expect(podeGerenciarPelada(outro, peladaDoGrupo, "member")).toBe(false);
-    expect(podeGerenciarPelada(outro, peladaDoGrupo, null)).toBe(false);
+    expect(podeGerenciarFut(outro, futDoGrupo, "member")).toBe(false);
+    expect(podeGerenciarFut(outro, futDoGrupo, null)).toBe(false);
   });
 
   it("o criador segue gerenciando, qualquer que seja o papel dele no grupo", () => {
-    expect(podeGerenciarPelada(criador, peladaDoGrupo, "member")).toBe(true);
-    expect(podeGerenciarPelada(criador, peladaDoGrupo, null)).toBe(true);
+    expect(podeGerenciarFut(criador, futDoGrupo, "member")).toBe(true);
+    expect(podeGerenciarFut(criador, futDoGrupo, null)).toBe(true);
   });
 
   // Documenta que o teste de `groupId` no corpo da função não é redundante: um
-  // papel herdado de outra leitura não pode entregar pelada avulsa ao admin de
+  // papel herdado de outra leitura não pode entregar fut avulso ao admin de
   // um grupo qualquer.
-  it("pelada avulsa ignora papel de grupo passado por engano", () => {
-    expect(podeGerenciarPelada(outro, { createdByPlayerId: 10, groupId: null }, "admin")).toBe(false);
-    expect(podeGerenciarPelada(outro, { createdByPlayerId: 10 }, "admin")).toBe(false);
+  it("fut avulso ignora papel de grupo passado por engano", () => {
+    expect(podeGerenciarFut(outro, { createdByPlayerId: 10, groupId: null }, "admin")).toBe(false);
+    expect(podeGerenciarFut(outro, { createdByPlayerId: 10 }, "admin")).toBe(false);
   });
 
   it("admin da plataforma continua passando por cima", () => {
-    expect(podeGerenciarPelada(plataforma, peladaDoGrupo, null)).toBe(true);
+    expect(podeGerenciarFut(plataforma, futDoGrupo, null)).toBe(true);
   });
 });
 
 describe("podeDefinirPresencaPor com a lista aberta", () => {
   const ABERTA = false;
-  const semConta = { temContaAtiva: false, jaEstaNaPelada: false, elegivel: true };
-  const comContaDeFora = { temContaAtiva: true, jaEstaNaPelada: false, elegivel: true };
-  const comContaJaNaPelada = { temContaAtiva: true, jaEstaNaPelada: true, elegivel: true };
+  const semConta = { temContaAtiva: false, jaEstaNoFut: false, elegivel: true };
+  const comContaDeFora = { temContaAtiva: true, jaEstaNoFut: false, elegivel: true };
+  const comContaJaNoFut = { temContaAtiva: true, jaEstaNoFut: true, elegivel: true };
 
   // O caso que o override existe para resolver: quem não resgatou o convite (ou
   // teve a conta desativada) não consegue se marcar sozinho.
@@ -81,14 +81,14 @@ describe("podeDefinirPresencaPor com a lista aberta", () => {
     expect(podeDefinirPresencaPor(criador, semConta, ABERTA)).toBe(true);
   });
 
-  // O ataque: qualquer jogador logado cria pelada, então sem isto dava para
+  // O ataque: qualquer jogador logado cria fut, então sem isto dava para
   // escalar gente com conta que nunca soube do jogo e mexer na presença e no
   // V/E/D dela (os rankings só contam quem tem conta — ver src/lib/stats.ts).
-  it("não escala quem tem conta e ainda não entrou na pelada", () => {
+  it("não escala quem tem conta e ainda não entrou no fut", () => {
     expect(podeDefinirPresencaPor(criador, comContaDeFora, ABERTA)).toBe(false);
   });
 
-  // Ser elegível não é consentimento: uma pelada de grupo marcada para sábado
+  // Ser elegível não é consentimento: um fut de grupo marcado para sábado
   // não autoriza ninguém a montar a lista pelos outros quarenta membros.
   it("ser elegível sozinho não abre a porta enquanto a lista está aberta", () => {
     expect(
@@ -97,7 +97,7 @@ describe("podeDefinirPresencaPor com a lista aberta", () => {
   });
 
   it("depois que a pessoa entra, o organizador volta a mandar na presença dela", () => {
-    expect(podeDefinirPresencaPor(criador, comContaJaNaPelada, ABERTA)).toBe(true);
+    expect(podeDefinirPresencaPor(criador, comContaJaNoFut, ABERTA)).toBe(true);
   });
 
   // O convidado de última hora não pertence a grupo nenhum ainda — exigir
@@ -110,7 +110,7 @@ describe("podeDefinirPresencaPor com a lista aberta", () => {
   it("admin da plataforma passa por cima nos três casos", () => {
     expect(podeDefinirPresencaPor(plataforma, semConta, ABERTA)).toBe(true);
     expect(podeDefinirPresencaPor(plataforma, comContaDeFora, ABERTA)).toBe(true);
-    expect(podeDefinirPresencaPor(plataforma, comContaJaNaPelada, ABERTA)).toBe(true);
+    expect(podeDefinirPresencaPor(plataforma, comContaJaNoFut, ABERTA)).toBe(true);
   });
 });
 
@@ -123,44 +123,44 @@ describe("podeDefinirPresencaPor com a lista fechada", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: true, jaEstaNaPelada: false, elegivel: true },
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true },
         FECHADA,
       ),
     ).toBe(true);
   });
 
-  // O limite que sobra: numa pelada de grupo, o alcance é o grupo — não a
+  // O limite que sobra: num fut de grupo, o alcance é o grupo — não a
   // plataforma inteira.
   it("não inclui quem tem conta e não é elegível, nem com a lista fechada", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: true, jaEstaNaPelada: false, elegivel: false },
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: false },
         FECHADA,
       ),
     ).toBe(false);
   });
 
-  // O ex-membro que confirmou e depois saiu do grupo: já está na pelada, então
+  // O ex-membro que confirmou e depois saiu do grupo: já está no fut, então
   // o organizador segue mandando na presença dele — a elegibilidade só filtra
   // quem ainda está de fora.
-  it("quem já está na pelada dispensa elegibilidade", () => {
+  it("quem já está no fut dispensa elegibilidade", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: true, jaEstaNaPelada: true, elegivel: false },
+        { temContaAtiva: true, jaEstaNoFut: true, elegivel: false },
         FECHADA,
       ),
     ).toBe(true);
   });
 
   // O bypass vem antes da elegibilidade: o admin da plataforma é o fallback de
-  // pelada órfã e abandonada, e o alcance dele já é a plataforma inteira.
+  // fut órfão e abandonado, e o alcance dele já é a plataforma inteira.
   it("admin da plataforma inclui até quem não é elegível", () => {
     expect(
       podeDefinirPresencaPor(
         plataforma,
-        { temContaAtiva: true, jaEstaNaPelada: false, elegivel: false },
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: false },
         FECHADA,
       ),
     ).toBe(true);
@@ -172,7 +172,7 @@ describe("podeDefinirPresencaPor com a lista fechada", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: false, jaEstaNaPelada: false, elegivel: false },
+        { temContaAtiva: false, jaEstaNoFut: false, elegivel: false },
         FECHADA,
       ),
     ).toBe(true);
@@ -183,7 +183,7 @@ describe("podeJulgarDenuncia", () => {
   const deFora = { julgadorJogouARodada: false };
   const jogou = { julgadorJogouARodada: true };
 
-  it("só a plataforma julga — nem o criador da pelada", () => {
+  it("só a plataforma julga — nem o criador do fut", () => {
     expect(podeJulgarDenuncia(plataforma, deFora)).toBe(true);
     expect(podeJulgarDenuncia(criador, deFora)).toBe(false);
     expect(podeJulgarDenuncia(outro, deFora)).toBe(false);

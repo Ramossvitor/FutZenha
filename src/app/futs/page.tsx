@@ -11,14 +11,14 @@ import { games, groups, matchDays, teams } from "@/db/schema";
 import { formatDate, formatDateShort, formatTime } from "@/lib/format";
 import { getGrupoAtual } from "@/lib/grupo-atual";
 import { listarMeusGrupos } from "@/lib/grupos";
-import { STATUS_PELADA } from "@/lib/match-day-form";
-import { podeGerenciarPelada } from "@/lib/permissions";
+import { STATUS_FUT } from "@/lib/match-day-form";
+import { podeGerenciarFut } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
 
-export const metadata = { title: "Peladas" };
+export const metadata = { title: "Futs" };
 export const dynamic = "force-dynamic";
 
-export default async function PeladasPage({ searchParams }: PageProps<"/peladas">) {
+export default async function FutsPage({ searchParams }: PageProps<"/futs">) {
   const { ok } = await searchParams;
   const session = await getSession();
   const grupo = await getGrupoAtual();
@@ -45,17 +45,17 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
   const nomeDoTime = new Map(teamRows.map((t) => [t.id, t.name]));
 
   // Meu papel em cada grupo de que participo. Serve os dois selos abaixo: o
-  // "você gerencia" precisa do papel (`podeGerenciarPelada` quer o papel no
-  // grupo DAQUELA pelada), e o nome do grupo precisa só da associação.
+  // "você gerencia" precisa do papel (`podeGerenciarFut` quer o papel no
+  // grupo Daquele fut), e o nome do grupo precisa só da associação.
   const meuPapelPorGrupo = new Map(
     session ? (await listarMeusGrupos(session.player.id)).map((g) => [g.id, g.papel]) : [],
   );
 
   // Esta página é PÚBLICA (não está no matcher de src/proxy.ts), então o nome do
-  // grupo passa pelo mesmo teste que a página da pelada faz: grupo privado não
+  // grupo passa pelo mesmo teste que a página do fut faz: grupo privado não
   // anuncia o nome para quem está de fora. Sem isso, o 404 do guard não protege
-  // nada — bastava abrir /peladas deslogado para ler o nome de todo grupo
-  // privado com pelada marcada.
+  // nada — bastava abrir /futs deslogado para ler o nome de todo grupo
+  // privado com fut marcado.
   const groupIds = [...new Set(days.map((d) => d.groupId).filter((g) => g !== null))];
   const groupRows = groupIds.length
     ? await db
@@ -74,12 +74,12 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        titulo="Peladas"
+        titulo="Futs"
         descricao={grupo ? "Só as deste grupo." : "De todos os grupos, mais as avulsas."}
         acao={
           session ? (
-            <LinkButton href="/peladas/nova" variante="primary" tamanho="sm">
-              Marcar pelada
+            <LinkButton href="/futs/novo" variante="primary" tamanho="sm">
+              Marcar fut
             </LinkButton>
           ) : undefined
         }
@@ -91,7 +91,7 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
         as="ul"
         vazio={
           <EmptyState
-            titulo="Nenhuma pelada por aqui"
+            titulo="Nenhum fut por aqui"
             descricao={
               grupo
                 ? "Ninguém marcou nada neste grupo ainda."
@@ -99,8 +99,8 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
             }
             acao={
               session ? (
-                <LinkButton href="/peladas/nova" variante="primary" tamanho="sm">
-                  Marcar pelada
+                <LinkButton href="/futs/novo" variante="primary" tamanho="sm">
+                  Marcar fut
                 </LinkButton>
               ) : undefined
             }
@@ -110,12 +110,12 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
         {days.map((day) => {
           const dayGames = gameRows.filter((g) => g.matchDayId === day.id);
           const papel = day.groupId !== null ? (meuPapelPorGrupo.get(day.groupId) ?? null) : null;
-          const euGerencio = ator !== null && podeGerenciarPelada(ator, day, papel);
+          const euGerencio = ator !== null && podeGerenciarFut(ator, day, papel);
           const nomeGrupo = day.groupId !== null ? nomeDoGrupo.get(day.groupId) : undefined;
 
           return (
             <li key={day.id}>
-              <HairlineRowLink href={`/pelada/${day.id}`} className="items-start">
+              <HairlineRowLink href={`/fut/${day.id}`} className="items-start">
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="font-display text-[15px] font-bold text-fg capitalize">
@@ -127,7 +127,7 @@ export default async function PeladasPage({ searchParams }: PageProps<"/peladas"
                     {nomeGrupo && <Badge tom="outline">{nomeGrupo}</Badge>}
                     {euGerencio && <Badge tom="warn">você gerencia</Badge>}
                     <Badge tom={day.status === "finished" ? "neutral" : "accent"}>
-                      {STATUS_PELADA[day.status]}
+                      {STATUS_FUT[day.status]}
                     </Badge>
                   </span>
 

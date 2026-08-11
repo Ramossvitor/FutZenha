@@ -10,7 +10,7 @@ const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
 
 // Sem guard de propósito: quem autoriza é a action. São dois caminhos com
 // permissões diferentes chegando aqui — o admin da plataforma, em
-// /admin/jogadores, e o admin da pelada, trazendo gente nova para a pelada dele.
+// /admin/jogadores, e o admin do fut, trazendo gente nova para o fut dele.
 
 /**
  * Gera um convite novo e apaga os pendentes anteriores do jogador: fica no
@@ -18,7 +18,7 @@ const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
  *
  * Para quem já tem conta, resgatar o convite funciona como reset de senha — por
  * isso só `createInvite`, exclusiva do admin da plataforma, chega aqui com um
- * jogador que possa ter conta; o caminho do admin da pelada passa por
+ * jogador que possa ter conta; o caminho do admin do fut passa por
  * `criarJogadorComConvite`, que acabou de criar o jogador.
  */
 export async function gerarConvite(
@@ -62,7 +62,7 @@ const emailSchema = z.preprocess(
  *
  * Vazio não é erro: é o convite antigo, de usuário e senha, que segue valendo
  * enquanto a migração para o Google não termina. Fica aqui, e não em cada
- * action, porque são dois formulários (plataforma e pelada) e a normalização
+ * action, porque são dois formulários (plataforma e fut) e a normalização
  * para minúsculas é o que faz o convite casar com o que o Google devolve.
  */
 export function parseEmailDeConvite(

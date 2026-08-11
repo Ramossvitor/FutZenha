@@ -24,16 +24,16 @@ export default async function proxy(request: NextRequest) {
     "/avaliar",
     "/notificacoes",
     "/votacao",
-    "/peladas/nova",
+    "/futs/novo",
     "/grupos",
     // O link do grupo é o caso mais dependente daqui: ele corre no WhatsApp e
     // quase sempre é aberto por alguém deslogado. Sem este prefixo, o ?next=
     // não é montado, a pessoa cai na home depois do login e o token se perde.
     "/convite-grupo",
   ];
-  // Gestão de pelada e de grupo ficam embaixo de rotas dinâmicas, então não dá
+  // Gestão de fut e de grupo ficam embaixo de rotas dinâmicas, então não dá
   // para casar por prefixo como as outras.
-  const gerenciarPelada = /^\/pelada\/[^/]+\/gerenciar(\/|$)/;
+  const gerenciarFut = /^\/fut\/[^/]+\/gerenciar(\/|$)/;
   const gerenciarGrupo = /^\/grupo\/[^/]+\/gerenciar(\/|$)/;
   // O ranking do grupo entra pelo mesmo motivo do /convite-grupo: é link que
   // corre no WhatsApp e quase sempre é aberto por alguém deslogado. O guard da
@@ -42,7 +42,7 @@ export default async function proxy(request: NextRequest) {
   const rankingDoGrupo = /^\/grupo\/[^/]+\/ranking$/;
   const exigeLogin =
     prefixos.some((rota) => pathname.startsWith(rota)) ||
-    gerenciarPelada.test(pathname) ||
+    gerenciarFut.test(pathname) ||
     gerenciarGrupo.test(pathname) ||
     rankingDoGrupo.test(pathname);
 
@@ -67,7 +67,7 @@ export const config = {
     // proxy que monta o ?next=: sem ele, quem abre o link da notificação
     // deslogado cai na home depois do login, e não na votação que tem 48h.
     "/votacao/:path*",
-    "/peladas/nova",
+    "/futs/novo",
     // /grupos inteiro exige login: a lista mistura os grupos de que a pessoa
     // participa com os convites pendentes dela. A página pública de um grupo
     // fica em /grupo/:id (singular), que de propósito não está aqui.
@@ -75,8 +75,8 @@ export const config = {
     "/grupos/:path*",
     "/convite-grupo/:path*",
     // Os dois padrões são necessários: ":path*" não casa o caminho sem sufixo.
-    "/pelada/:id/gerenciar",
-    "/pelada/:id/gerenciar/:path*",
+    "/fut/:id/gerenciar",
+    "/fut/:id/gerenciar/:path*",
     "/grupo/:id/gerenciar",
     "/grupo/:id/gerenciar/:path*",
     "/grupo/:id/ranking",

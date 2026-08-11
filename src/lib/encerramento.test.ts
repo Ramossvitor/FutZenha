@@ -7,7 +7,7 @@ const item = (c: ReturnType<typeof montarChecklist>, chave: string) =>
   c.itens.find((i) => i.chave === chave)!;
 
 describe("montarChecklist", () => {
-  it("pelada redonda libera o encerramento", () => {
+  it("fut redonda libera o encerramento", () => {
     const c = montarChecklist({
       jogos: [jogo(1, 5, 5), jogo(2, 5, 4)],
       avaliaveis: 10,
@@ -54,7 +54,7 @@ describe("montarChecklist", () => {
     expect(item(c, "lado-vazio").titulo).toBe("jogo 1 e jogo 3 estão com um lado vazio");
   });
 
-  it("pelada sem jogo nenhum avisa, mas não trava", () => {
+  it("fut sem jogo nenhum avisa, mas não trava", () => {
     const c = montarChecklist({ jogos: [], avaliaveis: 0, comContaEmCampo: 0, semConta: [] });
     expect(c.podeEncerrar).toBe(true);
     expect(item(c, "jogos").tom).toBe("alerta");
@@ -70,7 +70,7 @@ describe("montarChecklist", () => {
     });
     expect(item(c, "avaliacao").tom).toBe("alerta");
     expect(item(c, "avaliacao").titulo).toBe("Ninguém vai ser avaliado");
-    // continua liberado: a pelada vale para placar, artilharia e presença
+    // continua liberado: o fut vale para placar, artilharia e presença
     expect(c.podeEncerrar).toBe(true);
   });
 

@@ -12,11 +12,11 @@ export type EscalacaoRow = {
  * conta ativa.
  *
  * É a trava contra nota fabricada. Sem ela, bastavam duas contas — uma real e
- * um "jogador" convidado pelo próprio — para montar peladas de mentira e subir
- * de 5,0 a 9,3 em cinco rodadas, porque cada pelada pesa 1/3 da nota. Com três,
+ * um "jogador" convidado pelo próprio — para montar futs de mentira e subir
+ * de 5,0 a 9,3 em cinco rodadas, porque cada fut pesa 1/3 da nota. Com três,
  * o combinado deixa de ser sozinho.
  *
- * A checagem é por lado, não por pelada: um time com três contas avalia mesmo
+ * A checagem é por lado, não por fut: um time com três contas avalia mesmo
  * que o adversário tenha só duas. O time pequeno joga, conta para placar,
  * artilharia e presença — só não mexe em nota nenhuma.
  */
@@ -45,7 +45,7 @@ export function gruposElegiveis(
 }
 
 /**
- * Companheiros de cada jogador numa pelada: todo mundo que dividiu o mesmo lado
+ * Companheiros de cada jogador num fut: todo mundo que dividiu o mesmo lado
  * com ele em **qualquer** jogo do dia, menos ele mesmo. É a união entre os
  * jogos, deduplicada — quem jogou junto três vezes é avaliado uma vez só.
  *

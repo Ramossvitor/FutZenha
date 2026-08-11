@@ -38,7 +38,7 @@ export default async function GruposPage({ searchParams }: PageProps<"/grupos">)
     <div className="flex flex-col gap-7">
       <PageHeader
         titulo={<>Boa, {session.player.nickname ?? session.player.name.split(" ")[0]}</>}
-        descricao="Escolhe onde você vai jogar. O grupo escolhido filtra o início, as peladas e os rankings."
+        descricao="Escolhe onde você vai jogar. O grupo escolhido filtra o início, os futs e os rankings."
         acao={
           <LinkButton href="/grupos/novo" variante="secondary" tamanho="sm">
             Criar grupo
@@ -57,7 +57,7 @@ export default async function GruposPage({ searchParams }: PageProps<"/grupos">)
         <div className="flex-1">
           <Eyebrow>Sua nota</Eyebrow>
           <p className="mt-1 text-[13px] leading-[1.45] text-fg-3">
-            Uma só, somando todas as peladas que você jogou — em qualquer grupo.
+            Uma só, somando todos os futs que você jogou — em qualquer grupo.
           </p>
         </div>
         <Nota valor={session.player.skill} tamanho="xl" />
@@ -98,12 +98,12 @@ export default async function GruposPage({ searchParams }: PageProps<"/grupos">)
       <Section titulo="Onde você joga">
         <div className="flex flex-col gap-2">
           {/* O contexto sem grupo precisa ser uma escolha visível, e não a
-              ausência de escolha: pelada avulsa (sem grupo) é como o produto
+              ausência de escolha: fut avulso (sem grupo) é como o produto
               funcionava antes, e só aparece aqui. */}
           <CartaoDeContexto
             ativo={atual === null}
-            titulo="Todas as peladas"
-            meta="Tudo junto, inclusive as peladas sem grupo"
+            titulo="Todos os futs"
+            meta="Tudo junto, inclusive os futs sem grupo"
             groupId={null}
           />
 

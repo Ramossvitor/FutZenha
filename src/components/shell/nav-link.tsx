@@ -39,11 +39,11 @@ function MioloDoLink({ className, children }: { className: string; children: Rea
  *
  * É o único componente de cliente do shell, e existe por um motivo só: o
  * layout raiz é Server Component e não recebe o pathname. Injetar um header
- * pelo proxy.ts também não serve — o matcher dele nem cobre `/`, `/peladas` e
+ * pelo proxy.ts também não serve — o matcher dele nem cobre `/`, `/futs` e
  * `/rankings`, que são justamente as abas.
  *
- * "/" casa exato; o resto casa por prefixo, para que /pelada/12 mantenha a aba
- * Peladas acesa.
+ * "/" casa exato; o resto casa por prefixo, para que /fut/12 mantenha a aba
+ * Futs acesa.
  */
 export function NavLink({
   href,

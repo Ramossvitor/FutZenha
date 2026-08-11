@@ -156,7 +156,7 @@ export async function responderConvite(groupId: number, invitationId: number, ac
 /**
  * Sair do grupo.
  *
- * O admin não sai sem transferir: o grupo ficaria com peladas marcadas que
+ * O admin não sai sem transferir: o grupo ficaria com futs marcados que
  * ninguém encerra e uma fila de pedidos que ninguém decide.
  */
 export async function sairDoGrupo(groupId: number) {

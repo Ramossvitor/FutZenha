@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { attendances, gamePlayers, games, goals, matchDays, players, users } from "@/db/schema";
 import { escopo, jogouNoGrupo, type EscopoStats } from "./stats-escopo";
 
-// Estatísticas contam apenas peladas encerradas (status = finished).
+// Estatísticas contam apenas futs encerrados (status = finished).
 //
 // E apenas jogadores com conta ativa: o innerJoin com `users` em cada consulta
 // abaixo é o que implementa isso. Quem foi cadastrado mas ainda não resgatou o
@@ -101,11 +101,11 @@ export type SkillRankingRow = {
 
 /**
  * Ranking de notas. Diferente das outras funções daqui, não filtra por ano nem
- * por pelada encerrada: a nota é um estado atual do jogador, não um acumulado
+ * por fut encerrado: a nota é um estado atual do jogador, não um acumulado
  * de temporada.
  *
  * Com `groupId`, a nota exibida continua sendo a **global** — a lista só é
- * restrita a quem jogou peladas daquele grupo. Não existe nota por grupo, e
+ * restrita a quem jogou futs daquele grupo. Não existe nota por grupo, e
  * inventar uma (a média das estrelas recebidas só nas rodadas do grupo) seria
  * pior que a falta: viria noutra escala (1–5 ao lado de 0–10 na mesma tela), sem
  * histórico nem denúncia, e furaria o anonimato — num grupo pequeno a média se
@@ -113,7 +113,7 @@ export type SkillRankingRow = {
  * individual que src/lib/anonimato.ts protege contra pistas bem mais fracas.
  */
 export async function getSkillRanking(e: EscopoStats = {}): Promise<SkillRankingRow[]> {
-  // Quem entrou em campo em alguma pelada encerrada do grupo. O predicado vem de
+  // Quem entrou em campo em algum fut encerrado do grupo. O predicado vem de
   // ./stats-escopo porque é o caminho que NÃO passa por `escopo()` — e por isso
   // é o mais fácil de deixar para trás numa mudança futura.
   const quemJogou = e.groupId
@@ -163,10 +163,10 @@ export async function getAttendanceStats(e: EscopoStats = {}): Promise<{
   totalDays: number;
   perPlayer: AttendanceStat[];
 }> {
-  // Só pelada encerrada, nos dois lados da razão. O denominador contava toda
-  // pelada do escopo, inclusive a de sábado que ainda vai acontecer: quem já
+  // Só fut encerrado, nos dois lados da razão. O denominador contava toda
+  // fut do escopo, inclusive a de sábado que ainda vai acontecer: quem já
   // tinha confirmado aparecia com aproveitamento pior do que tem, e quem não
-  // tinha confirmado ainda era punido por uma pelada que não aconteceu.
+  // tinha confirmado ainda era punido por um fut que não aconteceu.
   const encerradas = and(eq(matchDays.status, "finished"), escopo(e));
 
   const [{ totalDays }] = await db

@@ -313,9 +313,9 @@ export function urlDoLink(token: string): string {
   return `${siteUrl()}/convite-grupo/${token}`;
 }
 
-/** Quantas peladas este grupo tem — o número que a tela de exclusão mostra
+/** Quantos futs este grupo tem — o número que a tela de exclusão mostra
  *  antes de desvincular todas elas. */
-export async function contarPeladas(groupId: number): Promise<number> {
+export async function contarFuts(groupId: number): Promise<number> {
   const [row] = await db
     .select({ total: count() })
     .from(matchDays)

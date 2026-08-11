@@ -18,7 +18,7 @@ import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import {
   abrirVotacaoExclusao,
   addGoal,
-  convidarParaPelada,
+  convidarParaFut,
   createGame,
   definirPresenca,
   deleteGame,
@@ -27,21 +27,21 @@ import {
   drawTeamsAction,
   marcarFalta,
   promoverDaEspera,
-  reenviarConviteDaPelada,
+  reenviarConviteDoFut,
   swapPlayersAction,
   updateGameScore,
   updateMatchDay,
 } from "./actions";
-import type { PainelDaPelada } from "./dados";
+import type { PainelDoFut } from "./dados";
 
 // As seções do painel moram aqui, e não na página, porque o arquivo passava de
 // 760 linhas e qualquer mudança numa seção exigia rolar as outras cinco. As
 // Server Actions e o contrato de ?erro= continuam exatamente os mesmos.
 
-export function SecaoDados({ pelada }: { pelada: PainelDaPelada }) {
-  const { matchDay } = pelada;
+export function SecaoDados({ fut }: { fut: PainelDoFut }) {
+  const { matchDay } = fut;
   return (
-    <Section titulo="Dados da pelada">
+    <Section titulo="Dados do fut">
       <Card>
         <CardBody>
           <form
@@ -84,9 +84,9 @@ export function SecaoDados({ pelada }: { pelada: PainelDaPelada }) {
   );
 }
 
-export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
+export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
   const { matchDay, activePlayers, jogadorPorId, lista, statusByPlayer, confirmed, convitesParaEntregar } =
-    pelada;
+    fut;
   const fechada = listaFechada(matchDay.status);
   const encerrada = matchDay.status === "finished";
 
@@ -109,7 +109,7 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
         ) : (
           <>
             Você marca por quem ainda não tem acesso. Quem já tem conta marca{" "}
-            <strong className="text-fg-3">Vou</strong> pela página da pelada — depois do sorteio
+            <strong className="text-fg-3">Vou</strong> pela página do fut — depois do sorteio
             você passa a poder incluir qualquer pessoa do grupo.
           </>
         )}
@@ -231,7 +231,7 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
           </CardHeader>
           <CardBody>
             <form
-              action={convidarParaPelada.bind(null, matchDay.id)}
+              action={convidarParaFut.bind(null, matchDay.id)}
               className="flex flex-col gap-4"
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -309,7 +309,7 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
                 {/* Reenviar usa o mesmo token — um link já copiado segue valendo.
                     Sem key do Resend (preview, dev) o botão some. */}
                 {c.email && emailConfigurado() && (
-                  <form action={reenviarConviteDaPelada.bind(null, matchDay.id, c.playerId)}>
+                  <form action={reenviarConviteDoFut.bind(null, matchDay.id, c.playerId)}>
                     <SubmitButton variante="secondary" tamanho="sm">
                       Reenviar e-mail
                     </SubmitButton>
@@ -328,8 +328,8 @@ export function SecaoPresenca({ pelada }: { pelada: PainelDaPelada }) {
   );
 }
 
-export function SecaoTimes({ pelada }: { pelada: PainelDaPelada }) {
-  const { matchDay, teamList, teamMembers, confirmed, gameList } = pelada;
+export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
+  const { matchDay, teamList, teamMembers, confirmed, gameList } = fut;
 
   return (
     <Section titulo="Times">
@@ -464,9 +464,9 @@ export function SecaoTimes({ pelada }: { pelada: PainelDaPelada }) {
   );
 }
 
-export function SecaoJogos({ pelada }: { pelada: PainelDaPelada }) {
+export function SecaoJogos({ fut }: { fut: PainelDoFut }) {
   const { matchDay, teamList, gameList, goalRows, lineupRows, teamNameById, podeEditarPlacar } =
-    pelada;
+    fut;
 
   if (teamList.length === 0) return null;
 
@@ -647,14 +647,14 @@ export function SecaoJogos({ pelada }: { pelada: PainelDaPelada }) {
   );
 }
 
-export function SecaoEncerrar({ pelada }: { pelada: PainelDaPelada }) {
-  const { matchDay, dentroDaJanela } = pelada;
+export function SecaoEncerrar({ fut }: { fut: PainelDoFut }) {
+  const { matchDay, dentroDaJanela } = fut;
 
   if (matchDay.status === "finished") {
     return (
       <Section titulo="Encerramento">
         <Banner tom="info">
-          Pelada encerrada — os resultados contam na artilharia, nos rankings e na presença, e a
+          Fut encerrado — os resultados contam na artilharia, nos rankings e na presença, e a
           escalação está travada.
         </Banner>
         {dentroDaJanela ? (
@@ -666,7 +666,7 @@ export function SecaoEncerrar({ pelada }: { pelada: PainelDaPelada }) {
           </div>
         ) : (
           <Banner tom="aviso">
-            A janela de 24h para corrigir placar e gols já passou. Só dá para alterar esta pelada
+            A janela de 24h para corrigir placar e gols já passou. Só dá para alterar este fut
             excluindo ela — o que exige votação de quem jogou.
           </Banner>
         )}
@@ -682,7 +682,7 @@ export function SecaoEncerrar({ pelada }: { pelada: PainelDaPelada }) {
             Encerrar passa pela conferência da escalação. Depois disso ela não muda mais, e a
             rodada de avaliação abre para quem jogou.
           </p>
-          <LinkButton href={`/pelada/${matchDay.id}/gerenciar/encerrar`}>
+          <LinkButton href={`/fut/${matchDay.id}/gerenciar/encerrar`}>
             Conferir escalação e encerrar
           </LinkButton>
         </CardBody>
@@ -691,22 +691,22 @@ export function SecaoEncerrar({ pelada }: { pelada: PainelDaPelada }) {
   );
 }
 
-export function ZonaDePerigo({ pelada }: { pelada: PainelDaPelada }) {
-  const { matchDay, votacao, faltamVotar } = pelada;
+export function ZonaDePerigo({ fut }: { fut: PainelDoFut }) {
+  const { matchDay, votacao, faltamVotar } = fut;
 
   return (
     <Section titulo="Zona de perigo">
       <Card className="border-danger-line">
         <CardHeader className="border-danger-line bg-danger-tint">
           <span className="font-display text-[14px] font-extrabold font-stretch-112% text-danger-ink uppercase">
-            Excluir esta pelada
+            Excluir este fut
           </span>
         </CardHeader>
         <CardBody className="flex flex-col gap-3">
           {matchDay.status !== "finished" ? (
             <form action={deleteMatchDay.bind(null, matchDay.id)} className="flex flex-col gap-3">
               <p className="text-[13px] leading-[1.5] text-fg-2">
-                Apaga presenças, times e resultados. Como a pelada não foi encerrada, nada dela
+                Apaga presenças, times e resultados. Como o fut não foi encerrado, nada dele
                 conta em ranking ou avaliação — dá para excluir direto.
               </p>
               <SubmitButton
@@ -733,7 +733,7 @@ export function ZonaDePerigo({ pelada }: { pelada: PainelDaPelada }) {
               {/* Enquanto a votação corre, quem propôs vê só quantos faltam —
                   nunca o placar nem os nomes. Com placar e lista de faltantes,
                   dois refreshes seguidos dizem como fulano votou, num voto que
-                  a regra chama de definitivo. O tipo de getVotacaoDaPelada nem
+                  a regra chama de definitivo. O tipo de getVotacaoDoFut nem
                   traz sim/nao enquanto está aberta. */}
               {votacao.status === "open" ? (
                 <p className="text-[13px] text-fg-3">
@@ -748,7 +748,7 @@ export function ZonaDePerigo({ pelada }: { pelada: PainelDaPelada }) {
               )}
               {votacao.status === "rejected" && (
                 <p className="text-[13px] text-fg-3">
-                  O grupo decidiu manter. Uma pelada só pode ter uma votação, então ela fica no
+                  O grupo decidiu manter. Um fut só pode ter uma votação, então ela fica no
                   histórico definitivamente.
                 </p>
               )}
@@ -759,12 +759,12 @@ export function ZonaDePerigo({ pelada }: { pelada: PainelDaPelada }) {
               className="flex flex-col gap-3"
             >
               <p className="text-[13px] leading-[1.5] text-fg-2">
-                A pelada já foi encerrada: os gols, o V/E/D e as avaliações dela contam para todo
+                O fut já foi encerrado: os gols, o V/E/D e as avaliações dele contam para todo
                 mundo. Apagar exige a aprovação de quem jogou — 85% dos votos em 48h, e quem não
                 votar conta como contra.{" "}
-                <strong className="text-fg">Só existe uma votação por pelada.</strong>
+                <strong className="text-fg">Só existe uma votação por fut.</strong>
               </p>
-              <Field htmlFor="reason" label="Por que esta pelada precisa ser apagada?" obrigatorio>
+              <Field htmlFor="reason" label="Por que este fut precisa ser apagado?" obrigatorio>
                 <Input
                   id="reason"
                   name="reason"
@@ -774,7 +774,7 @@ export function ZonaDePerigo({ pelada }: { pelada: PainelDaPelada }) {
                   placeholder="O placar do segundo jogo foi lançado errado…"
                 />
               </Field>
-              {/* Só existe uma votação por pelada, para sempre: abrir duas
+              {/* Só existe uma votação por fut, para sempre: abrir duas
                   vezes por engano não tem desfazer. */}
               <SubmitButton
                 variante="danger-outline"

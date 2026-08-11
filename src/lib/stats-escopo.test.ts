@@ -15,7 +15,7 @@ const compilar = (fragmento: ReturnType<typeof escopo>) =>
   fragmento ? dialect.sqlToQuery(fragmento) : { sql: "", params: [] };
 
 describe("escopo", () => {
-  it("sem recorte, filtra só pelas peladas encerradas", () => {
+  it("sem recorte, filtra só pelos futs encerrados", () => {
     const { sql, params } = compilar(escopo());
     expect(sql).toContain("status");
     expect(sql).not.toContain("group_id");
@@ -56,7 +56,7 @@ describe("jogouNoGrupo", () => {
   // Este é o caminho que NÃO passa por `escopo()`: getSkillRanking parte de
   // `players`, então o filtro do grupo é reconstruído do zero ali. É o mais
   // provável de ficar para trás numa mudança futura.
-  it("exige o grupo E a pelada encerrada", () => {
+  it("exige o grupo E o fut encerrado", () => {
     const { sql, params } = compilar(jogouNoGrupo(7));
     expect(sql).toContain("group_id");
     expect(sql).toContain("status");

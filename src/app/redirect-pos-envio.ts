@@ -3,7 +3,7 @@ import type { ResultadoEnvioDeConvite } from "@/lib/email-convite";
 
 /**
  * O resultado do envio de email vira banner. Uma cópia só, porque o mapa de
- * motivo → slug é regra e não rota: /admin/jogadores e /pelada/[id]/gerenciar
+ * motivo → slug é regra e não rota: /admin/jogadores e /fut/[id]/gerenciar
  * precisam dizer a mesma coisa, e duas cópias divergiriam na primeira mudança.
  *
  * Mora em src/app, e não em src/lib, porque os slugs precisam ficar literais

@@ -115,7 +115,7 @@ describe("state da URL", () => {
 describe("destinoSeguro", () => {
   it("aceita caminho interno", () => {
     expect(destinoSeguro("/perfil")).toBe("/perfil");
-    expect(destinoSeguro("/pelada/3/gerenciar")).toBe("/pelada/3/gerenciar");
+    expect(destinoSeguro("/fut/3/gerenciar")).toBe("/fut/3/gerenciar");
   });
 
   // "//evil.com" é URL protocol-relative: um teste que só olhasse a primeira

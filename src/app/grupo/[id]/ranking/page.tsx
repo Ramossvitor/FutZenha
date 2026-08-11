@@ -16,7 +16,7 @@ export const metadata = { title: "Ranking do grupo" };
  * do contexto — assim o link colado no zap sempre mostra o grupo certo, mesmo
  * para quem está navegando noutro.
  *
- * Quem aparece é quem JOGOU as peladas do grupo, membro ou não: o convidado de
+ * Quem aparece é quem JOGOU os futs do grupo, membro ou não: o convidado de
  * fora que fez três gols conta na artilharia daqui. A única exclusão é a de
  * sempre, quem não tem conta ativa.
  */
@@ -34,7 +34,7 @@ export default async function RankingDoGrupoPage({
       <PageHeader
         titulo={grupo.name}
         selos={<span className="eyebrow">Ranking do grupo</span>}
-        descricao="Só as peladas deste grupo entram nesta conta."
+        descricao="Só os futs deste grupo entram nesta conta."
         acao={
           <LinkButton href={`/grupo/${groupId}`} variante="secondary" tamanho="sm">
             Ver o grupo

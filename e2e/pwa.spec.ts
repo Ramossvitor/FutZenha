@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { criarPelada } from "./helpers";
+import { criarFut } from "./helpers";
 
 // Smokes do PWA e dos canais de aviso. O ambiente E2E roda SEM chave VAPID por
 // design (a ausência é o kill switch, como a do RESEND_API_KEY) — então além do
@@ -41,9 +41,9 @@ test("ícones do manifest existem de verdade", async ({ request }) => {
   }
 });
 
-test("logado, a pelada oferece a convocação pelo WhatsApp", async ({ page }) => {
+test("logado, o fut oferece a convocação pelo WhatsApp", async ({ page }) => {
   const local = `Quadra E2E zap ${Date.now()}`;
-  const urlPublica = await criarPelada(page, { local });
+  const urlPublica = await criarFut(page, { local });
 
   await page.goto(urlPublica);
   await expect(page.getByRole("button", { name: "Convocar no WhatsApp" })).toBeVisible();

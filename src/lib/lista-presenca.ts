@@ -1,4 +1,4 @@
-// A lista da pelada: quem ocupa vaga, quem espera e quem sobe quando uma vaga
+// A lista do fut: quem ocupa vaga, quem espera e quem sobe quando uma vaga
 // abre. Módulo puro de propósito — sem `server-only`, sem drizzle, sem
 // `redirect` —, pelo mesmo motivo de ./permissions: é a única forma de testar as
 // regras no vitest, que aqui roda sem config e sem alias.
@@ -14,7 +14,7 @@
 export type StatusPresenca = "in" | "out" | "waitlist" | "no_show";
 
 /**
- * A lista trava no sorteio: daí em diante quem mexe nela é o admin da pelada.
+ * A lista trava no sorteio: daí em diante quem mexe nela é o admin do fut.
  *
  * Mora aqui, e não em ./presenca, porque a tela também precisa da regra — e o
  * módulo de lá é `server-only`.
@@ -75,7 +75,7 @@ export function repartirLista<T extends LinhaDaLista>(
  * contrário, alguém que já está na lista e reconfirma disputaria a própria vaga
  * e cairia para a espera.
  *
- * Limite nulo é o padrão de toda pelada que não informou vagas, e nele não
+ * Limite nulo é o padrão de todo fut que não informou vagas, e nele não
  * existe espera: todo mundo entra.
  */
 export function statusAoConfirmar(
@@ -87,7 +87,7 @@ export function statusAoConfirmar(
 }
 
 /**
- * Quantas vagas sobram, ou null quando a pelada não tem limite.
+ * Quantas vagas sobram, ou null quando o fut não tem limite.
  *
  * Nunca negativo: com a lista fechada o admin inclui quem apareceu na quadra, e
  * "-2 vagas" na tela não quer dizer nada para quem está lendo.

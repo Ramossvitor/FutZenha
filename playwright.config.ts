@@ -45,7 +45,7 @@ export default defineConfig({
     // Nunca reusar um servidor de fora. Servidor que o Playwright não subiu não
     // recebeu o `env` abaixo — ele estaria rodando contra a DATABASE_URL do
     // .env, ou seja, o BANCO DE DESENVOLVIMENTO, e os specs (que criam, encerram
-    // e apagam pelada) mexeriam nele. Com `false`, porta 3000 ocupada vira erro
+    // e apagam fut) mexeriam nele. Com `false`, porta 3000 ocupada vira erro
     // claro em vez de suíte silenciosamente apontada para o banco errado.
     reuseExistingServer: false,
     // Cobre preparar (create + migrate + seed) e o start.

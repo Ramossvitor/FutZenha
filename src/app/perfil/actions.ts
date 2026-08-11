@@ -63,7 +63,7 @@ export async function denunciarAvaliacao(
   // Uma denúncia por rodada, não uma por nota recebida. A unique em
   // rating_id sozinha só impede reportar a *mesma* nota duas vezes — sem esta
   // checagem dava para reportar todas as estrelas da rodada de uma vez e, com
-  // o auto-aceite por silêncio do admin, anular a pelada inteira.
+  // o auto-aceite por silêncio do admin, anular o fut inteiro.
   const [jaDenunciou] = await db
     .select({ id: ratingReports.id })
     .from(ratingReports)

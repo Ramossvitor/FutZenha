@@ -14,7 +14,7 @@ import {
   teams,
   users,
 } from "@/db/schema";
-import { getFaltamVotar, getVotacaoDaPelada } from "@/lib/deletion";
+import { getFaltamVotar, getVotacaoDoFut } from "@/lib/deletion";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
 import { repartirLista } from "@/lib/lista-presenca";
 
@@ -48,11 +48,11 @@ export async function carregarPainel(matchDayId: number) {
         .from(games)
         .where(eq(games.matchDayId, matchDayId))
         .orderBy(asc(games.sortOrder), asc(games.id)),
-      getVotacaoDaPelada(matchDayId),
-      // Os convites de quem está nesta pelada e ainda não tem conta. É o que torna o
+      getVotacaoDoFut(matchDayId),
+      // Os convites de quem está neste fut e ainda não tem conta. É o que torna o
       // "cadastrar quem chegou" utilizável: quem organiza precisa do link na mão
       // para mandar no WhatsApp — e, com o envio configurado, reenviar por e-mail
-      // daqui mesmo (ver reenviarConviteDaPelada). O leftJoin com `users` + isNull
+      // daqui mesmo (ver reenviarConviteDoFut). O leftJoin com `users` + isNull
       // é o que mantém a regra: convite para quem já tem conta é reset de senha, e
       // isso é da plataforma — não passa por aqui.
       db
@@ -79,8 +79,8 @@ export async function carregarPainel(matchDayId: number) {
         .orderBy(asc(players.name)),
     ]);
 
-  // O requirePeladaAdmin da página viu a pelada existir, mas ela pode ter sido
-  // apagada entre o guard e esta query (votação aprovada, admin da plataforma).
+  // O requireFutAdmin da página viu o fut existir, mas ele pode ter sido
+  // apagado entre o guard e esta query (votação aprovada, admin da plataforma).
   // Sem isto, `matchDay.finishedAt` virava TypeError em vez de 404.
   if (!matchDay) notFound();
 
@@ -93,7 +93,7 @@ export async function carregarPainel(matchDayId: number) {
   const gameIds = gameList.map((g) => g.id);
 
   const [activePlayers, teamMembers, goalRows, lineupRows] = await Promise.all([
-    // Depende do `groupId`, então só dá para pedir depois de a pelada chegar —
+    // Depende do `groupId`, então só dá para pedir depois de o fut chegar —
     // por isso está na segunda onda e não na primeira.
     jogadoresElegiveis(matchDay),
     teamList.length > 0
@@ -129,7 +129,7 @@ export async function carregarPainel(matchDayId: number) {
           .innerJoin(players, eq(goals.playerId, players.id))
           .where(inArray(goals.gameId, gameIds))
       : Promise.resolve([]),
-    // Escalação real de cada jogo — é ela, e não o colete da pelada, que diz
+    // Escalação real de cada jogo — é ela, e não o colete do fut, que diz
     // quem entrou em campo por qual lado.
     gameIds.length > 0
       ? db
@@ -179,4 +179,4 @@ export async function carregarPainel(matchDayId: number) {
   };
 }
 
-export type PainelDaPelada = Awaited<ReturnType<typeof carregarPainel>>;
+export type PainelDoFut = Awaited<ReturnType<typeof carregarPainel>>;

@@ -18,9 +18,9 @@ export default async function AdminDashboardPage() {
       selo: null,
     },
     {
-      href: "/admin/peladas",
-      titulo: "Supervisão de peladas",
-      texto: "Ver todas as peladas e quem as criou; excluir pelada fabricada.",
+      href: "/admin/futs",
+      titulo: "Supervisão de futs",
+      texto: "Ver todos os futs e quem os criou; excluir fut fabricado.",
       selo: null,
     },
     {
@@ -35,7 +35,7 @@ export default async function AdminDashboardPage() {
     <div className="flex flex-col gap-7">
       <PageHeader
         titulo="Visão geral"
-        descricao="O que a plataforma inteira está fazendo — todos os grupos, todas as peladas."
+        descricao="O que a plataforma inteira está fazendo — todos os grupos, todos os futs."
       />
 
       <Section titulo="Uso da plataforma">
@@ -49,12 +49,12 @@ export default async function AdminDashboardPage() {
           <StatTile
             label="Organizadores"
             valor={m.organizadores}
-            nota="já criaram pelada"
+            nota="já criaram fut"
           />
           <StatTile
-            label="Peladas"
-            valor={m.peladasTotal}
-            nota={`${m.peladasUltimos30Dias} nos últimos 30 dias`}
+            label="Futs"
+            valor={m.futsTotal}
+            nota={`${m.futsUltimos30Dias} nos últimos 30 dias`}
           />
           <StatTile
             label="Rodadas abertas"
@@ -62,8 +62,8 @@ export default async function AdminDashboardPage() {
             nota={`${m.votacoesAbertas} votação(ões) em curso`}
           />
           <StatTile
-            label="Peladas órfãs"
-            valor={m.peladasOrfas}
+            label="Futs órfãos"
+            valor={m.futsOrfaos}
             nota="sem responsável"
           />
         </StatGrid>
