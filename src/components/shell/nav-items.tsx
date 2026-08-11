@@ -28,7 +28,7 @@ export type ItemDeNavegacao = {
 export function abas(logado: boolean): ItemDeNavegacao[] {
   return [
     { href: "/", label: "Início", icone: <IconeCampo />, exato: true },
-    { href: "/peladas", label: "Peladas", icone: <IconeCalendario /> },
+    { href: "/futs", label: "Futs", icone: <IconeCalendario /> },
     { href: "/rankings", label: "Ranking", icone: <IconeGrafico /> },
     logado
       ? { href: "/perfil", label: "Perfil", icone: <IconePessoa /> }
@@ -49,7 +49,7 @@ export function itensLaterais({
 }): ItemDeNavegacao[] {
   const itens: ItemDeNavegacao[] = [
     { href: "/", label: "Início", icone: <IconeCampo />, exato: true },
-    { href: "/peladas", label: "Peladas", icone: <IconeCalendario /> },
+    { href: "/futs", label: "Futs", icone: <IconeCalendario /> },
     { href: "/rankings", label: "Rankings", icone: <IconeGrafico /> },
   ];
   if (logado) {

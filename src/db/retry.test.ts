@@ -4,7 +4,7 @@ import { comRetentativa, ehErroDeConexao, ehLeitura } from "./retry";
 // O que se protege aqui é o par de decisões que autoriza reexecutar um
 // statement. Um falso positivo em qualquer uma delas repete uma escrita que o
 // servidor já aplicou — e o app não tem código de desfazimento para gol, grupo
-// ou pelada em dobro.
+// ou fut em dobro.
 
 const erroCom = (code: unknown) => Object.assign(new Error("falhou"), { code });
 

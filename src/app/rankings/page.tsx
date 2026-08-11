@@ -17,7 +17,7 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
         descricao={
           grupo
             ? `Números deste grupo, só. Trocar de grupo troca os números.`
-            : "Somando todas as peladas, de todos os grupos."
+            : "Somando todos os futs, de todos os grupos."
         }
       />
       <Rankings

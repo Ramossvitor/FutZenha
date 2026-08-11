@@ -34,7 +34,7 @@ export default async function AvaliarPage() {
                 <HairlineRowLink href={`/votacao/${v.voteId}`}>
                   <span className="min-w-0 flex-1">
                     <span className="block font-display text-[14px] font-bold text-fg">
-                      Apagar a pelada de <span className="capitalize">{formatDate(v.matchDayDate)}</span>?
+                      Apagar o fut de <span className="capitalize">{formatDate(v.matchDayDate)}</span>?
                     </span>
                     <span className="block text-[12px] text-fg-4">O voto é definitivo.</span>
                   </span>
@@ -56,7 +56,7 @@ export default async function AvaliarPage() {
           vazio={
             <EmptyState
               titulo="Nenhuma avaliação aberta"
-              descricao="Depois que uma pelada que você jogou for encerrada, ela aparece aqui com prazo de 2 dias."
+              descricao="Depois que um fut que você jogou for encerrado, ele aparece aqui com prazo de 2 dias."
             />
           }
         >

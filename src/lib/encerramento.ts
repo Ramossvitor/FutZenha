@@ -40,7 +40,7 @@ export type Checklist = {
  * prometer o que o encerramento não cumpre, e o teste que compara os dois
  * passaria mesmo assim se tivesse a própria cópia.
  *
- * Pelada sem jogo lançado não marca falta em ninguém (ver
+ * Fut sem jogo lançado não marca falta em ninguém (ver
  * confirmarEncerramento) — por isso `temJogo` zera a lista inteira.
  */
 export function quemViraFalta({
@@ -67,7 +67,7 @@ function listar(nomes: string[]): string {
 }
 
 /**
- * @param jogos TODOS os jogos da pelada, inclusive os que não têm nenhuma
+ * @param jogos TODOS os jogos do fut, inclusive os que não têm nenhuma
  *   linha de escalação — um jogo sem ninguém sai com `ladoA` e `ladoB` zerados
  *   e é justamente o caso que trava o encerramento. Filtrar antes esconderia o
  *   bloqueio e a pessoa levaria um erro que a tela jurava não existir.
@@ -101,7 +101,7 @@ export function montarChecklist({
       tom: "alerta",
       titulo: "Nenhum jogo lançado",
       detalhe:
-        "Dá para encerrar assim, mas a pelada não entra em placar, artilharia nem avaliação. Só a presença conta.",
+        "Dá para encerrar assim, mas o fut não entra em placar, artilharia nem avaliação. Só a presença conta.",
     });
   } else {
     itens.push({
@@ -134,7 +134,7 @@ export function montarChecklist({
       chave: "avaliacao",
       tom: "alerta",
       titulo: "Ninguém vai ser avaliado",
-      detalhe: `A avaliação precisa de ${MIN_GRUPO_AVALIACAO} contas ativas do mesmo lado. A pelada conta para placar, artilharia e presença — mas não mexe em nota nenhuma.`,
+      detalhe: `A avaliação precisa de ${MIN_GRUPO_AVALIACAO} contas ativas do mesmo lado. O fut conta para placar, artilharia e presença — mas não mexe em nota nenhuma.`,
     });
   } else if (foraDaAvaliacao > 0) {
     itens.push({

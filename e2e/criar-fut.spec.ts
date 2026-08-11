@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { criarPelada } from "./helpers";
+import { criarFut } from "./helpers";
 
 // Nomes únicos por run: os specs rodam duas vezes seguidas no mesmo banco e
-// cada passada precisa achar SÓ a pelada que ela mesma criou.
+// cada passada precisa achar SÓ o fut que ela mesma criou.
 
-test("cria pelada com limite de vagas e a vê na listagem e no detalhe", async ({ page }) => {
+test("cria fut com limite de vagas e a vê na listagem e no detalhe", async ({ page }) => {
   const local = `Quadra E2E com vagas ${Date.now()}`;
-  const urlPublica = await criarPelada(page, { local, vagas: 8 });
+  const urlPublica = await criarFut(page, { local, vagas: 8 });
 
   // No painel de gestão o limite aparece no contador de presença.
   await expect(page.getByLabel("Local")).toHaveValue(local);
@@ -20,13 +20,13 @@ test("cria pelada com limite de vagas e a vê na listagem e no detalhe", async (
   // Com 0/8 a lista não está cheia — o CTA é "Vou", não "Entrar na espera".
   await expect(page.getByRole("button", { name: "Vou", exact: true })).toBeVisible();
 
-  await page.goto("/peladas");
+  await page.goto("/futs");
   await expect(page.getByText(local)).toBeVisible();
 });
 
-test("cria pelada sem limite (campo de vagas vazio)", async ({ page }) => {
+test("cria fut sem limite (campo de vagas vazio)", async ({ page }) => {
   const local = `Quadra E2E sem limite ${Date.now()}`;
-  const urlPublica = await criarPelada(page, { local });
+  const urlPublica = await criarFut(page, { local });
 
   // Sem limite não existe "de N": só a contagem de confirmados.
   await expect(page.getByText("0 confirmados", { exact: true })).toBeVisible();
@@ -38,6 +38,6 @@ test("cria pelada sem limite (campo de vagas vazio)", async ({ page }) => {
   await expect(page.getByText("vagas")).toBeHidden();
   await expect(page.getByRole("button", { name: "Vou", exact: true })).toBeVisible();
 
-  await page.goto("/peladas");
+  await page.goto("/futs");
   await expect(page.getByText(local)).toBeVisible();
 });

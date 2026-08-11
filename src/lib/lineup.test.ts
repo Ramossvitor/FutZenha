@@ -95,7 +95,7 @@ describe("gruposElegiveis", () => {
   });
 
   // O ataque que a regra existe para barrar: duas contas combinadas fabricando
-  // nota uma para a outra, pelada após pelada.
+  // nota uma para a outra, fut após fut.
   it("duas contas sozinhas não avaliam ninguém", () => {
     expect(elegiveis(escalacao(1, [1, 2], [3, 4]), [1, 2])).toEqual([]);
   });

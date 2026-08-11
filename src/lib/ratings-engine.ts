@@ -34,19 +34,19 @@ export const LOCK_NOTA = 918273645;
 export type MotivoReplay = { tipo: "rodada" | "revisao"; dedupeKey: string };
 
 /**
- * Abre a rodada de avaliação de uma pelada encerrada.
+ * Abre a rodada de avaliação de um fut encerrado.
  *
  * Idempotente por construção: a unique em `rating_rounds.match_day_id` mais o
- * `onConflictDoNothing` garantem que encerrar a mesma pelada duas vezes não
+ * `onConflictDoNothing` garantem que encerrar o mesmo fut duas vezes não
  * abre duas rodadas nem notifica de novo.
  *
- * Devolve o id da rodada criada, ou null quando não há o que avaliar — pelada
+ * Devolve o id da rodada criada, ou null quando não há o que avaliar — fut
  * sem jogos lançados, sem escalação, ou sem ninguém com conta ativa. Nesses
- * casos a pelada encerra normalmente, só não gera avaliação.
+ * casos o fut encerra normalmente, só não gera avaliação.
  *
  * Recebe o executor em vez de abrir a própria transação para que encerrar a
- * pelada e abrir a rodada sejam o mesmo commit: encerrar sem rodada seria um
- * beco sem saída, já que não existe "reabrir pelada".
+ * fut e abrir a rodada sejam o mesmo commit: encerrar sem rodada seria um
+ * beco sem saída, já que não existe "reabrir fut".
  */
 export async function abrirRodada(exec: Executor, matchDayId: number): Promise<number | null> {
   // No MESMO executor da transação — com o `db` global aqui, a query ficava na
@@ -59,7 +59,7 @@ export async function abrirRodada(exec: Executor, matchDayId: number): Promise<n
     .values({ matchDayId, deadlineAt: prazoEmDias(PRAZO_AVALIACAO_DIAS) })
     .onConflictDoNothing({ target: ratingRounds.matchDayId })
     .returning();
-  // Já existia uma rodada para esta pelada — nada a fazer.
+  // Já existia uma rodada para este fut — nada a fazer.
   if (!round) return null;
 
   await exec.insert(ratingRoundRaters).values(
@@ -83,7 +83,7 @@ export async function abrirRodada(exec: Executor, matchDayId: number): Promise<n
 
 // Não existe função para descartar rodada: a escalação é confirmada no
 // encerramento e nunca mais muda, então a base da avaliação nunca fica
-// inválida. O status `cancelled` fica reservado para excluir a pelada por
+// inválida. O status `cancelled` fica reservado para excluir o fut por
 // votação, que também apaga a rodada dela.
 
 /**
@@ -91,7 +91,7 @@ export async function abrirRodada(exec: Executor, matchDayId: number): Promise<n
  *
  * Não aplica delta: lê todas as rodadas apuradas com as avaliações que ainda
  * valem, roda o replay desde 5,0 e regrava. É isso que faz descartar uma
- * avaliação antiga (denúncia aceita) ou apagar uma pelada inteira funcionarem
+ * avaliação antiga (denúncia aceita) ou apagar um fut inteiro funcionarem
  * sem nenhum código de desfazimento — a nota é sempre função do que sobrou.
  *
  * Idempotente: rodar duas vezes seguidas escreve os mesmos bytes.
@@ -122,13 +122,13 @@ export async function aplicarReplay(exec: Executor, motivo: MotivoReplay): Promi
     .from(ratingRounds)
     .innerJoin(matchDays, eq(ratingRounds.matchDayId, matchDays.id))
     .where(eq(ratingRounds.status, "closed"))
-    // Ordem canônica: data da pelada, nunca data de apuração. A nota é função
+    // Ordem canônica: data do fut, nunca data de apuração. A nota é função
     // das avaliações, não de quando o admin clicou.
     .orderBy(asc(matchDays.date), asc(matchDays.id), asc(ratingRounds.id));
 
   // Sem early-return para zero rodadas: nesse caso o certo é justamente
   // apagar skill_history e devolver todo mundo para 5,0, que é o que o resto
-  // desta função faz. Sair aqui deixaria a última pelada apagada valendo.
+  // desta função faz. Sair aqui deixaria o último fut apagado valendo.
   const validas = await exec
     .select({
       roundId: ratings.roundId,
@@ -200,7 +200,7 @@ export async function aplicarReplay(exec: Executor, motivo: MotivoReplay): Promi
       title: p.depois > p.antes ? "Sua nota subiu!" : "Sua nota mudou",
       body:
         motivo.tipo === "rodada"
-          ? `De ${formatSkill(p.antes)} para ${formatSkill(p.depois)} depois da última pelada.`
+          ? `De ${formatSkill(p.antes)} para ${formatSkill(p.depois)} depois do último fut.`
           : `De ${formatSkill(p.antes)} para ${formatSkill(p.depois)} — uma avaliação foi revista.`,
       href: "/perfil",
       dedupeKey: motivo.dedupeKey,

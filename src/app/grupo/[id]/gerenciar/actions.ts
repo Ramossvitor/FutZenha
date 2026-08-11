@@ -68,7 +68,7 @@ export async function atualizarGrupo(groupId: number, formData: FormData) {
 /**
  * Excluir o grupo.
  *
- * Membros, convites, links e pedidos caem em cascata. As peladas NÃO: a FK é
+ * Membros, convites, links e pedidos caem em cascata. Os futs NÃO: a FK é
  * `set null` e elas viram avulsas, preservando gols, V/E/D, avaliações e
  * skill_history que alimentam o ranking global (ver src/db/schema.ts).
  *
@@ -86,7 +86,7 @@ export async function excluirGrupo(groupId: number, formData: FormData) {
   await db.delete(groups).where(eq(groups.id, groupId));
 
   revalidatePath("/grupos");
-  revalidatePath("/peladas");
+  revalidatePath("/futs");
   revalidatePath("/rankings");
   redirect("/grupos?ok=grupo-excluido");
 }
@@ -131,7 +131,7 @@ export async function definirPapel(groupId: number, playerId: number, novoPapel:
             : `Seu papel em ${grupo.name} mudou`,
         body:
           parsed.data === "organizer"
-            ? "Você já pode marcar peladas do grupo e convidar gente."
+            ? "Você já pode marcar futs do grupo e convidar gente."
             : "Você voltou a ser membro do grupo.",
         href: `/grupo/${groupId}`,
         // A chave marca o EVENTO, não o estado. Carregar só o papel de destino
@@ -305,8 +305,8 @@ export async function revogarLinkDoGrupo(groupId: number, linkId: number) {
 /**
  * Convite nominal para quem já tem conta.
  *
- * Quem não tem conta não entra por aqui: o caminho dele é a pelada
- * (`convidarParaPelada`), que cria o jogador e gera o convite de plataforma. Um
+ * Quem não tem conta não entra por aqui: o caminho dele é o fut
+ * (`convidarParaFut`), que cria o jogador e gera o convite de plataforma. Um
  * convite de grupo para jogador sem conta ficaria pendente para sempre — não há
  * ninguém para aceitá-lo.
  */
@@ -397,7 +397,7 @@ export async function revogarConvite(groupId: number, invitationId: number) {
 // Pedidos de entrada
 // ---------------------------------------------------------------------------
 
-/** Aprovar entrada. É do admin: quem entra no grupo decide quem joga as peladas
+/** Aprovar entrada. É do admin: quem entra no grupo decide quem joga os futs
  *  dele e, por tabela, quem aparece no ranking do grupo. */
 export async function aprovarPedido(groupId: number, requestId: number) {
   const { session, grupo } = await requireGrupoAdmin(groupId);

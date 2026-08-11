@@ -110,8 +110,8 @@ describe("replaySkills", () => {
     expect([...embaralhado.skillByPlayer]).toEqual([...naOrdem.skillByPlayer]);
   });
 
-  it("ordena pela data da pelada, não pelo id da rodada", () => {
-    // Rodada 2 é de uma pelada ANTERIOR à rodada 1 — tem que ser aplicada antes.
+  it("ordena pela data do fut, não pelo id da rodada", () => {
+    // Rodada 2 é de um fut ANTERIOR à rodada 1 — tem que ser aplicada antes.
     const cronologico = replaySkills([
       rodada(9, recebe(1, [5, 5, 5]), "2026-03-01"),
       rodada(1, recebe(1, [1, 1, 1]), "2026-03-08"),
@@ -269,10 +269,10 @@ describe("replaySkills", () => {
     ]);
   });
 
-  // match_days.date não tem unique, então duas peladas no mesmo dia são
+  // match_days.date não tem unique, então duas futs no mesmo dia são
   // possíveis. Sem o desempate por id, a nota final dependeria da ordem que o
   // Postgres devolvesse — o mesmo dado daria notas diferentes entre execuções.
-  it("desempata peladas da mesma data por id, de forma estável", () => {
+  it("desempata futs da mesma data por id, de forma estável", () => {
     const mesmoDia = [
       { ...rodada(7, recebe(1, [1, 1, 1]), "2026-03-01"), matchDayId: 7 },
       { ...rodada(3, recebe(1, [5, 5, 5], 2000), "2026-03-01"), matchDayId: 3 },
@@ -321,7 +321,7 @@ describe("diffNotas", () => {
   });
 
   // O bug que motivou extrair esta função: quem sai do replay tem que voltar
-  // para 5,0. Acontece quando a única pelada em que ele foi avaliado é apagada
+  // para 5,0. Acontece quando o único fut em que ele foi avaliado é apagado
   // por votação, ou quando todas as notas que recebeu são descartadas.
   it("devolve para 5,0 quem sumiu do replay", () => {
     expect(diffNotas([{ id: 1, skill: 6.7 }], new Map())).toEqual([

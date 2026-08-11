@@ -155,14 +155,14 @@ export async function Rankings({
         <>
           <Banner tom="info">
             A nota é estado atual, não temporada — por isso não tem filtro de ano. Todo mundo começa
-            em 5,0, e a variação mostrada é a da última pelada apurada, somando todos os grupos.
+            em 5,0, e a variação mostrada é o do último fut apurado, somando todos os grupos.
           </Banner>
           <HairlineList
             as="ol"
             vazio={
               <EmptyState
                 titulo="Ninguém com nota ainda"
-                descricao="A nota aparece depois que a primeira pelada for encerrada e avaliada."
+                descricao="A nota aparece depois que o primeiro fut for encerrado e avaliado."
               />
             }
           >
@@ -196,8 +196,8 @@ export async function Rankings({
                 titulo="Nenhum gol registrado"
                 descricao={
                   ano
-                    ? `Ninguém marcou em ${ano} — ou as peladas ainda não foram encerradas.`
-                    : "Os gols entram no ranking quando a pelada é encerrada."
+                    ? `Ninguém marcou em ${ano} — ou os futs ainda não foram encerrados.`
+                    : "Os gols entram no ranking quando o fut é encerrado."
                 }
               />
             }
@@ -289,7 +289,7 @@ export async function Rankings({
       {aba === "presenca" && (
         <>
           <Banner tom="info">
-            {presenca.totalDays} pelada{presenca.totalDays === 1 ? "" : "s"} encerrada
+            {presenca.totalDays} fut{presenca.totalDays === 1 ? "" : "s"} encerrado
             {presenca.totalDays === 1 ? "" : "s"}
             {ano ? ` em ${ano}` : ""}.
           </Banner>
@@ -298,7 +298,7 @@ export async function Rankings({
             vazio={
               <EmptyState
                 titulo="Nenhuma presença registrada"
-                descricao="A presença conta a partir da primeira pelada encerrada."
+                descricao="A presença conta a partir do primeiro fut encerrado."
               />
             }
           >
@@ -313,7 +313,7 @@ export async function Rankings({
                     valor={p.attended}
                     total={presenca.totalDays}
                     className="mt-1.5"
-                    rotulo={`${p.attended} de ${presenca.totalDays} peladas`}
+                    rotulo={`${p.attended} de ${presenca.totalDays} futs`}
                   />
                 </span>
                 <span className="text-right">

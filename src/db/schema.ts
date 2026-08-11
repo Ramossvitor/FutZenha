@@ -59,12 +59,12 @@ export const players = pgTable("players", {
 // ---------------------------------------------------------------------------
 // Grupos
 //
-// O grupo é o inquilino: peladas, papéis e ranking próprios. Ele não substitui
-// o ranking global — as estatísticas de toda pelada encerrada continuam
+// O grupo é o inquilino: futs, papéis e ranking próprios. Ele não substitui
+// o ranking global — as estatísticas de todo fut encerrado continuam
 // alimentando /rankings e /artilharia. O grupo é um recorte por cima disso (ver
 // EscopoStats em src/lib/stats.ts).
 //
-// Pelada sem grupo (`match_days.group_id` nulo) é a pelada avulsa, que é como o
+// Fut sem grupo (`match_days.group_id` nulo) é o fut avulso, que é como o
 // sistema inteiro funcionava antes disto e continua funcionando.
 // ---------------------------------------------------------------------------
 
@@ -92,7 +92,7 @@ export const groups = pgTable(
   {
     id: serial("id").primaryKey(),
     // Sem unique, de propósito. `players.name` é unique porque um jogador é uma
-    // pessoa real dentro da mesma pelada; grupo é inquilino, e duas "Pelada da
+    // pessoa real dentro do mesmo fut; grupo é inquilino, e duas "Fut da
     // firma" convivem sem se confundir — o id desempata. Uma unique global
     // ainda viraria oráculo de enumeração: daria para descobrir a existência de
     // um grupo privado tentando criar um homônimo, que é justamente o que o 404
@@ -183,7 +183,7 @@ export const groupInvitations = pgTable(
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
     // Só jogador com conta ativa é convidável nominalmente (validado na action).
-    // Quem não tem conta entra pelo fluxo da pelada — convidarParaPelada, que é
+    // Quem não tem conta entra pelo fluxo do fut — convidarParaFut, que é
     // o que gera convite de plataforma.
     playerId: integer("player_id")
       .notNull()
@@ -244,26 +244,26 @@ export const matchDays = pgTable("match_days", {
   location: text("location").notNull(),
   status: matchDayStatusEnum("status").notNull().default("scheduled"),
   notes: text("notes"),
-  // Nulo = pelada avulsa, que é como tudo funcionava antes dos grupos e continua
-  // funcionando. Definido na criação e imutável depois: mover uma pelada
+  // Nulo = fut avulso, que é como tudo funcionava antes dos grupos e continua
+  // funcionando. Definido na criação e imutável depois: mover um fut
   // encerrada entre grupos reescreveria dois rankings de uma vez, e por isso
   // updateMatchDay não aceita este campo.
   //
-  // `set null`, NUNCA `cascade`: apagar um grupo não pode apagar as peladas
+  // `set null`, NUNCA `cascade`: apagar um grupo não pode apagar os futs
   // dele. Elas carregam gols, V/E/D, avaliações e skill_history que alimentam o
   // ranking GLOBAL — cascatear reescreveria a nota de gente que nem é do grupo,
-  // e sem o aplicarReplay() que apagarPelada roda no mesmo commit (ver
+  // e sem o aplicarReplay() que apagarFut roda no mesmo commit (ver
   // src/lib/deletion.ts).
   groupId: integer("group_id").references(() => groups.id, { onDelete: "set null" }),
-  // Quem criou a pelada é quem a administra: presenças, sorteio, placar, gols,
+  // Quem criou o fut é quem a administra: presenças, sorteio, placar, gols,
   // encerramento e abertura da votação de exclusão (ver src/lib/permissions.ts).
-  // Nulo em pelada órfã — as que existiam antes deste modelo e as de criador
-  // apagado (`set null`, porque apagar jogador não pode apagar a pelada). Órfã
+  // Nulo em fut órfão — os que existiam antes deste modelo e os de criador
+  // apagado (`set null`, porque apagar jogador não pode apagar o fut). Órfã
   // só é administrada pelo admin da plataforma.
   createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
     onDelete: "set null",
   }),
-  // Quantos cabem. Nulo = sem limite, que é como toda pelada funcionava antes da
+  // Quantos cabem. Nulo = sem limite, que é como todo fut funcionava antes da
   // lista de espera e continua funcionando. Com limite, quem confirma além dele
   // entra como `waitlist` — o corte é por ordem de chegada (`confirmed_at`), não
   // por nota nem por ordem alfabética.
@@ -274,7 +274,7 @@ export const matchDays = pgTable("match_days", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 },
 (t) => [
-  // Todo recorte de grupo (peladas do grupo e as quatro consultas de
+  // Todo recorte de grupo (futs do grupo e as quatro consultas de
   // src/lib/stats.ts) entra por group_id e ordena por data.
   index("match_days_group_idx").on(t.groupId, t.date),
 ]);
@@ -342,7 +342,7 @@ export const games = pgTable("games", {
 });
 
 // Escalação do jogo: quem entrou em campo por qual lado. É um snapshot tirado
-// dos times da pelada na criação do jogo, então trocar alguém de colete depois
+// dos times do fut na criação do jogo, então trocar alguém de colete depois
 // não reescreve quem jogou os jogos anteriores. É daqui que saem os
 // "companheiros de equipe" da avaliação e o V/E/D de cada jogador.
 export const gamePlayers = pgTable(
@@ -400,9 +400,9 @@ export const users = pgTable("users", {
   tokenVersion: integer("token_version").notNull().default(1),
   active: boolean("active").notNull().default(true),
   // Admin da plataforma: gerencia contas e convites, julga denúncias de nota
-  // injusta e supervisiona todas as peladas. É um jogador como qualquer outro —
+  // injusta e supervisiona todos os futs. É um jogador como qualquer outro —
   // marca a própria presença, avalia e é avaliado (e por isso não julga denúncia
-  // de pelada que jogou, ver src/lib/permissions.ts). Ligar ou desligar vale no
+  // de fut que jogou, ver src/lib/permissions.ts). Ligar ou desligar vale no
   // request seguinte, sem mexer em token_version: o cookie não carrega papel, e
   // getSession relê esta coluna a cada request.
   isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
@@ -447,7 +447,7 @@ export const invites = pgTable("invites", {
 // ---------------------------------------------------------------------------
 // Avaliação entre companheiros
 //
-// Encerrar uma pelada abre uma rodada. Cada jogador com conta avalia, de 1 a 5
+// Encerrar um fut abre uma rodada. Cada jogador com conta avalia, de 1 a 5
 // estrelas, os companheiros com quem dividiu o lado em algum jogo daquele dia.
 // A rodada fecha quando todos avaliam ou quando o prazo vence, e a nota de
 // todo mundo é recalculada do zero (ver src/lib/skill.ts).
@@ -492,19 +492,26 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "group_join_request",
   "group_join_request_resolved",
   "group_role_changed",
-  // O admin da pelada incluiu alguém que não tinha entrado na lista por conta
+  // Os quatro `pelada_*` abaixo guardam o nome antigo do domínio de propósito:
+  // são valores de enum já gravados em `notifications.type` em produção.
+  // Postgres não renomeia valor de enum sem migration, e o ganho seria
+  // cosmético — nenhum deles aparece na tela. O domínio hoje se chama *fut*.
+  // O tsc protege este ponto: o mapa ICONE de /notificacoes é
+  // Record<TipoDeAviso, …>, então mexer numa chave por descuido não compila.
+  //
+  // O admin do fut incluiu alguém que não tinha entrado na lista por conta
   // própria. É o contrapeso da exceção em podeDefinirPresencaPor: a inclusão
   // mexe na presença e no V/E/D de quem tem conta, então a pessoa fica sabendo.
   "pelada_presenca_definida",
-  // O ciclo de vida da pelada em si — os três nasceram com o push, mas são
-  // avisos de caixa de entrada como os outros: marcar pelada nova, sortear os
+  // O ciclo de vida do fut em si — os três nasceram com o push, mas são
+  // avisos de caixa de entrada como os outros: marcar fut novo, sortear os
   // times e a véspera sem resposta agora avisam quem joga.
   "pelada_criada",
   "pelada_times_sorteados",
   "pelada_lembrete_vespera",
 ]);
 
-// Uma rodada por pelada — a unique em match_day_id é o que garante isso e o que
+// Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
 // torna a abertura idempotente. Os prazos são congelados na criação: nada de
 // recalcular "agora + 2 dias" a cada leitura.
 export const ratingRounds = pgTable(
@@ -694,10 +701,10 @@ export const pushSubscriptions = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Exclusão de pelada por votação
+// Exclusão de fut por votação
 //
 // Escalação confirmada é imutável, e placar e gols travam 24h depois do
-// encerramento. Passado isso, a única forma de consertar uma pelada errada é
+// encerramento. Passado isso, a única forma de consertar um fut errado é
 // apagá-la inteira — e quem decide isso é quem jogou, não o admin sozinho.
 // ---------------------------------------------------------------------------
 
@@ -707,7 +714,7 @@ export const deletionVoteStatusEnum = pgEnum("deletion_vote_status", [
   "rejected",
 ]);
 
-// Uma votação por pelada: a unique é o que garante que uma rejeitada não possa
+// Uma votação por fut: a unique é o que garante que uma rejeitada não possa
 // ser reaberta. Quórum e eleitorado são congelados na abertura, senão uma conta
 // criada durante as 48h mudaria o denominador no meio da apuração.
 export const matchDayDeletionVotes = pgTable("match_day_deletion_votes", {
@@ -719,7 +726,7 @@ export const matchDayDeletionVotes = pgTable("match_day_deletion_votes", {
   reason: text("reason").notNull(),
   status: deletionVoteStatusEnum("status").notNull().default("open"),
   // Quem propôs. Nulo nas votações abertas pela senha global, que não tinha
-  // identidade. Existe porque agora há um admin por pelada: "o admin propôs
+  // identidade. Existe porque agora há um admin por fut: "o admin propôs
   // apagar" deixou de identificar alguém.
   openedByPlayerId: integer("opened_by_player_id").references(() => players.id, {
     onDelete: "set null",

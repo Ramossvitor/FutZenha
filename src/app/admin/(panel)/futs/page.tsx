@@ -9,24 +9,24 @@ import { SubmitButton } from "@/components/ui/button";
 import { db } from "@/db";
 import { gamePlayers, games, matchDays, players, ratingRounds, users } from "@/db/schema";
 import { formatDate, formatDateShort, formatTime } from "@/lib/format";
-import { STATUS_PELADA } from "@/lib/match-day-form";
+import { STATUS_FUT } from "@/lib/match-day-form";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
-import { excluirPeladaAbusiva } from "./actions";
+import { excluirFutAbusivo } from "./actions";
 
-export const metadata = { title: "Supervisão de peladas" };
+export const metadata = { title: "Supervisão de futs" };
 
 const LOCAIS = {
   "motivo-curto": "Escreva o motivo da exclusão (pelo menos 10 caracteres).",
 };
 
-export default async function AdminPeladasPage({ searchParams }: PageProps<"/admin/peladas">) {
+export default async function AdminFutsPage({ searchParams }: PageProps<"/admin/futs">) {
   await requirePlatformAdmin();
   const { erro, ok } = await searchParams;
 
-  // Uma linha por pelada com o que denuncia fabricação: quem criou, quantos
+  // Uma linha por fut com o que denuncia fabricação: quem criou, quantos
   // jogaram e — o que mais importa — quantos desses tinham conta, já que é a
   // conta que move a nota.
-  const peladas = await db
+  const futs = await db
     .select({
       id: matchDays.id,
       date: matchDays.date,
@@ -50,22 +50,22 @@ export default async function AdminPeladasPage({ searchParams }: PageProps<"/adm
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        titulo="Supervisão de peladas"
-        descricao="Todas as peladas do sistema, de quem as criou. Excluir aqui não passa pela votação do grupo — é para desfazer pelada fabricada."
+        titulo="Supervisão de futs"
+        descricao="Todos os futs do sistema, de quem os criou. Excluir aqui não passa pela votação do grupo — é para desfazer fut fabricado."
       />
 
       <BannerDaQuery erro={erro} ok={ok} locais={LOCAIS} />
 
-      {peladas.length === 0 ? (
-        <EmptyState titulo="Nenhuma pelada ainda" />
+      {futs.length === 0 ? (
+        <EmptyState titulo="Nenhum fut ainda" />
       ) : (
         <div className="flex flex-col gap-2.5">
-          {peladas.map((p) => (
+          {futs.map((p) => (
             <Card key={p.id}>
               <CardBody className="flex flex-col gap-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
-                    href={`/pelada/${p.id}`}
+                    href={`/fut/${p.id}`}
                     className="font-display text-[15px] font-bold text-fg capitalize hover:underline"
                   >
                     {formatDate(p.date)}
@@ -74,7 +74,7 @@ export default async function AdminPeladasPage({ searchParams }: PageProps<"/adm
                     {formatDateShort(p.date)}
                   </span>
                   <Badge tom="outline" className="ml-auto">
-                    {STATUS_PELADA[p.status]}
+                    {STATUS_FUT[p.status]}
                   </Badge>
                 </div>
 
@@ -83,12 +83,12 @@ export default async function AdminPeladasPage({ searchParams }: PageProps<"/adm
                   {p.location}
                 </p>
 
-                {/* O que denuncia pelada fabricada: quem criou, quantos jogaram
+                {/* O que denuncia fut fabricado: quem criou, quantos jogaram
                     e — o que mais importa — quantos tinham conta, já que é a
                     conta que move a nota. */}
                 <p className="text-[13px] text-fg-3">
                   Criada por{" "}
-                  <strong className="text-fg-2">{p.criador ?? "— (pelada órfã)"}</strong> ·{" "}
+                  <strong className="text-fg-2">{p.criador ?? "— (fut órfão)"}</strong> ·{" "}
                   {p.jogaram} jogaram,{" "}
                   <strong className="text-fg-2">{p.comConta} com conta ativa</strong>
                   {p.temRodada ? " · gerou avaliação" : " · sem avaliação"}
@@ -99,7 +99,7 @@ export default async function AdminPeladasPage({ searchParams }: PageProps<"/adm
                     Excluir por abuso
                   </summary>
                   <form
-                    action={excluirPeladaAbusiva.bind(null, p.id)}
+                    action={excluirFutAbusivo.bind(null, p.id)}
                     className="mt-2 flex flex-wrap items-end gap-2"
                   >
                     <Field
@@ -114,10 +114,10 @@ export default async function AdminPeladasPage({ searchParams }: PageProps<"/adm
                         name="motivo"
                         required
                         minLength={10}
-                        placeholder="Pelada fabricada para inflar nota"
+                        placeholder="Fut fabricado para inflar nota"
                       />
                     </Field>
-                    {/* Apaga a pelada e recalcula a nota de todo mundo do zero:
+                    {/* Apaga o fut e recalcula a nota de todo mundo do zero:
                         não tem desfazer. */}
                     <SubmitButton variante="danger" labelPending="Excluindo…">
                       Excluir e recalcular

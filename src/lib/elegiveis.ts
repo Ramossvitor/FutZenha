@@ -4,20 +4,20 @@ import { db } from "@/db";
 import { attendances, groupMembers, players, type Player } from "@/db/schema";
 
 /**
- * Quem pode entrar na lista desta pelada.
+ * Quem pode entrar na lista deste fut.
  *
  * Antes disto, as duas telas de presença liam `players.active = true` do banco
- * inteiro: uma pelada de grupo mostrava — e aceitava — todo jogador cadastrado
+ * inteiro: um fut de grupo mostrava — e aceitava — todo jogador cadastrado
  * na plataforma. Isso funcionava quando só existia um grupo de fato; com grupos
  * de verdade, é vazamento de um grupo para o outro.
  *
- * - **Pelada avulsa** (`groupId` nulo): todo jogador ativo, que é como tudo
+ * - **Fut avulso** (`groupId` nulo): todo jogador ativo, que é como tudo
  *   funcionava antes dos grupos e continua funcionando.
- * - **Pelada de grupo**: os membros do grupo.
+ * - **Fut de grupo**: os membros do grupo.
  *
  * A união com quem já tem linha em `attendances` não é detalhe: sem ela, quem
- * confirmou e depois saiu do grupo sumiria da lista de uma pelada em que está —
- * e, encerrada a pelada, sumiria da tela que o admin usa para conferir a
+ * confirmou e depois saiu do grupo sumiria da lista de um fut em que está —
+ * e, encerrada o fut, sumiria da tela que o admin usa para conferir a
  * escalação de um jogo que a pessoa jogou.
  */
 export type EscopoDaLista = { id: number; groupId: number | null };

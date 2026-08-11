@@ -90,14 +90,14 @@ export function deslogar(): void {
   cookieJar.delete(SESSION_COOKIE);
 }
 
-export async function criarPelada(
+export async function criarFut(
   extra: Partial<typeof matchDays.$inferInsert> = {},
 ): Promise<MatchDay> {
-  const [pelada] = await db
+  const [fut] = await db
     .insert(matchDays)
     .values({ date: "2026-08-12", location: "Quadra de Teste", ...extra })
     .returning();
-  return pelada;
+  return fut;
 }
 
 /**
@@ -106,14 +106,14 @@ export async function criarPelada(
  * chegada pelo relógio do banco.
  */
 export async function confirmarPresenca(
-  pelada: MatchDay,
+  fut: MatchDay,
   jogador: Player,
   opcoes: { status?: "in" | "out" | "waitlist" | "no_show"; minutosAtras?: number } = {},
 ): Promise<void> {
   const { status = "in", minutosAtras = 0 } = opcoes;
   const minutos = Math.trunc(minutosAtras);
   await db.insert(attendances).values({
-    matchDayId: pelada.id,
+    matchDayId: fut.id,
     playerId: jogador.id,
     status,
     confirmedAt:

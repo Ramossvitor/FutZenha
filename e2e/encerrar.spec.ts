@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { criarPelada } from "./helpers";
+import { criarFut } from "./helpers";
 
-// O fluxo completo do admin numa pelada criada PELO spec (a do seed fica em
+// O fluxo completo do admin num fut criado PELO spec (a do seed fica em
 // paz): criar → presenças → sorteio → jogo com placar → tirar alguém da
 // escalação → prévia de falta → encerrar → estado final.
 //
 // Os quatro marcados pela gestão são jogadores que o seed NUNCA dá conta
-// (não jogaram a última pelada encerrada, de onde saem as contas demo) — o
+// (não jogaram o último fut encerrado, de onde saem as contas demo) — o
 // admin só marca por quem não tem acesso, e sem conta em campo além do `du`
 // o encerramento não abre rodada de avaliação nova, o que manteria o
 // avaliar.spec estável na segunda passada.
@@ -16,7 +16,7 @@ const FALTOSO = "Igor Santana";
 test("admin cria, confirma, sorteia, lança placar, marca falta e encerra", async ({ page }) => {
   test.setTimeout(120_000);
   const local = `Encerrar E2E ${Date.now()}`;
-  const urlPublica = await criarPelada(page, { local });
+  const urlPublica = await criarFut(page, { local });
 
   // O próprio du confirma pela página pública (o nome do jogador dele varia
   // com o seed — o badge "você" é o jeito estável de encontrá-lo).
@@ -62,15 +62,15 @@ test("admin cria, confirma, sorteia, lança placar, marca falta e encerra", asyn
   ).toBeVisible();
 
   // Porta de mão única.
-  await page.getByRole("button", { name: "Encerrar a pelada" }).click();
+  await page.getByRole("button", { name: "Encerrar o fut" }).click();
   await expect(page).toHaveURL(/\/gerenciar$/);
-  await expect(page.getByText(/Pelada encerrada — os resultados contam/)).toBeVisible();
-  await expect(page.getByText("Encerrada", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Fut encerrado — os resultados contam/)).toBeVisible();
+  await expect(page.getByText("Encerrado", { exact: true })).toBeVisible();
 
   // Estado final na página pública: encerrada, placar de pé e o faltoso marcado.
   await page.getByRole("link", { name: "Ver página pública" }).click();
   await expect(page).toHaveURL(urlPublica);
-  await expect(page.getByText("Encerrada", { exact: true })).toBeVisible();
+  await expect(page.getByText("Encerrado", { exact: true })).toBeVisible();
   await expect(page.getByText("3 × 1")).toBeVisible();
   await expect(page.getByText("Não compareceram · 1")).toBeVisible();
   await expect(

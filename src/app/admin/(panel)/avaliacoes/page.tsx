@@ -104,7 +104,7 @@ export default async function AdminAvaliacoesPage() {
 
                   <div>
                     <p className="mb-1 text-[12px] text-fg-4">
-                      Todas as notas que ela recebeu nessa pelada:
+                      Todas as notas que ela recebeu nesse fut:
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {contexto.map((c, j) => (
@@ -129,7 +129,7 @@ export default async function AdminAvaliacoesPage() {
                   <p className="text-[12px] leading-[1.45] text-fg-4">
                     {d.podeJulgar
                       ? "Os nomes de quem avaliou aparecem só aqui: entre jogadores a nota continua anônima."
-                      : "Você jogou esta pelada, então não julga esta denúncia e não vê quem avaliou. Outro admin decide — ou o prazo vence e ela é aceita automaticamente."}
+                      : "Você jogou este fut, então não julga esta denúncia e não vê quem avaliou. Outro admin decide — ou o prazo vence e ela é aceita automaticamente."}
                   </p>
 
                   {d.reason && (
@@ -159,8 +159,8 @@ export default async function AdminAvaliacoesPage() {
                         />
                       </Field>
                       <div className="flex flex-wrap gap-2">
-                        {/* Descartar recalcula a nota de todo mundo desta
-                            pelada em diante: não tem desfazer. */}
+                        {/* Descartar recalcula a nota de todo mundo deste
+                            fut em diante: não tem desfazer. */}
                         <SubmitButton
                           name="decisao"
                           value="aceitar"
@@ -183,7 +183,7 @@ export default async function AdminAvaliacoesPage() {
                         </SubmitButton>
                       </div>
                       <p className="text-[12px] leading-[1.45] text-fg-4">
-                        Descartar recalcula a nota de todo mundo desta pelada em diante. Sem
+                        Descartar recalcula a nota de todo mundo deste fut em diante. Sem
                         resposta em {d.horasParaResponder}h, a denúncia é aceita automaticamente.
                       </p>
                     </form>
@@ -201,14 +201,14 @@ export default async function AdminAvaliacoesPage() {
           vazio={
             <EmptyState
               titulo="Nenhuma rodada ainda"
-              descricao="Encerrar uma pelada abre a primeira."
+              descricao="Encerrar um fut abre a primeira."
             />
           }
         >
           {rodadas.map((r) => (
             <HairlineRow as="li" key={r.id}>
               <Link
-                href={`/pelada/${r.matchDayId}/gerenciar`}
+                href={`/fut/${r.matchDayId}/gerenciar`}
                 className="font-display text-[14px] font-bold text-fg capitalize hover:underline"
               >
                 {formatDate(r.matchDayDate)}

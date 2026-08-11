@@ -24,7 +24,7 @@ const linha = (
 
 // Fechar a lista é sortear os times: daí em diante quem mexe nela é o admin.
 describe("listaFechada", () => {
-  it("só a pelada marcada tem lista aberta", () => {
+  it("só o fut marcado tem lista aberta", () => {
     expect(listaFechada("scheduled")).toBe(false);
     expect(listaFechada("teams_drawn")).toBe(true);
     expect(listaFechada("finished")).toBe(true);
@@ -108,7 +108,7 @@ describe("statusAoConfirmar", () => {
     expect(statusAoConfirmar(2, 2)).toBe("waitlist");
   });
 
-  it("pelada lotada além do limite segue mandando para a espera", () => {
+  it("fut lotado além do limite segue mandando para a espera", () => {
     expect(statusAoConfirmar(5, 2)).toBe("waitlist");
   });
 

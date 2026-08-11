@@ -83,7 +83,7 @@ const idSchema = z.number().int().positive();
 
 // Convite para quem já tem conta é reset de senha — por isso esta action é
 // exclusiva da plataforma. É o único caminho que chega em `gerarConvite` com um
-// jogador que pode já ter conta; o do admin da pelada só cria jogador novo. O
+// jogador que pode já ter conta; o do admin do fut só cria jogador novo. O
 // email também muda de texto nesse caso: quem já é do app não recebe boas-vindas
 // (ver emailDeResetDeAcesso, escolhido dentro de enviarConvitePorEmail).
 export async function createInvite(playerId: number, formData: FormData) {

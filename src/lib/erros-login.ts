@@ -11,7 +11,7 @@ export const ERROS_LOGIN: Record<string, string> = {
   cancelado: "Login pelo Google cancelado.",
   "troca-falhou": "O Google não confirmou o login. Tente de novo.",
   "email-nao-verificado": "O e-mail dessa conta Google não está verificado.",
-  "sem-convite": "Você ainda não tem conta aqui. Peça um convite a quem organiza a pelada.",
+  "sem-convite": "Você ainda não tem conta aqui. Peça um convite a quem organiza o fut.",
   "convite-invalido": "Convite inválido ou expirado. Fala com o admin para gerar outro.",
   "convite-sem-email":
     "Esse convite é do tipo antigo, de usuário e senha. Abra o link do convite e crie sua conta por lá.",

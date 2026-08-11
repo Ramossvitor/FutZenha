@@ -6,7 +6,7 @@ import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 const adminLinks = [
   { href: "/admin", label: "Visão geral" },
   { href: "/admin/jogadores", label: "Jogadores" },
-  { href: "/admin/peladas", label: "Supervisão" },
+  { href: "/admin/futs", label: "Supervisão" },
   { href: "/admin/avaliacoes", label: "Avaliações" },
 ] as const;
 

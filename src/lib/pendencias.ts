@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { and, eq, lte, notExists, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, matchDays, players, ratingRounds, users } from "@/db/schema";
-import { avisoDeVespera } from "./avisos-pelada";
+import { avisoDeVespera } from "./avisos-fut";
 import { resolverVotacoesVencidas } from "./deletion";
 import { condicaoElegivel } from "./elegiveis";
 import { notificar } from "./notifications";
@@ -68,17 +68,17 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
     // cada aceite descarta a nota e dispara o replay em cascata.
     const denunciasAceitas = await resolverDenunciasVencidas(tx);
 
-    // Por último: uma votação aprovada apaga a pelada inteira, então rodar
-    // depois evita fechar rodada de pelada que vai deixar de existir.
+    // Por último: uma votação aprovada apaga o fut inteiro, então rodar
+    // depois evita fechar rodada de fut que vai deixar de existir.
     const votacoesResolvidas = await resolverVotacoesVencidas(tx);
 
-    // Lembrete de véspera: pelada agendada para AMANHÃ, para quem é elegível,
+    // Lembrete de véspera: fut agendada para AMANHÃ, para quem é elegível,
     // tem conta ativa e ainda não disse "vou" nem "fora". Mora na varredura, e
     // não numa action, porque não tem gesto de usuário para pegar carona — e o
     // cron garante a saída mesmo num dia sem tráfego. O fuso é explícito: o
     // piggyback roda a qualquer hora, e o `current_date` UTC viraria o dia às
-    // 21h de Brasília — três horas avisando da pelada errada.
-    const peladasDeAmanha = await tx
+    // 21h de Brasília — três horas avisando do fut errado.
+    const futsDeAmanha = await tx
       .select()
       .from(matchDays)
       .where(
@@ -88,7 +88,7 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
         ),
       );
     let lembretesDeVespera = 0;
-    for (const pelada of peladasDeAmanha) {
+    for (const fut of futsDeAmanha) {
       const semResposta = await tx
         .select({ id: players.id })
         .from(players)
@@ -96,14 +96,14 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
         .where(
           and(
             eq(players.active, true),
-            condicaoElegivel(pelada),
+            condicaoElegivel(fut),
             notExists(
               db
                 .select({ um: sql`1` })
                 .from(attendances)
                 .where(
                   and(
-                    eq(attendances.matchDayId, pelada.id),
+                    eq(attendances.matchDayId, fut.id),
                     eq(attendances.playerId, players.id),
                   ),
                 ),
@@ -112,7 +112,7 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
         );
       await notificar(
         tx,
-        semResposta.map((p) => avisoDeVespera(pelada, p.id)),
+        semResposta.map((p) => avisoDeVespera(fut, p.id)),
       );
       lembretesDeVespera += semResposta.length;
     }

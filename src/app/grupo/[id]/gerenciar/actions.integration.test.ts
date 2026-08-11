@@ -151,7 +151,7 @@ describe("reenviarEmailDoConvite", () => {
   });
 
   // Toda action que gasta e-mail tem teste de guard (ver o admin de jogadores e
-  // a gestão de pelada). Aqui pesa mais: quem convida gasta a cota de todo
+  // a gestão de fut). Aqui pesa mais: quem convida gasta a cota de todo
   // mundo, e o id do convite vem do cliente.
   it("membro comum do grupo é barrado antes de qualquer envio", async () => {
     const groupId = await grupoComOrganizadorLogado();

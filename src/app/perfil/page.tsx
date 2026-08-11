@@ -89,7 +89,7 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
         </p>
       )}
 
-      <Section titulo="Meus números" acao={<span className="eyebrow">só peladas encerradas</span>}>
+      <Section titulo="Meus números" acao={<span className="eyebrow">só futs encerrados</span>}>
         <StatGrid>
           <StatTile label="Gols" valor={meusGols} />
           <StatTile label="Jogos" valor={meuRetro?.gamesPlayed ?? 0} />
@@ -122,7 +122,7 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
         {rodadas.length === 0 ? (
           <EmptyState
             titulo="Nenhuma ainda"
-            descricao="Depois que uma pelada que você jogou for apurada, as estrelas que os companheiros deram aparecem aqui."
+            descricao="Depois que um fut que você jogou for apurado, as estrelas que os companheiros deram aparecem aqui."
           />
         ) : (
           <div className="flex flex-col gap-3">

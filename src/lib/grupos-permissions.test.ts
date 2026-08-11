@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   podeConvidarParaGrupo,
-  podeCriarPeladaNoGrupo,
+  podeCriarFutNoGrupo,
   podeEntrarNoGrupo,
   podeGerenciarGrupo,
   podePromover,
@@ -27,28 +27,28 @@ describe("podeGerenciarGrupo", () => {
     expect(podeGerenciarGrupo(deFora, null)).toBe(false);
   });
 
-  it("admin da plataforma é fallback, como em pelada", () => {
+  it("admin da plataforma é fallback, como em fut", () => {
     expect(podeGerenciarGrupo(plataforma, null)).toBe(true);
   });
 });
 
-describe("podeCriarPeladaNoGrupo", () => {
-  it("admin e organizador criam pelada do grupo", () => {
-    expect(podeCriarPeladaNoGrupo(admin, "admin")).toBe(true);
-    expect(podeCriarPeladaNoGrupo(organizador, "organizer")).toBe(true);
+describe("podeCriarFutNoGrupo", () => {
+  it("admin e organizador criam fut do grupo", () => {
+    expect(podeCriarFutNoGrupo(admin, "admin")).toBe(true);
+    expect(podeCriarFutNoGrupo(organizador, "organizer")).toBe(true);
   });
 
-  it("membro não cria pelada do grupo", () => {
-    expect(podeCriarPeladaNoGrupo(membro, "member")).toBe(false);
+  it("membro não cria fut do grupo", () => {
+    expect(podeCriarFutNoGrupo(membro, "member")).toBe(false);
   });
 
   // O ataque, e a razão de esta função existir: qualquer jogador logado já cria
-  // pelada avulsa, e o `groupId` chega pelo <select> do formulário. Sem o
+  // fut avulso, e o `groupId` chega pelo <select> do formulário. Sem o
   // `false` para quem não é membro, bastava trocar o valor no POST para criar
-  // pelada dentro de um grupo alheio e injetar gols, presenças e V/E/D no
+  // fut dentro de um grupo alheio e injetar gols, presenças e V/E/D no
   // ranking de gente que nunca ouviu falar de você.
-  it("quem não é membro NÃO cria pelada no grupo", () => {
-    expect(podeCriarPeladaNoGrupo(deFora, null)).toBe(false);
+  it("quem não é membro NÃO cria fut no grupo", () => {
+    expect(podeCriarFutNoGrupo(deFora, null)).toBe(false);
   });
 });
 
@@ -69,7 +69,7 @@ describe("podePromover", () => {
   });
 
   // O ataque: organizador que promove organizador é uma fábrica de
-  // organizadores, e o admin perde o controle de quem cria pelada no grupo dele.
+  // organizadores, e o admin perde o controle de quem cria fut no grupo dele.
   it("organizador não promove ninguém", () => {
     expect(podePromover(organizador, "organizer", alvoMembro)).toBe(false);
   });
@@ -116,7 +116,7 @@ describe("podeSairDoGrupo", () => {
     expect(podeSairDoGrupo("organizer")).toBe(true);
   });
 
-  // O ataque: grupo órfão, com peladas marcadas que ninguém encerra e fila de
+  // O ataque: grupo órfão, com futs marcados que ninguém encerra e fila de
   // pedidos que ninguém aprova. O admin transfere e depois sai.
   it("o admin não sai sem transferir", () => {
     expect(podeSairDoGrupo("admin")).toBe(false);

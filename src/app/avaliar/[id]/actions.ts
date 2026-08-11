@@ -41,7 +41,7 @@ export async function enviarAvaliacoes(
 
   const companheiros = await getCompanheiros(rodada.matchDayId, session.player.id);
   if (companheiros.length === 0) {
-    return { error: "Não há companheiros para avaliar nesta pelada." };
+    return { error: "Não há companheiros para avaliar neste fut." };
   }
 
   // Só aceita o conjunto exato de companheiros: nota faltando é formulário

@@ -81,7 +81,7 @@ export default async function ConviteGrupoPage({ params }: PageProps<"/convite-g
         <>
           {grupo.description && <p className="mb-2">{grupo.description}</p>}
           <p>
-            Você entra como membro: confirma presença nas peladas do grupo e participa dos rankings
+            Você entra como membro: confirma presença nos futs do grupo e participa dos rankings
             dele.
           </p>
         </>

@@ -7,12 +7,12 @@
 // - **admin**: quem criou. Manda no grupo — dados, visibilidade, política de
 //   entrada, papéis, remoção de membro e exclusão do grupo. Um por grupo,
 //   garantido pelo índice parcial `group_members_admin_unico_idx`.
-// - **organizer**: cria peladas do grupo e convida gente. Promovido pelo admin,
+// - **organizer**: cria futs do grupo e convida gente. Promovido pelo admin,
 //   sem limite de quantos.
-// - **member**: confirma presença nas peladas, acompanha e entra no ranking do
+// - **member**: confirma presença nos futs, acompanha e entra no ranking do
 //   grupo.
 //
-// O admin da plataforma é fallback aqui como é em pelada — mesma lógica de
+// O admin da plataforma é fallback aqui como é em fut — mesma lógica de
 // ./permissions.
 
 import type { Ator, PapelNoGrupo } from "./permissions";
@@ -40,7 +40,7 @@ export type AlvoNoGrupo = { papelAtual: Vinculo; ehOAtor: boolean };
  *
  * Só o admin. O organizador fica de fora de propósito: se ele pudesse promover,
  * viraria uma fábrica de organizadores e o admin perderia o controle da própria
- * portaria — quem entra no grupo decide quem entra nas peladas dele e, por
+ * portaria — quem entra no grupo decide quem entra nos futs dele e, por
  * tabela, quem aparece no ranking do grupo.
  */
 export function podeGerenciarGrupo(ator: Ator, papel: Vinculo): boolean {
@@ -48,16 +48,16 @@ export function podeGerenciarGrupo(ator: Ator, papel: Vinculo): boolean {
 }
 
 /**
- * Criar pelada com este `group_id`. Admin e organizador — e mais ninguém.
+ * Criar fut com este `group_id`. Admin e organizador — e mais ninguém.
  *
  * O `false` para quem não é membro é a trava mais importante deste arquivo.
- * Qualquer jogador logado cria pelada avulsa hoje (ver
- * src/app/peladas/nova/actions.ts), e `groupId` chega pelo formulário: sem esta
- * regra, bastaria trocar o valor do `<select>` para criar pelada dentro de um
+ * Qualquer jogador logado cria fut avulso hoje (ver
+ * src/app/futs/novo/actions.ts), e `groupId` chega pelo formulário: sem esta
+ * regra, bastaria trocar o valor do `<select>` para criar fut dentro de um
  * grupo alheio e injetar gols, presenças e V/E/D no ranking de gente que nunca
  * ouviu falar de você.
  */
-export function podeCriarPeladaNoGrupo(ator: Ator, papel: Vinculo): boolean {
+export function podeCriarFutNoGrupo(ator: Ator, papel: Vinculo): boolean {
   return ator.isPlatformAdmin || papel === "admin" || papel === "organizer";
 }
 
@@ -106,7 +106,7 @@ export function podeRemoverMembro(ator: Ator, papelDoAtor: Vinculo, alvo: AlvoNo
 /**
  * Ver o ranking do grupo — e, do outro lado, sair dele.
  *
- * Só quem é do grupo. O ranking mostra quem jogou as peladas do grupo, que num
+ * Só quem é do grupo. O ranking mostra quem jogou os futs do grupo, que num
  * grupo privado é a mesma lista de membros que `podeVerGrupo` esconde.
  */
 export function podeVerRankingDoGrupo(ator: Ator, papel: Vinculo): boolean {
@@ -116,9 +116,9 @@ export function podeVerRankingDoGrupo(ator: Ator, papel: Vinculo): boolean {
 /**
  * Sair do grupo por conta própria.
  *
- * O admin não sai sem transferir: o grupo ficaria órfão, com peladas marcadas
+ * O admin não sai sem transferir: o grupo ficaria órfão, com futs marcados
  * que ninguém pode encerrar e uma fila de pedidos que ninguém aprova. É o mesmo
- * problema da pelada órfã em ./permissions, e ali a saída foi o admin da
+ * problema do fut órfão em ./permissions, e ali a saída foi o admin da
  * plataforma — que não escala quando há muitos grupos.
  */
 export function podeSairDoGrupo(papel: Vinculo): boolean {

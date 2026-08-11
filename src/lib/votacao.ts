@@ -1,5 +1,5 @@
-// Regra de apuração da votação de exclusão de pelada. Pura de propósito: é a
-// parte em que errar significa apagar (ou preservar) uma pelada indevidamente.
+// Regra de apuração da votação de exclusão de fut. Pura de propósito: é a
+// parte em que errar significa apagar (ou preservar) um fut indevidamente.
 
 /** Fração de SIM sobre o eleitorado inteiro necessária para aprovar. */
 export const QUORUM = 0.85;

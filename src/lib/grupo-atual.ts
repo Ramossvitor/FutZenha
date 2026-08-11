@@ -5,11 +5,11 @@ import { getGrupo, papelNoGrupo } from "./grupos";
 import { getSession } from "./session";
 import type { PapelNoGrupo } from "./permissions";
 
-// Em qual grupo a pessoa está navegando. Início, /peladas e /rankings filtram
+// Em qual grupo a pessoa está navegando. Início, /futs e /rankings filtram
 // por ele; o hub /grupos é a única porta que o troca.
 //
-// A ausência do cookie é um estado legítimo, não um erro: "todas as peladas".
-// Precisa existir porque `match_days.group_id` é nullable — pelada avulsa é
+// A ausência do cookie é um estado legítimo, não um erro: "todos os futs".
+// Precisa existir porque `match_days.group_id` é nullable — fut avulso é
 // como o produto funcionava antes de haver grupo, e continua funcionando.
 export const GRUPO_COOKIE = "futzenha_grupo";
 
@@ -41,7 +41,7 @@ export type GrupoAtual = {
 export type DestinoDaTroca = "ficar" | "ir-para-inicio";
 
 /**
- * O grupo em que a pessoa está navegando, ou null para "todas as peladas".
+ * O grupo em que a pessoa está navegando, ou null para "todos os futs".
  *
  * O cookie é só uma dica — qualquer um edita o valor no DevTools. A autoridade
  * é o `papelNoGrupo`: se a pessoa não é (ou deixou de ser) membro, o contexto

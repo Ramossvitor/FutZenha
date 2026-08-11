@@ -28,8 +28,8 @@ import { jogadoresElegiveis } from "@/lib/elegiveis";
 import { formatDate, formatSkill, formatTime } from "@/lib/format";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { repartirLista, vagasLivres } from "@/lib/lista-presenca";
-import { STATUS_PELADA } from "@/lib/match-day-form";
-import { podeGerenciarPelada } from "@/lib/permissions";
+import { STATUS_FUT } from "@/lib/match-day-form";
+import { podeGerenciarFut } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
 import { textoDeConvocacao, textoDeTimes } from "@/lib/whatsapp";
@@ -111,7 +111,7 @@ function Bloco({
   );
 }
 
-export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) {
+export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
   const { id: idParam } = await params;
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
@@ -125,14 +125,14 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
   if (!matchDay) notFound();
 
   const [activePlayers, attendanceRows, teamList, gameList, papel] = await Promise.all([
-    // Pelada de grupo lista o grupo; avulsa lista a plataforma. Antes disto era
+    // Fut de grupo lista o grupo; avulso lista a plataforma. Antes disto era
     // sempre a plataforma inteira — ver src/lib/elegiveis.ts.
     jogadoresElegiveis(matchDay),
     db.select().from(attendances).where(eq(attendances.matchDayId, id)),
     db.select().from(teams).where(eq(teams.matchDayId, id)).orderBy(asc(teams.sortOrder)),
     db.select().from(games).where(eq(games.matchDayId, id)).orderBy(asc(games.sortOrder), asc(games.id)),
-    // Em pelada de grupo, o admin do grupo também gerencia — e o papel sai do
-    // groupId da própria pelada, nunca de um id vindo da URL.
+    // Em fut de grupo, o admin do grupo também gerencia — e o papel sai do
+    // groupId do próprio fut, nunca de um id vindo da URL.
     session && matchDay.groupId !== null
       ? papelNoGrupo(matchDay.groupId, session.player.id)
       : null,
@@ -190,7 +190,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
       : [],
     // De que lado cada um jogou, POR JOGO. Não dá para sair do team_players do
     // sorteio como saía antes: incluirNoJogo põe alguém do lado oposto sem tocar
-    // no colete da pelada, e quem chegou atrasado e foi escalado direto num jogo
+    // no colete do fut, e quem chegou atrasado e foi escalado direto num jogo
     // nem tem linha de sorteio — o gol dele saía com o chip cinza de colete
     // desconhecido. game_players é a fonte que o resto do app já trata como
     // autoridade sobre escalação (ver gerenciar/dados.ts e encerrar/page.tsx).
@@ -227,21 +227,21 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
 
   const podeMarcar = matchDay.status === "scheduled";
   const meuPlayerId = session?.player.id ?? null;
-  // Numa pelada de grupo, quem não é do grupo não entra na lista — o servidor já
+  // Num fut de grupo, quem não é do grupo não entra na lista — o servidor já
   // recusa (ver setMyAttendance). Sem este teste a tela oferecia o botão assim
   // mesmo, e clicar não fazia nada: sem erro, sem banner, sem explicação.
   const souElegivel = meuPlayerId !== null && activePlayers.some((p) => p.id === meuPlayerId);
 
   const podeGerenciar =
     session !== null &&
-    podeGerenciarPelada(
+    podeGerenciarFut(
       { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin },
       matchDay,
       papel,
     );
 
   // Grupo privado não vira link para quem está de fora: o 404 do guard não
-  // adianta nada se a própria pelada anuncia o nome e o id do grupo.
+  // adianta nada se o próprio fut anuncia o nome e o id do grupo.
   const grupoVisivel = grupo && (grupo.visibility === "public" || papel !== null);
 
   return (
@@ -251,7 +251,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
         selos={
           <>
             <Badge tom={matchDay.status === "finished" ? "neutral" : "accent"}>
-              {STATUS_PELADA[matchDay.status]}
+              {STATUS_FUT[matchDay.status]}
             </Badge>
             {grupoVisivel && (
               <Link href={`/grupo/${grupo.id}`}>
@@ -271,7 +271,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
         }
         acao={
           podeGerenciar ? (
-            <LinkButton href={`/pelada/${matchDay.id}/gerenciar`} variante="secondary" tamanho="sm">
+            <LinkButton href={`/fut/${matchDay.id}/gerenciar`} variante="secondary" tamanho="sm">
               Gerenciar
             </LinkButton>
           ) : undefined
@@ -450,11 +450,11 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
             Times já sorteados — a presença travou. Fala com quem organiza.
           </Banner>
         )}
-        {matchDay.status === "finished" && <Banner tom="info">Pelada encerrada.</Banner>}
+        {matchDay.status === "finished" && <Banner tom="info">Fut encerrado.</Banner>}
         {podeMarcar && !session && (
           <Banner tom="info">
             <Link
-              href={`/login?next=/pelada/${matchDay.id}`}
+              href={`/login?next=/fut/${matchDay.id}`}
               className="font-semibold text-accent-ink hover:underline"
             >
               Entre na sua conta
@@ -524,7 +524,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
 
         {podeMarcar && session && !souElegivel && (
           <Banner tom="info">
-            Esta pelada é do grupo {grupoVisivel ? grupo.name : "que a marcou"} — só quem é do
+            Este fut é do grupo {grupoVisivel ? grupo.name : "que a marcou"} — só quem é do
             grupo entra na lista.
           </Banner>
         )}
@@ -563,7 +563,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
           )}
 
         {/* Convocação pronta para o grupo — enquanto a lista está aberta,
-            qualquer um da pelada pode chamar a galera, não só o admin. */}
+            qualquer um do fut pode chamar a galera, não só o admin. */}
         {podeMarcar && (souElegivel || podeGerenciar) && (
           <WhatsAppShareButton
             texto={textoDeConvocacao(matchDay, siteUrl())}
@@ -573,7 +573,7 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
         )}
 
         <p className="text-[11.5px] text-fg-4">
-          Não está na lista ou não tem conta? Fala com quem organiza a pelada.
+          Não está na lista ou não tem conta? Fala com quem organiza o fut.
         </p>
       </Section>
     </div>

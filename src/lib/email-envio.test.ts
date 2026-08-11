@@ -102,7 +102,7 @@ const KEY_FAKE = "re_test_fake";
 
 const msg = {
   para: "fulano@example.com",
-  assunto: "Convite para a pelada",
+  assunto: "Convite para o fut",
   html: "<p>oi</p>",
   texto: "oi",
 };
@@ -153,7 +153,7 @@ describe("enviarEmail", () => {
     const corpo = JSON.parse(init.body);
     expect(corpo.to).toEqual(["fulano@example.com"]);
     expect(corpo.from).toBe("FutZenha <convite@futzenha.com.br>");
-    expect(corpo.subject).toBe("Convite para a pelada");
+    expect(corpo.subject).toBe("Convite para o fut");
     expect(corpo.html).toBe("<p>oi</p>");
     expect(corpo.text).toBe("oi");
   });

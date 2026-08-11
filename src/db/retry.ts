@@ -2,7 +2,7 @@
  * As duas decisões do funil de retentativa do ./index.ts.
  *
  * Ficam num módulo separado — e sem nenhum import — porque são a parte que
- * precisa de teste: errar aqui não dá erro na tela, dá gol, grupo ou pelada
+ * precisa de teste: errar aqui não dá erro na tela, dá gol, grupo ou fut
  * duplicado. Ver ./retry.test.ts.
  */
 

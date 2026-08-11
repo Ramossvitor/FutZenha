@@ -11,8 +11,8 @@ export default function NotFound() {
         de campo
       </h1>
       <p className="text-[14px] leading-[1.55] text-fg-3">
-        A página que você procura não existe. Se você chegou por um link antigo, pode ser que a
-        pelada ou o grupo tenham sido apagados.
+        A página que você procura não existe. Se você chegou por um link antigo, pode ser que o
+        fut ou o grupo tenham sido apagados.
       </p>
       <LinkButton href="/" variante="primary">
         Voltar para o início

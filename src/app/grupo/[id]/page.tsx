@@ -7,13 +7,13 @@ import { PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRow, HairlineRowLink } from "@/components/ui/hairline-list";
 import { VestChip } from "@/components/ui/vest";
-import { STATUS_PELADA } from "@/lib/match-day-form";
+import { STATUS_FUT } from "@/lib/match-day-form";
 import { db } from "@/db";
 import { games, matchDays, teams } from "@/db/schema";
 import { formatDate, formatDateShort, formatTime } from "@/lib/format";
 import { papelLabel, podeEntrarNoGrupo, podeVerGrupo } from "@/lib/grupos-permissions";
 import { getGrupo, listarMembros, papelNoGrupo, temPedidoPendente } from "@/lib/grupos";
-import { podeGerenciarPelada } from "@/lib/permissions";
+import { podeGerenciarFut } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
 import { cancelarPedido, entrarNoGrupo, pedirEntrada, sairDoGrupo } from "./actions";
 
@@ -105,10 +105,10 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
   const teamNameById = new Map(teamRows.map((t) => [t.id, t.name]));
 
   const entrada = session ? podeEntrarNoGrupo(grupo, papel) : "so-convite";
-  const podeCriarPelada = papel === "admin" || papel === "organizer";
+  const podeCriarFut = papel === "admin" || papel === "organizer";
   // O organizador também chega em /gerenciar — é de lá que ele gera o link e
   // convida, que é metade do papel dele.
-  const podeGerenciar = podeCriarPelada || session?.isPlatformAdmin === true;
+  const podeGerenciar = podeCriarFut || session?.isPlatformAdmin === true;
 
   return (
     <div className="flex flex-col gap-7">
@@ -125,9 +125,9 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
         }
         descricao={grupo.description}
         acao={
-          podeCriarPelada ? (
-            <LinkButton href={`/peladas/nova?grupo=${groupId}`} tamanho="sm">
-              Marcar pelada
+          podeCriarFut ? (
+            <LinkButton href={`/futs/novo?grupo=${groupId}`} tamanho="sm">
+              Marcar fut
             </LinkButton>
           ) : session && entrada === "entra-direto" ? (
             <form action={entrarNoGrupo.bind(null, groupId)}>
@@ -173,14 +173,14 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
         )}
       </div>
 
-      <Section titulo="Peladas do grupo">
+      <Section titulo="Futs do grupo">
         <HairlineList
           as="ul"
           vazio={
             <EmptyState
-              titulo="Nenhuma pelada marcada"
+              titulo="Nenhum fut marcado"
               descricao={
-                podeCriarPelada
+                podeCriarFut
                   ? "Marque a primeira e ela aparece aqui."
                   : "Quem organiza é quem marca."
               }
@@ -189,10 +189,10 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
         >
           {days.map((day) => {
             const dayGames = gameRows.filter((g) => g.matchDayId === day.id);
-            const euGerencio = ator !== null && podeGerenciarPelada(ator, day, papel);
+            const euGerencio = ator !== null && podeGerenciarFut(ator, day, papel);
             return (
               <li key={day.id}>
-                <HairlineRowLink href={`/pelada/${day.id}`} className="items-start">
+                <HairlineRowLink href={`/fut/${day.id}`} className="items-start">
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="font-display text-[15px] font-bold text-fg capitalize">
@@ -203,7 +203,7 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
                       </span>
                       {euGerencio && <Badge tom="warn">você gerencia</Badge>}
                       <Badge tom={day.status === "finished" ? "neutral" : "accent"}>
-                        {STATUS_PELADA[day.status]}
+                        {STATUS_FUT[day.status]}
                       </Badge>
                     </span>
                     <span className="mt-0.5 block text-[13px] text-fg-3">

@@ -3,14 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/db";
 import { invites, players } from "@/db/schema";
 import { createPlayer, reenviarConvitePorEmail } from "@/app/admin/(panel)/jogadores/actions";
-import { reenviarConviteDaPelada } from "@/app/pelada/[id]/gerenciar/actions";
+import { reenviarConviteDoFut } from "@/app/fut/[id]/gerenciar/actions";
 import {
   confirmarPresenca,
   criarConta,
   criarConvite,
   criarJogador,
   criarJogadorComConta,
-  criarPelada,
+  criarFut,
   logarComo,
 } from "@/test/fixtures";
 import { esperaNotFound, esperaRedirect } from "@/test/navigation-fake";
@@ -158,64 +158,64 @@ describe("reenviarConvitePorEmail", () => {
   });
 });
 
-describe("reenviarConviteDaPelada", () => {
-  it("recusa playerId presente só em outra pelada (anti-IDOR)", async () => {
+describe("reenviarConviteDoFut", () => {
+  it("recusa playerId presente só em outro fut (anti-IDOR)", async () => {
     await logarComoAdminDaPlataforma();
-    const peladaAlvo = await criarPelada();
-    const outraPelada = await criarPelada();
+    const futAlvo = await criarFut();
+    const outroFut = await criarFut();
     const jogador = await criarJogador();
     await criarConvite(jogador, { email: EMAIL });
-    await confirmarPresenca(outraPelada, jogador);
+    await confirmarPresenca(outroFut, jogador);
     const fetchMock = stubResend();
 
-    const url = await esperaRedirect(reenviarConviteDaPelada(peladaAlvo.id, jogador.id));
+    const url = await esperaRedirect(reenviarConviteDoFut(futAlvo.id, jogador.id));
 
-    expect(url).toBe(`/pelada/${peladaAlvo.id}/gerenciar?erro=convite-nao-reenviavel`);
+    expect(url).toBe(`/fut/${futAlvo.id}/gerenciar?erro=convite-nao-reenviavel`);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("recusa jogador que já tem conta — reset é da plataforma", async () => {
     await logarComoAdminDaPlataforma();
-    const pelada = await criarPelada();
+    const fut = await criarFut();
     const jogador = await criarJogador();
     await criarConta(jogador);
     await criarConvite(jogador, { email: EMAIL });
-    await confirmarPresenca(pelada, jogador);
+    await confirmarPresenca(fut, jogador);
     const fetchMock = stubResend();
 
-    const url = await esperaRedirect(reenviarConviteDaPelada(pelada.id, jogador.id));
+    const url = await esperaRedirect(reenviarConviteDoFut(fut.id, jogador.id));
 
-    expect(url).toBe(`/pelada/${pelada.id}/gerenciar?erro=convite-nao-reenviavel`);
+    expect(url).toBe(`/fut/${fut.id}/gerenciar?erro=convite-nao-reenviavel`);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("presente nesta pelada e sem conta, envia", async () => {
+  it("presente neste fut e sem conta, envia", async () => {
     await logarComoAdminDaPlataforma();
-    const pelada = await criarPelada();
+    const fut = await criarFut();
     const jogador = await criarJogador();
     const convite = await criarConvite(jogador, { email: EMAIL });
-    await confirmarPresenca(pelada, jogador);
+    await confirmarPresenca(fut, jogador);
     const fetchMock = stubResend(200);
 
-    const url = await esperaRedirect(reenviarConviteDaPelada(pelada.id, jogador.id));
+    const url = await esperaRedirect(reenviarConviteDoFut(fut.id, jogador.id));
 
-    expect(url).toBe(`/pelada/${pelada.id}/gerenciar?ok=convite-enviado-por-email`);
+    expect(url).toBe(`/fut/${fut.id}/gerenciar?ok=convite-enviado-por-email`);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [depois] = await db.select().from(invites).where(eq(invites.id, convite.id));
     expect(depois.emailSentAt).not.toBeNull();
   });
 
-  it("quem não administra a pelada é barrado", async () => {
+  it("quem não administra o fut é barrado", async () => {
     const { conta } = await criarJogadorComConta();
     await logarComo(conta);
     const criador = await criarJogador();
-    const pelada = await criarPelada({ createdByPlayerId: criador.id });
+    const fut = await criarFut({ createdByPlayerId: criador.id });
     const jogador = await criarJogador();
     await criarConvite(jogador, { email: EMAIL });
-    await confirmarPresenca(pelada, jogador);
+    await confirmarPresenca(fut, jogador);
     const fetchMock = stubResend();
 
-    await esperaNotFound(reenviarConviteDaPelada(pelada.id, jogador.id));
+    await esperaNotFound(reenviarConviteDoFut(fut.id, jogador.id));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

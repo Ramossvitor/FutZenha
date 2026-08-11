@@ -16,7 +16,7 @@ const valida = {
 };
 
 describe("parseMatchDayForm", () => {
-  it("aceita uma pelada bem preenchida", () => {
+  it("aceita um fut bem preenchida", () => {
     const r = parseMatchDayForm(form(valida));
     expect(r.success).toBe(true);
     if (r.success) {
@@ -26,7 +26,7 @@ describe("parseMatchDayForm", () => {
     }
   });
 
-  // Vazio = sem limite, o padrão de toda pelada anterior à lista de espera. Só
+  // Vazio = sem limite, o padrão de todo fut anterior à lista de espera. Só
   // espaços cai no mesmo caso: o trim roda antes da conversão — sem ele,
   // Number("   ") daria 0 e a validação recusaria o formulário intocado.
   it("vagas vazias ou só com espaços viram null, não zero", () => {

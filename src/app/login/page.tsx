@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   return (
     <CartaoDeEntrada
       titulo="Entrar"
-      descricao="Não tem cadastro aberto: quem entra aqui foi convidado por quem organiza a pelada."
+      descricao="Não tem cadastro aberto: quem entra aqui foi convidado por quem organiza o fut."
       rodape="Perdeu o acesso? Quem administra gera um link novo."
     >
       <div className="flex flex-col gap-4">

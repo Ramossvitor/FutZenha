@@ -15,7 +15,7 @@ import { condicaoElegivel } from "@/lib/elegiveis";
 import { montarChecklist, quemViraFalta } from "@/lib/encerramento";
 import { formatDate } from "@/lib/format";
 import { companheirosPorJogador, gruposElegiveis } from "@/lib/lineup";
-import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
+import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import { confirmarEncerramento, incluirNoJogo, moverLado, removerDoJogo } from "./actions";
 
@@ -23,23 +23,23 @@ export const metadata = { title: "Conferir escalação" };
 
 const LOCAIS = {
   "precisa-confirmar":
-    "Quem tem conta ativa e ainda não entrou nesta pelada precisa marcar a própria presença antes de ser escalado.",
+    "Quem tem conta ativa e ainda não entrou neste fut precisa marcar a própria presença antes de ser escalado.",
 };
 
 const SEM_ACESSO = <Badge tom="dashed">não avalia</Badge>;
 
-export default async function EncerrarPeladaPage({
+export default async function EncerrarFutPage({
   params,
   searchParams,
-}: PageProps<"/pelada/[id]/gerenciar/encerrar">) {
+}: PageProps<"/fut/[id]/gerenciar/encerrar">) {
   const { id: idParam } = await params;
   const { erro } = await searchParams;
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
 
-  const { matchDay } = await requirePeladaAdmin(id);
-  // Encerrada já não tem o que conferir — a escalação virou imutável.
-  if (matchDay.status === "finished") redirect(`/pelada/${id}/gerenciar`);
+  const { matchDay } = await requireFutAdmin(id);
+  // Encerrado já não tem o que conferir — a escalação virou imutável.
+  if (matchDay.status === "finished") redirect(`/fut/${id}/gerenciar`);
 
   const [gameList, teamList, elenco, confirmados] = await Promise.all([
     db
@@ -61,7 +61,7 @@ export default async function EncerrarPeladaPage({
       // é avaliada. Sem o users.active aqui, o checklist contava a conta
       // desativada como ativa e prometia uma rodada que o servidor não abre.
       .leftJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
-      // O mesmo escopo das outras duas telas de presença: pelada de grupo lista
+      // O mesmo escopo das outras duas telas de presença: fut de grupo lista
       // o grupo, não a plataforma — e o incluirNoJogo recusa quem está fora dele.
       .where(and(eq(players.active, true), condicaoElegivel(matchDay)))
       .orderBy(asc(players.name)),
@@ -104,7 +104,7 @@ export default async function EncerrarPeladaPage({
   // Quem confirmou e não entrou em nenhum jogo vira falta no encerramento (ver
   // marcarFaltasAutomaticas). Mostrar antes é o que torna isso corrigível: depois
   // do encerramento a escalação é imutável, e a única forma de consertar seria
-  // apagar a pelada. A regra vem do quemViraFalta para a prévia e o servidor não
+  // apagar o fut. A regra vem do quemViraFalta para a prévia e o servidor não
   // poderem divergir.
   const viraFalta = quemViraFalta({
     temJogo: gameList.length > 0,
@@ -135,7 +135,7 @@ export default async function EncerrarPeladaPage({
           selos={<Badge tom="warn">{formatDate(matchDay.date)}</Badge>}
           descricao="Última chance de acertar quem jogou de que lado. Depois de encerrar, a escalação não muda mais — e é ela que define quem avalia quem."
           acao={
-            <LinkButton href={`/pelada/${id}/gerenciar`} variante="secondary" tamanho="sm">
+            <LinkButton href={`/fut/${id}/gerenciar`} variante="secondary" tamanho="sm">
               Voltar
             </LinkButton>
           }
@@ -257,7 +257,7 @@ export default async function EncerrarPeladaPage({
                 </summary>
                 <div className="flex flex-col gap-2 px-4 pb-4">
                   <p className="text-[12px] text-fg-4">
-                    Escalar aqui marca a presença do jogador na pelada automaticamente.
+                    Escalar aqui marca a presença do jogador no fut automaticamente.
                   </p>
                   <BuscaJogador
                     vazio="Todo o elenco já está escalado neste jogo."
@@ -367,7 +367,7 @@ export default async function EncerrarPeladaPage({
                 "A escalação congela pra sempre. Quem jogou de que lado não muda mais.",
                 "Os números entram nos rankings na hora.",
                 "A rodada de avaliação abre e o relógio de 2 dias começa a correr.",
-                "Placar e gols ainda dão pra corrigir por 24h. Depois disso, só apagando a pelada — e aí precisa de votação.",
+                "Placar e gols ainda dão pra corrigir por 24h. Depois disso, só apagando o fut — e aí precisa de votação.",
               ].map((t) => (
                 <li key={t} className="flex items-start gap-2">
                   <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-danger" />
@@ -388,7 +388,7 @@ export default async function EncerrarPeladaPage({
             disabled={!checklist.podeEncerrar}
             className="w-full"
           >
-            Encerrar a pelada
+            Encerrar o fut
           </SubmitButton>
           {!checklist.podeEncerrar && (
             <p className="text-center text-[11.5px] leading-[1.45] text-danger-ink">

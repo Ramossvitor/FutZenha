@@ -45,7 +45,7 @@ const LIMITE_POR_VARREDURA = 200;
 const CONCORRENCIA = 20;
 
 // O push some do payload da notificação depois de 24h sem entrega — aviso de
-// pelada velho de um dia é ruído, não informação.
+// fut velho de um dia é ruído, não informação.
 const TTL_SEGUNDOS = 86_400;
 
 // A mesma régua aplicada ANTES de enviar. O TTL só diz ao push service quanto
@@ -142,7 +142,7 @@ export function chaveRecusada(statusCode: number | undefined): boolean {
 }
 
 // Teto do corpo na tela de bloqueio. O texto vem de campo livre do usuário
-// (`location` da pelada), e o aviso de pelada avulsa vai para todo mundo: sem
+// (`location` do fut), e o aviso de fut avulso vai para todo mundo: sem
 // isto, qualquer jogador escreve o que quiser na notificação de todos. Quebra
 // de linha some pelo mesmo motivo — no lock screen ela vira várias linhas.
 const MAX_CORPO_PUSH = 120;
@@ -293,7 +293,7 @@ export function reiniciarThrottleDePush(): void {
 /**
  * Agenda o despacho para depois da resposta. `imediato` fura o throttle — é
  * para action que acabou de notificar algo sensível a tempo (vaga aberta,
- * pelada nova): o aviso sai nesta invocação, não na de daqui a um minuto.
+ * fut novo): o aviso sai nesta invocação, não na de daqui a um minuto.
  *
  * O callback async **retorna** a promessa ao after: é o que a entrega ao
  * waitUntil da Vercel — sem isso a invocação congela com o envio no ar (a

@@ -22,10 +22,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: { default: "FutZenha", template: "%s — FutZenha" },
-  description: "A pelada organizada: presença, times, artilharia e rankings.",
+  description: "O fut organizado: presença, times, artilharia e rankings.",
   openGraph: {
     title: "FutZenha",
-    description: "Confirma presença, vê os times sorteados e acompanha a artilharia da pelada.",
+    description: "Confirma presença, vê os times sorteados e acompanha a artilharia do fut.",
     siteName: "FutZenha",
     locale: "pt_BR",
     type: "website",

@@ -2,7 +2,7 @@
 //
 // ./stats importa `server-only` e `@/db`, e o vitest daqui roda sem config e sem
 // alias — nenhum teste alcança aquele módulo. Estes dois predicados são a única
-// coisa lá dentro que decide QUAIS peladas entram na conta, e eles falham em
+// coisa lá dentro que decide QUAIS futs entram na conta, e eles falham em
 // silêncio: se o filtro por grupo sumisse, toda página continuaria renderizando
 // e todo teste continuaria passando, só que o ranking do grupo passaria a
 // mostrar os números da plataforma inteira. Por isso moram aqui, num módulo puro
@@ -14,8 +14,8 @@ import { matchDays } from "../db/schema";
 /**
  * O recorte das estatísticas.
  *
- * `groupId` filtra pelas peladas daquele grupo e NADA MAIS: quem entra no
- * ranking do grupo é quem JOGOU as peladas dele, membro ou não. Não há join com
+ * `groupId` filtra pelos futs daquele grupo e NADA MAIS: quem entra no
+ * ranking do grupo é quem JOGOU os futs dele, membro ou não. Não há join com
  * `group_members` aqui de propósito — o convidado de última hora que fez três
  * gols conta na artilharia do grupo, e é assim que o usuário pediu. A única
  * exclusão continua sendo a de sempre, o `innerJoin(users, active)` lá em
@@ -35,7 +35,7 @@ export function escopo({ year, groupId }: EscopoStats = {}): SQL | undefined {
 }
 
 /**
- * Quem entrou em campo em alguma pelada encerrada do grupo.
+ * Quem entrou em campo em algum fut encerrado do grupo.
  *
  * `getSkillRanking` não usa `escopo()` — ele parte de `players`, não de
  * `match_days` — e por isso repete aqui as duas condições que importam

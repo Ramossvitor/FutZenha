@@ -18,7 +18,7 @@ const tabelas = nomes.join(", ");
  * setup-integration). RESTART IDENTITY deixa os ids previsíveis; CASCADE cobre
  * as FKs. É a estratégia de isolamento escolhida no plano — transação-com-
  * rollback não serve porque o código sob teste abre as próprias transações e
- * locks (travarPelada faz SELECT ... FOR UPDATE).
+ * locks (travarFut faz SELECT ... FOR UPDATE).
  */
 export async function limparBanco(): Promise<void> {
   await db.execute(sql.raw(`truncate table ${tabelas} restart identity cascade`));

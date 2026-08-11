@@ -41,7 +41,7 @@ async function requireJulgador(reportId: number): Promise<Session> {
  * Agora os dois botões enviam o mesmo formulário e a decisão vem no `value`.
  *
  * Descartar dispara o replay em cascata: a nota de quem foi avaliado naquela
- * pelada, e em todas as seguintes, é recalculada. Manter não recalcula nada.
+ * fut, e em todas as seguintes, é recalculada. Manter não recalcula nada.
  */
 export async function julgarDenuncia(reportId: number, formData: FormData) {
   const session = await requireJulgador(reportId);

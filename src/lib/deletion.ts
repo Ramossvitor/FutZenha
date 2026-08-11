@@ -24,7 +24,7 @@ import {
 } from "./votacao";
 
 /**
- * Quem vota: jogou a pelada e tem conta ativa. São os afetados — a exclusão
+ * Quem vota: jogou o fut e tem conta ativa. São os afetados — a exclusão
  * apaga os gols, o V/E/D e as avaliações deles.
  */
 async function getEleitores(matchDayId: number): Promise<number[]> {
@@ -38,12 +38,12 @@ async function getEleitores(matchDayId: number): Promise<number[]> {
 }
 
 /**
- * A justificativa escrita para apagar uma pelada.
+ * A justificativa escrita para apagar um fut.
  *
  * Mora aqui, e não em cada action, porque os dois caminhos de exclusão pedem a
- * mesma coisa: o admin da pelada ao abrir a votação e o admin da plataforma ao
+ * mesma coisa: o admin do fut ao abrir a votação e o admin da plataforma ao
  * apagar por abuso. Duplicar deixaria os limites divergirem na primeira mudança
- * — foi o mesmo motivo que tirou o schema do formulário de pelada de dentro das
+ * — foi o mesmo motivo que tirou o schema do formulário de fut de dentro das
  * actions (ver src/lib/match-day-form.ts).
  */
 export const motivoExclusaoSchema = z.string().trim().min(10, "Explique o motivo").max(500);
@@ -55,7 +55,7 @@ export type AberturaVotacao =
   | { tipo: "ja-existe" };
 
 // Autorização não mora aqui: quem chama é a action, que já passou pelo
-// requirePeladaAdmin. Este módulo também roda a partir do varredor de prazos
+// requireFutAdmin. Este módulo também roda a partir do varredor de prazos
 // (src/lib/pendencias.ts), que não tem sessão nenhuma.
 export async function abrirVotacao(
   matchDayId: number,
@@ -98,8 +98,8 @@ export async function abrirVotacao(
       eleitores.map((playerId) => ({
         playerId,
         type: "deletion_vote_open" as const,
-        title: "Votação: excluir uma pelada",
-        body: `${quemPropos} propôs apagar a pelada de ${formatDate(matchDay.date)}. Seu voto é definitivo e não votar conta como contra.`,
+        title: "Votação: excluir um fut",
+        body: `${quemPropos} propôs apagar o fut de ${formatDate(matchDay.date)}. Seu voto é definitivo e não votar conta como contra.`,
         href: `/votacao/${votacao.id}`,
         dedupeKey: `votacao:${votacao.id}:aberta`,
       })),
@@ -121,7 +121,7 @@ export async function registrarVoto(
     // banco até o varredor passar (visita ao site, no máximo 1×/min, ou o cron
     // diário), então numa semana parada ela fica vencida e aberta por horas.
     // Sem esta condição, um SIM atrasado ainda contaria — e como avaliarVotacao
-    // testa o quórum antes do prazo, ele aprovaria a exclusão de uma pelada que
+    // testa o quórum antes do prazo, ele aprovaria a exclusão de um fut que
     // já deveria ter sido mantida por silêncio.
     const [votacao] = await tx
       .select()
@@ -179,7 +179,7 @@ async function contarVotos(exec: Executor, voteId: number) {
 }
 
 /**
- * Apura a votação e, se aprovada, apaga a pelada.
+ * Apura a votação e, se aprovada, apaga o fut.
  *
  * A exclusão leva junto, por cascade, presenças, times, jogos, gols, escalação,
  * a rodada e as avaliações. O replay depois disso recalcula a nota de todo
@@ -218,42 +218,42 @@ export async function resolverVotacao(exec: Executor, voteId: number): Promise<b
   const dataFormatada = formatDate(votacao.matchDayDate);
 
   // Notifica antes de apagar: o delete leva a votação junto por cascade, e as
-  // notificações apontam para o jogador, não para a pelada.
+  // notificações apontam para o jogador, não para o fut.
   await notificar(
     exec,
     eleitores.map((e) => ({
       playerId: e.playerId,
       type: "deletion_vote_resolved" as const,
-      title: destino === "approved" ? "Pelada excluída pelo grupo" : "Pelada mantida",
+      title: destino === "approved" ? "Fut excluído pelo grupo" : "Fut mantido",
       body:
         destino === "approved"
-          ? `A pelada de ${dataFormatada} foi apagada: ${sim} de ${votacao.eligibleCount} votaram a favor. As notas foram recalculadas.`
-          : `A votação para apagar a pelada de ${dataFormatada} não atingiu os votos necessários. Ela continua no histórico.`,
-      href: "/peladas",
+          ? `O fut de ${dataFormatada} foi apagado: ${sim} de ${votacao.eligibleCount} votaram a favor. As notas foram recalculadas.`
+          : `A votação para apagar o fut de ${dataFormatada} não atingiu os votos necessários. Ela continua no histórico.`,
+      href: "/futs",
       dedupeKey: `votacao:${voteId}:resolvida`,
     })),
   );
 
   if (destino === "approved") {
-    await apagarPelada(exec, votacao.matchDayId, `nota:votacao:${voteId}`);
+    await apagarFut(exec, votacao.matchDayId, `nota:votacao:${voteId}`);
   }
 
   return true;
 }
 
 /**
- * Apaga a pelada e recalcula a nota de todo mundo no mesmo commit.
+ * Apaga o fut e recalcula a nota de todo mundo no mesmo commit.
  *
  * O delete leva rodada e avaliações por cascade, então o replay tem que rodar
  * junto: sem ele, a nota de cada jogador continuaria carregando a contribuição
- * de uma pelada que não existe mais — e como o replay é sempre do zero, não há
+ * de um fut que não existe mais — e como o replay é sempre do zero, não há
  * código de desfazimento para consertar depois.
  *
  * Sem guard de propósito: quem autoriza é a action que chama (votação
- * aprovada, admin da pelada ou admin da plataforma). Este módulo também roda a
+ * aprovada, admin do fut ou admin da plataforma). Este módulo também roda a
  * partir do varredor de prazos, que não tem sessão.
  */
-export async function apagarPelada(
+export async function apagarFut(
   exec: Executor,
   matchDayId: number,
   dedupeKey: string,
@@ -388,7 +388,7 @@ export async function getVotacoesAbertasDoJogador(playerId: number): Promise<Vot
 }
 
 /**
- * A votação de uma pelada, para o painel de quem gerencia.
+ * A votação de um fut, para o painel de quem gerencia.
  *
  * União discriminada de propósito: enquanto a votação está aberta, `sim` e
  * `nao` **não existem no tipo**.
@@ -402,7 +402,7 @@ export async function getVotacoesAbertasDoJogador(playerId: number): Promise<Vot
  *
  * Aberta, o painel mostra só quantos faltam votar (`getFaltamVotar().length`).
  */
-export type VotacaoDaPelada =
+export type VotacaoDoFut =
   | {
       status: "open";
       id: number;
@@ -422,7 +422,7 @@ export type VotacaoDaPelada =
       nao: number;
     };
 
-export async function getVotacaoDaPelada(matchDayId: number): Promise<VotacaoDaPelada | null> {
+export async function getVotacaoDoFut(matchDayId: number): Promise<VotacaoDoFut | null> {
   const [votacao] = await db
     .select({
       id: matchDayDeletionVotes.id,
