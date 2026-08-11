@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { processarPendencias } from "@/lib/pendencias";
+import { despacharPush } from "@/lib/push-envio";
 
 // Rede de segurança do varredor de prazos: o gatilho principal é o `after()`
 // no layout, que só roda quando alguém acessa o site. Este cron garante que
@@ -42,5 +43,8 @@ export async function GET(request: NextRequest) {
   }
 
   const resultado = await processarPendencias();
-  return NextResponse.json(resultado);
+  // Depois das pendências, de propósito: fechar rodada e resolver votação
+  // geram notificações, e despachar em seguida as entrega no mesmo disparo.
+  const push = await despacharPush();
+  return NextResponse.json({ ...resultado, push });
 }

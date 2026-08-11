@@ -14,4 +14,16 @@ export default function globalSetup(): void {
         "assumem envio de e-mail desligado (e a UI sem os botões de reenvio).",
     );
   }
+  // Mesmo contrato para o push. As DUAS chaves, e a pública em primeiro lugar:
+  // ela é NEXT_PUBLIC_*, ou seja, embutida no `next build` que o webServer roda
+  // — e o webServer só sobrescreve DATABASE_URL, então o .env do dev entra
+  // inteiro. Sem esta trava, quem seguiu o .env.example para testar push local
+  // via um `toBeHidden()` falhar sem nenhuma pista do motivo (e o kill switch
+  // desligado na suíte que também gateia o deploy).
+  if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PRIVATE_KEY) {
+    throw new Error(
+      "Chave VAPID definida no ambiente do E2E. Remova-a — os smokes assumem " +
+        "push desligado (a UI de avisos some inteira sem a chave pública no build).",
+    );
+  }
 }

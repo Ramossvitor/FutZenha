@@ -1,9 +1,12 @@
 import "server-only";
 import { after } from "next/server";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, lte, notExists, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { ratingRounds } from "@/db/schema";
+import { attendances, matchDays, players, ratingRounds, users } from "@/db/schema";
+import { avisoDeVespera } from "./avisos-pelada";
 import { resolverVotacoesVencidas } from "./deletion";
+import { condicaoElegivel } from "./elegiveis";
+import { notificar } from "./notifications";
 import { fecharRodada, LOCK_NOTA } from "./ratings-engine";
 import { resolverDenunciasVencidas } from "./reports";
 
@@ -11,6 +14,10 @@ export type ResultadoVarredura = {
   rodadasFechadas: number;
   denunciasAceitas: number;
   votacoesResolvidas: number;
+  // Candidatos varridos, não inserts: o dedupe (pelada:id:lembrete-vespera)
+  // torna as passadas seguintes no-op, mas quem segue sem responder continua
+  // contando até responder ou o dia virar.
+  lembretesDeVespera: number;
 };
 
 /**
@@ -39,7 +46,12 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
       sql`select pg_try_advisory_xact_lock(${LOCK_NOTA}::bigint) as locked`,
     );
     if (!travou[0]?.locked) {
-      return { rodadasFechadas: 0, denunciasAceitas: 0, votacoesResolvidas: 0 };
+      return {
+        rodadasFechadas: 0,
+        denunciasAceitas: 0,
+        votacoesResolvidas: 0,
+        lembretesDeVespera: 0,
+      };
     }
 
     const vencidas = await tx
@@ -60,7 +72,52 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
     // depois evita fechar rodada de pelada que vai deixar de existir.
     const votacoesResolvidas = await resolverVotacoesVencidas(tx);
 
-    return { rodadasFechadas, denunciasAceitas, votacoesResolvidas };
+    // Lembrete de véspera: pelada agendada para AMANHÃ, para quem é elegível,
+    // tem conta ativa e ainda não disse "vou" nem "fora". Mora na varredura, e
+    // não numa action, porque não tem gesto de usuário para pegar carona — e o
+    // cron garante a saída mesmo num dia sem tráfego. O fuso é explícito: o
+    // piggyback roda a qualquer hora, e o `current_date` UTC viraria o dia às
+    // 21h de Brasília — três horas avisando da pelada errada.
+    const peladasDeAmanha = await tx
+      .select()
+      .from(matchDays)
+      .where(
+        and(
+          eq(matchDays.status, "scheduled"),
+          sql`${matchDays.date} = ((now() at time zone 'America/Sao_Paulo')::date + 1)`,
+        ),
+      );
+    let lembretesDeVespera = 0;
+    for (const pelada of peladasDeAmanha) {
+      const semResposta = await tx
+        .select({ id: players.id })
+        .from(players)
+        .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
+        .where(
+          and(
+            eq(players.active, true),
+            condicaoElegivel(pelada),
+            notExists(
+              db
+                .select({ um: sql`1` })
+                .from(attendances)
+                .where(
+                  and(
+                    eq(attendances.matchDayId, pelada.id),
+                    eq(attendances.playerId, players.id),
+                  ),
+                ),
+            ),
+          ),
+        );
+      await notificar(
+        tx,
+        semResposta.map((p) => avisoDeVespera(pelada, p.id)),
+      );
+      lembretesDeVespera += semResposta.length;
+    }
+
+    return { rodadasFechadas, denunciasAceitas, votacoesResolvidas, lembretesDeVespera };
   });
 }
 

@@ -25,6 +25,13 @@ export default defineConfig({
         "src/**/*.integration.test.ts",
         "src/test/**",
         "src/**/*.tsx",
+        // Mesma razão da linha acima, só que a extensão não entrega: estes dois
+        // são `"use client"` puro (navigator/window/localStorage) e só o E2E os
+        // exercita. Contá-los diluiria o número sem informar — o que as partes
+        // testáveis deles têm (snoozeVigente, urlBase64ToUint8Array,
+        // suporteDoBrowser) está coberto em *.test.ts ao lado.
+        "src/components/push/ambiente.ts",
+        "src/components/push/use-push.ts",
         "src/app/**/*.css",
         "src/db/seed.ts",
         "src/db/migrate.ts",

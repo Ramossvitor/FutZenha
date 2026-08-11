@@ -2,6 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { trocarGrupo } from "@/app/grupos/actions";
 import { logout } from "@/app/login/actions";
 import { PainelDeGrupo } from "@/components/shell/painel-de-grupo";
+import { marcarCtaPwaClicado, marcarPwaInstalado } from "@/app/pwa/actions";
+import { CtaInstalarIos } from "@/components/push/cta-instalar-ios";
+import { DetectorStandalone } from "@/components/push/detector-standalone";
+import { RegistrarSw } from "@/components/push/registrar-sw";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { TopBar } from "@/components/shell/top-bar";
@@ -9,6 +13,7 @@ import { getGrupoAtual } from "@/lib/grupo-atual";
 import { listarGruposDoSeletor } from "@/lib/grupos";
 import { contarNaoLidas } from "@/lib/notifications";
 import { agendarProcessamento } from "@/lib/pendencias";
+import { agendarDespachoDePush } from "@/lib/push-envio";
 import { getSession } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
 import { archivo, instrumentSans } from "./fonts";
@@ -63,6 +68,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // por instância. O cron diário é só a rede de segurança para quando o site
   // fica sem tráfego.
   agendarProcessamento();
+  // Push pendente sai no mesmo esquema — e as actions sensíveis a tempo furam
+  // o throttle com agendarDespachoDePush(true).
+  agendarDespachoDePush();
 
   return (
     <html
@@ -95,6 +103,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 lg:max-w-5xl lg:px-8 lg:py-8">
               {children}
             </main>
+            {/* Entre o conteúdo e as abas: gruda logo acima da TabBar (via
+                --tabbar-h) — o lugar mais visto do app sem roubar o topo. */}
+            {session && (
+              <CtaInstalarIos
+                instalado={session.pwaInstaladoEm !== null}
+                aoRegistrarClique={marcarCtaPwaClicado}
+              />
+            )}
             <TabBar session={session} />
           </div>
         </div>
@@ -107,6 +123,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             top layer. */}
         {temSeletor && (
           <PainelDeGrupo grupo={grupo} grupos={grupos} aoTrocarGrupo={trocarGrupo} />
+        )}
+
+        <RegistrarSw />
+        {session && (
+          <DetectorStandalone
+            jaMarcado={session.pwaInstaladoEm !== null}
+            aoDetectar={marcarPwaInstalado}
+          />
         )}
       </body>
     </html>

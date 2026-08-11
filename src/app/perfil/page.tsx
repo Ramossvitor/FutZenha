@@ -21,6 +21,7 @@ import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
 import { ChangePasswordForm } from "./change-password-form";
+import { PushToggle } from "./push-toggle";
 import { RodadaRecebida } from "./rodada-recebida";
 
 export const metadata: Metadata = { title: "Meu perfil" };
@@ -160,6 +161,10 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
           </CardBody>
         </Card>
       </Section>
+
+      {/* Some sozinha quando o aparelho não suporta push — a Section mora
+          dentro do componente por isso. */}
+      <PushToggle />
 
       {/* No celular não há barra lateral, e o cabeçalho só tem o chip do grupo,
           o sino e o avatar. Então é aqui que moram as portas que não couberam

@@ -284,6 +284,33 @@ describe("drawTeamsAction", () => {
       dentro.map((j) => j.id).sort((a, b) => a - b),
     );
   });
+
+  it("avisa quem está na lista e tem conta — e o re-sorteio não repete o aviso", async () => {
+    const { pelada, admin } = await peladaComAdminLogado();
+    const { jogador: comConta } = await criarJogadorComConta();
+    const semConta = await criarJogador();
+    await confirmarPresenca(pelada, admin, { minutosAtras: 30 });
+    await confirmarPresenca(pelada, comConta, { minutosAtras: 20 });
+    await confirmarPresenca(pelada, semConta, { minutosAtras: 10 });
+
+    const form = new FormData();
+    form.set("teamCount", "2");
+    await esperaRedirect(drawTeamsAction(pelada.id, form));
+
+    const avisos = await notificacoesDe(comConta);
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]).toMatchObject({
+      type: "pelada_times_sorteados",
+      dedupeKey: `pelada:${pelada.id}:sorteada`,
+    });
+    // Quem sorteou já sabe; quem não tem conta não tem onde ler.
+    expect(await notificacoesDe(admin)).toHaveLength(0);
+    expect(await notificacoesDe(semConta)).toHaveLength(0);
+
+    // Re-sorteio é correção, não novidade: o dedupe segura o segundo aviso.
+    await esperaRedirect(drawTeamsAction(pelada.id, form));
+    expect(await notificacoesDe(comConta)).toHaveLength(1);
+  });
 });
 
 describe("convidarParaPelada", () => {

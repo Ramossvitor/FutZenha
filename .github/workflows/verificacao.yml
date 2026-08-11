@@ -40,6 +40,11 @@ jobs:
       # RESEND_API_KEY fica deliberadamente FORA deste workflow: a ausência da
       # key é o único kill switch do envio real de e-mail, e o setup dos testes
       # de integração aborta se ela existir. Não adicione como secret aqui.
+      #
+      # NEXT_PUBLIC_VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY, idem: a ausência é o
+      # kill switch do Web Push. O setup de integração e o globalSetup do E2E
+      # abortam se qualquer uma existir, e o smoke de PWA prova justamente que a
+      # UI de push some sem elas. Não adicione como secret aqui.
 
     # Postgres efêmero para migrations, integração, seed e E2E. Mesma imagem e
     # credenciais do docker-compose.yml local — o que roda aqui é o que você

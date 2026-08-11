@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { assinarPush, cancelarPush } from "@/app/pwa/actions";
+import { PedidoDePush } from "@/components/push/pedido-de-push";
 import { SubmitButton } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -14,7 +16,7 @@ import type { notificationTypeEnum } from "@/db/schema";
 type TipoDeAviso = (typeof notificationTypeEnum.enumValues)[number];
 
 /**
- * O ícone por família de aviso. São 12 tipos e cinco famílias — o que importa
+ * O ícone por família de aviso. São 15 tipos e cinco famílias — o que importa
  * de relance é a natureza do aviso, não o tipo exato.
  *
  * `rating_round_closed` está declarado no enum mas nunca é emitido: o
@@ -34,6 +36,9 @@ const ICONE: Record<TipoDeAviso, { icone: React.ReactNode; cor: string }> = {
   group_join_request_resolved: { icone: <IconeGrupo />, cor: "text-fg-3" },
   group_role_changed: { icone: <IconeGrupo />, cor: "text-fg-3" },
   pelada_presenca_definida: { icone: <IconeBola />, cor: "text-accent-ink" },
+  pelada_criada: { icone: <IconeBola />, cor: "text-accent-ink" },
+  pelada_times_sorteados: { icone: <IconeBola />, cor: "text-accent-ink" },
+  pelada_lembrete_vespera: { icone: <IconeBola />, cor: "text-warn-ink" },
 };
 
 export const metadata: Metadata = { title: "Avisos" };
@@ -62,6 +67,10 @@ export default async function NotificacoesPage() {
           ) : undefined
         }
       />
+
+      {/* Quem abriu a caixa de avisos se importa com avisos — é o terceiro e
+          mais óbvio momento de oferecer o push. */}
+      <PedidoDePush contexto="avisos" acoes={{ aoAssinar: assinarPush, aoCancelar: cancelarPush }} />
 
       {notificacoes.length === 0 ? (
         <EmptyState

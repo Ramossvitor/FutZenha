@@ -406,6 +406,16 @@ export const users = pgTable("users", {
   // request seguinte, sem mexer em token_version: o cookie não carrega papel, e
   // getSession relê esta coluna a cada request.
   isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
+  // Primeira sessão desta conta vista rodando como app instalado (display-mode
+  // standalone). Fica em users, não num storage do device, porque no iOS o PWA
+  // instalado tem cookies/localStorage separados do Safari — é o login DENTRO
+  // do app instalado que prova a instalação, e a flag na conta é o que faz o
+  // convite de instalar sumir também no Safari. Não existe evento appinstalled
+  // no iOS; esta é a única detecção confiável.
+  pwaInstaladoEm: timestamp("pwa_instalado_em"),
+  // Quando a pessoa abriu as instruções de instalar. Clicar ≠ instalar: sem a
+  // flag de cima, o convite volta depois do snooze.
+  pwaCtaClicadoEm: timestamp("pwa_cta_clicado_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -486,6 +496,12 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // própria. É o contrapeso da exceção em podeDefinirPresencaPor: a inclusão
   // mexe na presença e no V/E/D de quem tem conta, então a pessoa fica sabendo.
   "pelada_presenca_definida",
+  // O ciclo de vida da pelada em si — os três nasceram com o push, mas são
+  // avisos de caixa de entrada como os outros: marcar pelada nova, sortear os
+  // times e a véspera sem resposta agora avisam quem joga.
+  "pelada_criada",
+  "pelada_times_sorteados",
+  "pelada_lembrete_vespera",
 ]);
 
 // Uma rodada por pelada — a unique em match_day_id é o que garante isso e o que
@@ -636,12 +652,45 @@ export const notifications = pgTable(
     href: text("href"),
     dedupeKey: text("dedupe_key").notNull(),
     readAt: timestamp("read_at"),
+    // Null = ainda não saiu por push: a caixa de entrada é também o outbox do
+    // despacho (src/lib/push-envio.ts). notificar() não sabe disso — a linha
+    // nasce pendente e o despachante marca depois do commit. A migration fez
+    // backfill com now() para o histórico não virar rajada no primeiro deploy.
+    pushDispatchedAt: timestamp("push_dispatched_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
     unique().on(t.playerId, t.dedupeKey),
     index("notifications_inbox_idx").on(t.playerId, t.readAt),
+    // Parcial: o despacho só olha pendentes, e pendente é estado transitório —
+    // o índice fica minúsculo em vez de repetir a tabela inteira.
+    index("notifications_push_pendentes_idx")
+      .on(t.id)
+      .where(sql`push_dispatched_at is null`),
   ],
+);
+
+// Um device inscrito para receber push (Web Push/VAPID). O endpoint é a
+// identidade do device — único, e a chave do upsert: o mesmo celular
+// re-assinando (ou trocando de dono de sessão) atualiza a linha em vez de
+// duplicar. player_id e não user_id pelo mesmo motivo de notifications, logo
+// acima. Linha morta (endpoint expirado) é apagada pelo próprio despacho
+// quando o push service responde 404/410.
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    // Só para depurar "por que meu iPhone não recebe" — nunca entra em lógica.
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("push_subscriptions_player_idx").on(t.playerId)],
 );
 
 // ---------------------------------------------------------------------------

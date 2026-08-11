@@ -20,6 +20,18 @@ if (process.env.RESEND_API_KEY) {
   );
 }
 
+// Mesmo contrato para o push (src/lib/push-envio.ts): sem chave VAPID o
+// despacho é no-op, e é assim que os testes precisam rodar. Atenção redobrada
+// aqui porque a lib web-push usa o https do Node, NÃO fetch — o bloqueio de
+// fetch do beforeEach não a intercepta. Teste que exercita o despacho usa
+// vi.stubEnv com chaves FAKE e vi.mock("web-push"), nunca as chaves reais.
+if (process.env.VAPID_PRIVATE_KEY) {
+  throw new Error(
+    "VAPID_PRIVATE_KEY está definida no ambiente de teste. Remova-a antes de rodar " +
+      "a integração — com ela os testes mandariam push de verdade.",
+  );
+}
+
 vi.mock("next/headers", async () => {
   const { cookieJar } = await import("./cookie-store");
   return {
