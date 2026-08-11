@@ -9,6 +9,7 @@ import { ehElegivel } from "@/lib/elegiveis";
 import { listaFechada } from "@/lib/lista-presenca";
 import { notificar } from "@/lib/notifications";
 import { avisoDePromocao, entrarNaLista, sairDaLista, travarPelada } from "@/lib/presenca";
+import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requirePlayer } from "@/lib/require-player";
 
 // Só o próprio jogador logado marca a própria presença; quem não tem conta é
@@ -35,6 +36,7 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
   // (node_modules/next/dist/docs/01-app/02-guides/data-security.md).
   if (!(await ehElegivel(matchDay, session.player.id))) return;
 
+  let houvePromocao = false;
   await db.transaction(async (tx) => {
     // O teste de cima é o atalho barato; a palavra final é da linha travada. Sem
     // isto, um "Vou" concorrendo com o sorteio passava no status velho e entrava
@@ -46,9 +48,15 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
       await entrarNaLista(tx, parsedId, session.player.id);
     } else {
       const promovido = await sairDaLista(tx, parsedId, session.player.id);
-      if (promovido !== null) await notificar(tx, [avisoDePromocao(matchDay, promovido)]);
+      if (promovido !== null) {
+        await notificar(tx, [avisoDePromocao(matchDay, promovido)]);
+        houvePromocao = true;
+      }
     }
   });
+  // "Abriu vaga" é o aviso mais sensível a tempo do app — sai nesta invocação,
+  // não na próxima varredura.
+  if (houvePromocao) agendarDespachoDePush(true);
 
   revalidatePath("/");
   revalidatePath(`/pelada/${parsedId}`);

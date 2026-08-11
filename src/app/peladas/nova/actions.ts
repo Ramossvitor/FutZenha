@@ -2,11 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { matchDays } from "@/db/schema";
+import { matchDays, players, users } from "@/db/schema";
+import { avisoDePeladaCriada } from "@/lib/avisos-pelada";
+import { condicaoElegivel } from "@/lib/elegiveis";
 import { podeCriarPeladaNoGrupo } from "@/lib/grupos-permissions";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { parseMatchDayForm } from "@/lib/match-day-form";
+import { notificar } from "@/lib/notifications";
+import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requirePlayer } from "@/lib/require-player";
 
 /**
@@ -47,10 +52,38 @@ export async function createMatchDay(formData: FormData) {
     }
   }
 
-  const [created] = await db
-    .insert(matchDays)
-    .values({ ...parsed.data, groupId, createdByPlayerId: session.player.id })
-    .returning();
+  const created = await db.transaction(async (tx) => {
+    const [pelada] = await tx
+      .insert(matchDays)
+      .values({ ...parsed.data, groupId, createdByPlayerId: session.player.id })
+      .returning();
+
+    // "Marcaram pelada" era a maior lacuna de aviso do app: os elegíveis só
+    // descobriam o jogo abrindo o site. Vai para quem tem conta ativa — aviso
+    // sem onde ser lido não existe — e não para quem marcou, que já sabe.
+    // Dentro da transação como todo notificar(): pelada sem aviso ou aviso de
+    // pelada fantasma, nunca.
+    const elegiveis = await tx
+      .select({ id: players.id })
+      .from(players)
+      .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
+      .where(
+        and(
+          eq(players.active, true),
+          ne(players.id, session.player.id),
+          condicaoElegivel({ id: pelada.id, groupId }),
+        ),
+      );
+    await notificar(
+      tx,
+      elegiveis.map((p) => avisoDePeladaCriada(pelada, p.id)),
+    );
+
+    return pelada;
+  });
+  // Fora da transação, como todo despacho: o aviso é pelada nova — sensível a
+  // tempo, fura o throttle.
+  agendarDespachoDePush(true);
 
   revalidatePath("/");
   revalidatePath("/peladas");

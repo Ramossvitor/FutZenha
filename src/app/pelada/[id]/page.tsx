@@ -8,8 +8,11 @@ import { Card, CardHeader, Eyebrow, PageHeader, Section } from "@/components/ui/
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeCadeado, IconeLuva } from "@/components/ui/icons";
+import { assinarPush, cancelarPush } from "@/app/pwa/actions";
+import { PedidoDePush } from "@/components/push/pedido-de-push";
 import { Nota } from "@/components/ui/nota";
 import { VestChip } from "@/components/ui/vest";
+import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
 import { db } from "@/db";
 import {
   attendances,
@@ -28,6 +31,8 @@ import { repartirLista, vagasLivres } from "@/lib/lista-presenca";
 import { STATUS_PELADA } from "@/lib/match-day-form";
 import { podeGerenciarPelada } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
+import { siteUrl } from "@/lib/site-url";
+import { textoDeConvocacao, textoDeTimes } from "@/lib/whatsapp";
 import { setMyAttendance } from "./actions";
 
 type LinhaExibida = { playerId: number; status: "in" | "out" | "waitlist" | "no_show" };
@@ -334,6 +339,24 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
               );
             })}
           </div>
+          {/* O sorteio hoje é anunciado colando no grupo — o botão só poupa a
+              digitação. Deslogado não vê: `souElegivel` e `podeGerenciar` já
+              exigem sessão, então testá-la de novo aqui não mudaria nada. */}
+          {(souElegivel || podeGerenciar) && (
+            <WhatsAppShareButton
+              texto={textoDeTimes(
+                matchDay,
+                teamList.map((t) => ({
+                  nome: t.name,
+                  jogadores: teamMembers
+                    .filter((m) => m.teamId === t.id)
+                    .map((m) => m.nickname ?? m.name),
+                })),
+              )}
+              rotulo="Compartilhar os times"
+              className="self-start"
+            />
+          )}
         </Section>
       )}
 
@@ -524,6 +547,29 @@ export default async function PeladaPage({ params }: PageProps<"/pelada/[id]">) 
               </form>
             )}
           </span>
+        )}
+
+        {/* O momento em que o aviso tem valor óbvio: quem acabou de entrar na
+            lista quer saber dos times; quem caiu na espera quer saber da vaga.
+            O componente decide sozinho se pode pedir — ver pedido-de-push. */}
+        {matchDay.status !== "finished" &&
+          meuPlayerId !== null &&
+          (statusByPlayer.get(meuPlayerId) === "in" ||
+            statusByPlayer.get(meuPlayerId) === "waitlist") && (
+            <PedidoDePush
+              contexto={statusByPlayer.get(meuPlayerId) === "waitlist" ? "espera" : "confirmado"}
+              acoes={{ aoAssinar: assinarPush, aoCancelar: cancelarPush }}
+            />
+          )}
+
+        {/* Convocação pronta para o grupo — enquanto a lista está aberta,
+            qualquer um da pelada pode chamar a galera, não só o admin. */}
+        {podeMarcar && (souElegivel || podeGerenciar) && (
+          <WhatsAppShareButton
+            texto={textoDeConvocacao(matchDay, siteUrl())}
+            rotulo="Convocar no WhatsApp"
+            className="self-start"
+          />
         )}
 
         <p className="text-[11.5px] text-fg-4">

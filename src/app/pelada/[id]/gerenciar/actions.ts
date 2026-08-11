@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -22,6 +22,7 @@ import { criarJogadorComConvite, parseEmailDeConvite } from "@/lib/convites";
 import { enviarConvitePorEmail } from "@/lib/email-convite";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { redirectPosEnvio } from "@/app/redirect-pos-envio";
+import { avisoDeTimesSorteados } from "@/lib/avisos-pelada";
 import { abrirVotacao, apagarPelada, motivoExclusaoSchema } from "@/lib/deletion";
 import { drawTeams } from "@/lib/draw";
 import { formatDate } from "@/lib/format";
@@ -38,6 +39,7 @@ import {
   sairDaLista,
   subirDaEspera,
 } from "@/lib/presenca";
+import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requirePeladaAdmin } from "@/lib/require-pelada-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
 
@@ -46,7 +48,7 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
   const parsed = parseMatchDayForm(formData);
   if (!parsed.success) redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
 
-  await db.transaction(async (tx) => {
+  const houvePromocao = await db.transaction(async (tx) => {
     await tx.update(matchDays).set(parsed.data).where(eq(matchDays.id, matchDayId));
     // Subir (ou limpar) o limite abre vagas sem ninguém sair. A espera sobe
     // aqui, na ordem de chegada — sem isto ela ficava parada, e o próximo "Vou"
@@ -56,7 +58,9 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
       tx,
       promovidos.map((p) => avisoDePromocao(matchDay, p)),
     );
+    return promovidos.length > 0;
   });
+  if (houvePromocao) agendarDespachoDePush(true);
   revalidatePath("/");
   revalidatePath(`/pelada/${matchDayId}/gerenciar`);
   revalidatePath(`/pelada/${matchDayId}`);
@@ -148,7 +152,7 @@ function revalidateMatchDay(matchDayId: number) {
 }
 
 export async function drawTeamsAction(matchDayId: number, formData: FormData) {
-  const { matchDay } = await requirePeladaAdmin(matchDayId);
+  const { session, matchDay } = await requirePeladaAdmin(matchDayId);
   const teamCount = Number(formData.get("teamCount"));
   if (!Number.isInteger(teamCount) || teamCount < 2 || teamCount > 6) {
     redirect(`/pelada/${matchDayId}/gerenciar?erro=dados-invalidos`);
@@ -191,7 +195,32 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
         .values(team.players.map((p) => ({ teamId: created.id, playerId: p.id })));
     }
     await tx.update(matchDays).set({ status: "teams_drawn" }).where(eq(matchDays.id, matchDayId));
+
+    // Avisa quem está na lista e tem conta ativa — menos o admin que sorteou.
+    // O dedupe segura o re-sorteio: quem já foi avisado uma vez não é avisado
+    // de novo (correção não é novidade, ver avisoDeTimesSorteados).
+    const comConta = await tx
+      .select({ playerId: users.playerId })
+      .from(users)
+      .where(
+        and(
+          eq(users.active, true),
+          // Quem sorteou já sabe — a exclusão fica no WHERE, como em
+          // createMatchDay, e não num filter depois: um lugar só decide quem
+          // recebe.
+          ne(users.playerId, session.player.id),
+          inArray(
+            users.playerId,
+            confirmed.map((c) => c.id),
+          ),
+        ),
+      );
+    await notificar(
+      tx,
+      comConta.map((c) => avisoDeTimesSorteados(matchDay, c.playerId)),
+    );
   });
+  agendarDespachoDePush(true);
 
   revalidateMatchDay(matchDayId);
   redirect(`/pelada/${matchDayId}/gerenciar`);
@@ -471,12 +500,16 @@ export async function definirPresenca(
   // regra antiga existia para impedir.
   const avisar = status === "in" && mereceAviso(session, playerId, alvo);
 
+  let houveAviso = avisar;
   await db.transaction(async (tx) => {
     if (status === "in") {
       await entrarNaLista(tx, matchDay.id, playerId);
     } else {
       const promovido = await sairDaLista(tx, matchDay.id, playerId);
-      if (promovido !== null) await notificar(tx, [avisoDePromocao(matchDay, promovido)]);
+      if (promovido !== null) {
+        await notificar(tx, [avisoDePromocao(matchDay, promovido)]);
+        houveAviso = true;
+      }
     }
 
     if (avisar) {
@@ -492,6 +525,7 @@ export async function definirPresenca(
       ]);
     }
   });
+  if (houveAviso) agendarDespachoDePush(true);
 
   revalidatePath("/");
   revalidatePath(`/pelada/${matchDayId}/gerenciar`);

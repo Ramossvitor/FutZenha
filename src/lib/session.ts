@@ -15,6 +15,9 @@ export type Session = {
   username: string;
   player: Player;
   isPlatformAdmin: boolean;
+  // O layout decide por ela se convida a instalar o app — ver
+  // src/components/push/cta-instalar-ios.tsx.
+  pwaInstaladoEm: Date | null;
 };
 
 // O DAL de sessão: uma consulta por request (React cache memoiza por render).
@@ -38,6 +41,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     userId: row.user.id,
     username: row.user.username,
     player: row.player,
+    pwaInstaladoEm: row.user.pwaInstaladoEm,
     // O `||` da env var é a chave-mestra: um update errado em is_platform_admin
     // trancaria todo mundo do lado de fora de um banco sem shell.
     isPlatformAdmin:
