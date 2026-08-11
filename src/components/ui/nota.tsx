@@ -76,7 +76,7 @@ export function NotaVariacao({
       <span
         aria-hidden
         className={cx(
-          "size-0 border-x-[3.5px] border-x-transparent",
+          "size-0 animate-pulo border-x-[3.5px] border-x-transparent",
           subiu ? "border-b-[5px] border-b-current" : "border-t-[5px] border-t-current",
         )}
       />

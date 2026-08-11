@@ -103,7 +103,13 @@ export function EstrelasInput({
             htmlFor={`${name}-${n}`}
             title={`${n} ${n === 1 ? "estrela" : "estrelas"} — ${ROTULO_DA_NOTA[n]}`}
             // p-1 dá 40px de alvo com a estrela de 32px, dentro do mínimo de toque
-            className="cursor-pointer p-1 text-line-strong transition-colors peer-checked:text-accent-ink peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring"
+            //
+            // O pulo vai no <span> de dentro, e NUNCA no <label>: a caixa do
+            // label é o alvo de toque, e escalar o alvo faria o Playwright
+            // esperar a bounding box assentar antes de cada um dos cinco
+            // cliques em sequência do avaliar.spec. Animar um descendente não
+            // mexe na border-box de ninguém.
+            className="cursor-pointer p-1 text-line-strong transition-colors peer-checked:text-accent-ink peer-checked:[&>span:first-child]:animate-pulo peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring"
           >
             <span className="block size-8">
               <Estrela />

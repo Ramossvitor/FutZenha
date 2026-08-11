@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { Card, CardHeader, Eyebrow, PageHeader, Section } from "@/components/ui/card";
+import { ConfeteDoSorteio } from "@/components/ui/confete-do-sorteio";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeCadeado, IconeLuva } from "@/components/ui/icons";
@@ -287,14 +288,26 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
             </span>
           }
         >
+          <ConfeteDoSorteio
+            chave={String(matchDay.id)}
+            times={teamList.map((t) => t.name)}
+          />
           <div className="grid gap-3 sm:grid-cols-2">
-            {teamList.map((team) => {
+            {teamList.map((team, i) => {
               const doTime = teamMembers.filter((m) => m.teamId === team.id);
               const soma = doTime.reduce((a, p) => a + p.skill, 0);
               return (
-                <Card key={team.id}>
+                <Card
+                  key={team.id}
+                  // Os times saem um de cada vez, como quem lê a lista em voz
+                  // alta. Teto no 4º: com 2 a 4 times isto nunca chega a pesar,
+                  // mas a regra vale para toda cascata do app — a última só pode
+                  // esperar pela quarta, senão a lista vira fila de espera.
+                  className="animate-chegada"
+                  style={{ animationDelay: `${Math.min(i, 3) * 70}ms` }}
+                >
                   <CardHeader>
-                    <VestChip time={team.name} tamanho="lg" />
+                    <VestChip time={team.name} tamanho="lg" className="animate-pulo" />
                     <span className="flex-1 font-display text-[15px] font-extrabold font-stretch-112% text-fg">
                       {team.name}
                     </span>
@@ -534,7 +547,17 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
             {statusByPlayer.get(meuPlayerId) !== "in" &&
               statusByPlayer.get(meuPlayerId) !== "waitlist" && (
                 <form action={setMyAttendance.bind(null, matchDay.id, "in")}>
-                  <SubmitButton tamanho="sm">
+                  {/* Este botão SOME quando a action dá certo — a condição acima
+                      deixa de valer. É o caminho que a comemoração cobre pela
+                      desmontagem, e não pelo pending caindo, e é por isso que
+                      aqui não vai `festejaQuando`: a desmontagem já é a prova, e
+                      a action que volta em silêncio devolve esta mesma tela com
+                      o botão no lugar.
+
+                      `padrao`, e não `sobre-accent`, justamente porque o botão
+                      lime não está mais lá quando a bola é desenhada — ela cai
+                      na surface da página. */}
+                  <SubmitButton tamanho="sm" festeja="padrao">
                     {listaCheia ? "Entrar na espera" : "Vou"}
                   </SubmitButton>
                 </form>

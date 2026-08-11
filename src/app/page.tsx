@@ -231,6 +231,16 @@ export default async function HomePage() {
                     variante={
                       minhaPresenca === "in" || minhaPresenca === "waitlist" ? "primary" : "ghost"
                     }
+                    // Só o "Vou". Sair da lista não é conquista de ninguém.
+                    //
+                    // `sobre-accent` porque aqui o botão SOBREVIVE à action, e a
+                    // bola pousa em cima dele — que ao voltar já é o lime cheio
+                    // de quem está na lista. E é justamente por sobreviver que
+                    // ele precisa dizer o que a action muda: sem o
+                    // `festejaQuando`, clicar com a lista recém-fechada pelo
+                    // sorteio comemorava uma entrada que não houve.
+                    festeja="sobre-accent"
+                    festejaQuando={minhaPresenca ?? "fora"}
                     tamanho="lg"
                     className="w-full rounded-none rounded-bl-card border-0 border-r border-line"
                   >

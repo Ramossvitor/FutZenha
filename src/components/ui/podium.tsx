@@ -37,7 +37,14 @@ export function Podium({ itens, className }: { itens: ItemDoPodio[]; className?:
                 ? "border-accent-edge bg-accent"
                 : "border-line bg-surface",
               lugar === 0 ? "h-[124px]" : lugar === 1 ? "h-[104px]" : "h-[92px]",
+              // Os degraus sobem do 3º para o 1º, na ordem em que um pódio é
+              // anunciado. Opacidade e 4px de translate, nunca a altura: a
+              // altura AQUI é o dado (é ela que diz quem ganhou), animá-la
+              // sugeriria que os números ainda estão mudando — e ainda por cima
+              // é layout, não composição.
+              "animate-chegada",
             )}
+            style={{ animationDelay: `${(2 - lugar) * 70}ms` }}
           >
             <span
               className={cx(

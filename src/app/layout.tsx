@@ -9,8 +9,10 @@ import { RegistrarSw } from "@/components/push/registrar-sw";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { TopBar } from "@/components/shell/top-bar";
+import { CamadaDeComemoracao } from "@/components/ui/comemoracao";
 import { getGrupoAtual } from "@/lib/grupo-atual";
 import { listarGruposDoSeletor } from "@/lib/grupos";
+import { getMovimento } from "@/lib/movimento";
 import { contarNaoLidas } from "@/lib/notifications";
 import { agendarProcessamento } from "@/lib/pendencias";
 import { agendarDespachoDePush } from "@/lib/push-envio";
@@ -71,10 +73,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // A lista do seletor entra aqui porque é aqui que o painel dela mora, e em
   // paralelo com o resto porque isto roda em TODA navegação: em série somaria
   // um round-trip ao caminho crítico de cada uma.
-  const [grupo, naoLidas, grupos] = await Promise.all([
+  const [grupo, naoLidas, grupos, movimento] = await Promise.all([
     getGrupoAtual(),
     session ? contarNaoLidas(session.player.id) : Promise.resolve(0),
     session ? listarGruposDoSeletor(session.player.id) : Promise.resolve([]),
+    getMovimento(),
   ]);
   const temSeletor = grupos.length > 0;
 
@@ -89,6 +92,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="pt-BR"
+      // Vem do cookie, no servidor, e não de um efeito no cliente: com o valor
+      // chegando depois do primeiro paint, quem desligou as animações veria
+      // justamente um frame delas antes de sumirem. Quem resolve o atributo em
+      // `--mov` é o globals.css.
+      data-motion={movimento}
       className={`${archivo.variable} ${instrumentSans.variable} h-full antialiased`}
     >
       {/* A TabBar é `fixed` e não ocupa espaço no fluxo: o que reserva a faixa
@@ -140,6 +148,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         {temSeletor && (
           <PainelDeGrupo grupo={grupo} grupos={grupos} aoTrocarGrupo={trocarGrupo} />
         )}
+
+        {/* Filha direta do <body>, e FORA do <div> lá de cima, de propósito: a
+            camada se centraliza com um `transform`, e a TabBar é `fixed` dentro
+            daquele <div>. Ancestral com transform vira bloco contentor do fixed
+            e traz de volta o bug do quique no iOS — ver o comentário do
+            tab-bar.tsx. Aqui, o único ancestral comum das duas é o <body>. */}
+        <CamadaDeComemoracao />
 
         <RegistrarSw />
         {session && (

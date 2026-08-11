@@ -70,8 +70,16 @@ export function BarraDaVotacao({
       role="img"
       aria-label={`${sim} a favor, ${nao} contra, de ${elegiveis} eleitores`}
     >
-      <div className="h-full bg-accent" style={{ width: `${p(sim)}%` }} />
-      <div className="h-full bg-danger" style={{ width: `${p(nao)}%` }} />
+      {/* As duas metades enchem como a Meter irmã. Sem isto a barra da votação
+          era a única barra do app que já nascia cheia. */}
+      <div
+        className="h-full origin-left animate-flood bg-accent"
+        style={{ width: `${p(sim)}%` }}
+      />
+      <div
+        className="h-full origin-left animate-flood bg-danger"
+        style={{ width: `${p(nao)}%` }}
+      />
     </div>
   );
 }

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { cx } from "@/lib/cx";
+import { useComemoracaoAoTerminar } from "./comemoracao";
+import type { TomDaComemoracao } from "./comemoracao-ponto";
 import { IconeCarregando } from "./icons";
 
 // "use client" no arquivo inteiro é decisão de produto, não acidente: em
@@ -62,6 +64,34 @@ export type BotaoProps = {
   className?: string;
 };
 
+/**
+ * A festa é só do SubmitButton, e fica fora do BotaoProps de propósito: no
+ * `Button` cru não há <form> de que esperar o fim, e um `festeja` que o tipo
+ * aceitasse ali cairia no `...rest` e vazaria como atributo desconhecido no
+ * <button>.
+ */
+export type FestaProps = {
+  /**
+   * Comemora quando a action deste form der certo — só nos submits em que o
+   * produto tem mesmo o que comemorar. O valor é O FUNDO SOBRE O QUAL A BOLA
+   * VAI CAIR, que o call site é o único a saber: quem sobrevive à action pousa
+   * no próprio botão, quem some pousa na surface da página. Ver `tintas` em
+   * comemoracao.tsx.
+   *
+   * A bola é desenhada pela CamadaDeComemoracao, no layout, e não aqui dentro:
+   * em /fut/[id] confirmar presença REMOVE este botão da árvore, e um efeito
+   * hospedado nele morreria antes de rodar.
+   */
+  festeja?: TomDaComemoracao;
+  /**
+   * O estado que a action deveria mudar — obrigatório onde o botão SOBREVIVE ao
+   * submit, porque ali é o único jeito de separar "deu certo" de "voltou em
+   * silêncio". Onde o botão desmonta no sucesso, a desmontagem já é a prova e
+   * este valor não é preciso.
+   */
+  festejaQuando?: string;
+};
+
 export function Button({
   variante = "primary",
   tamanho = "md",
@@ -72,7 +102,7 @@ export function Button({
   type = "button",
   disabled,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & BotaoProps) {
+}: ComponentProps<"button"> & BotaoProps) {
   return (
     <button
       {...rest}
@@ -103,10 +133,15 @@ export function Button({
  */
 export function SubmitButton({
   pending,
+  festeja,
+  festejaQuando,
+  variante = "primary",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & BotaoProps) {
+}: ComponentProps<"button"> & BotaoProps & FestaProps) {
   const status = useFormStatus();
-  return <Button {...props} type="submit" pending={pending || status.pending} />;
+  const emVoo = pending || status.pending;
+  const ref = useComemoracaoAoTerminar(festeja, emVoo, festejaQuando);
+  return <Button {...props} ref={ref} variante={variante} type="submit" pending={emVoo} />;
 }
 
 /** Mesmas classes, mas navega. */

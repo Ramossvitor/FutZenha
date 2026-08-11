@@ -261,15 +261,40 @@
   --radius-ctl:   var(--r-ctl);
   --radius-card:  var(--r-card);
 
-  /* animate-urg / animate-flood */
-  --animate-urg:   urg 1.15s ease-in-out infinite;
-  --animate-flood: flood .45s cubic-bezier(.22,.61,.36,1) both;
+  /* animate-urg / animate-flood / animate-chegada / animate-pulo / animate-realce */
+  --animate-urg:     urg 1.15s ease-in-out infinite;
+  --animate-flood:   flood .45s cubic-bezier(.22,.61,.36,1) both;
+  --animate-chegada: chegada .22s cubic-bezier(.22,.61,.36,1) both;
+  --animate-pulo:    pulo .34s cubic-bezier(.34,1.4,.64,1) both;
+  --animate-realce:  realce 1.1s cubic-bezier(.22,.61,.36,1) both;
+
+  /* Só a comemoração da bola usa estes três — ver comemoracao.tsx. */
+  --animate-rolagem: rolagem .46s cubic-bezier(.22,.61,.36,1) both;
+  --animate-aro:     aro .40s cubic-bezier(.16,1,.3,1) .38s both;
+  --animate-saida:   saida .80s linear both;
 }
 
 /* --------------------------------------------------------------------------
    Animações.
-   urg   — pulso do relógio único quando faltam menos de 6h.
-   flood — a barra enchendo até o valor (quórum, progresso da avaliação).
+
+   REGRA DA CASA: todo keyframe daqui é autorado de modo que o estilo ESTÁTICO
+   do elemento já SEJA o estado final desejado. É isso que deixa o bloco de
+   desligamento lá embaixo ser um `animation: none` seco, sem uma exceção por
+   animação. Keyframe que termine diferente do estático não entra.
+
+   urg     — pulso do relógio único quando faltam menos de 6h.
+   flood   — a barra enchendo até o valor (quórum, progresso da avaliação).
+   chegada — entrada de bloco: 4px de sobe e apaga→acende. Vale para o
+             CONTÊINER de uma lista, nunca para as linhas — ver hairline-list.
+   pulo    — o número que mudou dá um salto. Overshoot leve, uma vez só.
+   realce  — o fundo da SUA linha nasce em accent-line e assenta no tint.
+   rolagem
+   aro
+   saida   — a bola confirmando a presença: ela rola de fora girando, quica de
+             leve na chegada, um aro sai do ponto onde parou, e o conjunto
+             apaga. Um check por cima da bola chegou a existir aqui e saiu: são
+             duas ideias disputando 36px, e a que o produto quer contar é a
+             bola.
    -------------------------------------------------------------------------- */
 @keyframes urg {
   0%, 100% { opacity: 1; }
@@ -281,16 +306,94 @@
   to   { transform: scaleX(1); }
 }
 
+@keyframes chegada {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes pulo {
+  0%   { transform: none; }
+  38%  { transform: scale(1.14); }
+  100% { transform: none; }
+}
+
+/* accent-line, e não accent: o lime cheio com text-fg em cima dá 1,4:1 no tema
+   escuro, e o realce não pode apagar justamente o texto que ele quer destacar. */
+@keyframes realce {
+  from { background-color: var(--accent-line); }
+  to   { background-color: var(--accent-tint); }
+}
+
+@keyframes rolagem {
+  0%   { opacity: 0; transform: translateX(-130%) rotate(0turn); }
+  14%  { opacity: 1; }
+  74%  { transform: translateX(0)    rotate(1.34turn); }
+  86%  { transform: translateY(-16%) rotate(1.42turn); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes aro {
+  from { opacity: .5; transform: scale(.45); }
+  to   { opacity: 0;  transform: scale(1.6); }
+}
+
+/* Segura o conjunto inteiro e apaga no fim. Sem isto a camada some de um quadro
+   para o outro quando o timer dela vence, e o corte seco chama mais atenção do
+   que a animação. */
+@keyframes saida {
+  0%, 65% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+
+/* --------------------------------------------------------------------------
+   O interruptor do movimento.
+
+   --mov não entra em nenhuma duração: ele existe para o JS ler UMA coisa em vez
+   de reimplementar a precedência abaixo em JavaScript (a comemoração da bola nem
+   chega a ser montada com ele em 0).
+
+   Três fontes de verdade, nesta ordem: o padrão (ligado), o sistema
+   (prefers-reduced-motion) e a escolha explícita da pessoa em /perfil, que ganha
+   das outras duas nos DOIS sentidos — quem liga "reduzir movimento" no SO mas
+   quer as animações aqui também é atendido. O atributo é carimbado no <html>
+   pelo servidor, a partir do cookie, então não existe frame animado antes de o
+   app saber que devia estar parado. É a razão de ser cookie e não localStorage.
+   -------------------------------------------------------------------------- */
+:root { --mov: 1; }
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
+  :root:not([data-motion="ligado"]) { --mov: 0; }
+}
+
+:root[data-motion="reduzido"] { --mov: 0; }
+
+/* `animation: none`, e não `animation-duration: .01ms`: a duração mínima ainda
+   depende do fill-mode e do iteration-count, e era ela que congelava o `urg` a
+   35% de opacidade e cobrava uma exceção por animação. Desligar de vez devolve o
+   estilo autorado, que pela regra lá de cima já É o estado final certo — foi
+   assim que a exceção do .animate-urg deixou de ser necessária.
+
+   O transition-delay entra junto porque transição atrasada fica pendurada mesmo
+   com a duração no mínimo.
+
+   Duplicado nos dois seletores de propósito: media query não é seletor, não há
+   como uni-los numa regra só. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="ligado"]) *,
+  :root:not([data-motion="ligado"]) *::before,
+  :root:not([data-motion="ligado"]) *::after {
+    animation: none !important;
     transition-duration: .01ms !important;
+    transition-delay: 0ms !important;
   }
-  /* Sem o pulso, o prazo urgente não pode ficar parado no meio do keyframe —
-     ele congelaria a 35% de opacidade e viraria o texto mais apagado da tela
-     justamente quando é o mais importante. */
-  .animate-urg { opacity: 1 !important; }
+}
+
+:root[data-motion="reduzido"] *,
+:root[data-motion="reduzido"] *::before,
+:root[data-motion="reduzido"] *::after {
+  animation: none !important;
+  transition-duration: .01ms !important;
+  transition-delay: 0ms !important;
 }
 
 /* --------------------------------------------------------------------------
