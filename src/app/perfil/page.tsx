@@ -21,6 +21,7 @@ import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
 import { ChangePasswordForm } from "./change-password-form";
+import { EmailDeContatoForm } from "./email-de-contato-form";
 import { MovimentoToggle } from "./movimento-toggle";
 import { PushToggle } from "./push-toggle";
 import { RodadaRecebida } from "./rodada-recebida";
@@ -39,7 +40,12 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
     getEstrelasRecebidas(player.id),
     contarNaoLidas(player.id),
     db
-      .select({ email: users.email, googleSub: users.googleSub, passwordHash: users.passwordHash })
+      .select({
+        email: users.email,
+        contactEmail: users.contactEmail,
+        googleSub: users.googleSub,
+        passwordHash: users.passwordHash,
+      })
       .from(users)
       .where(eq(users.id, session.userId)),
   ]);
@@ -156,6 +162,20 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
                 </>
               )
             )}
+
+            {/* Onde chegam os avisos. Com Google vinculado é aquele endereço que
+                vale (ver emailDeDestino), então dizer isso aqui evita alguém
+                digitar um contato e não entender por que não teve efeito. */}
+            <p className="text-[13px] text-fg-2">
+              Avisos chegam em{" "}
+              {conta?.email || conta?.contactEmail ? (
+                <strong className="text-fg">{conta.email ?? conta.contactEmail}</strong>
+              ) : (
+                <span className="text-fg-4">nenhum e-mail ainda</span>
+              )}
+              .
+            </p>
+            {!conta?.email && <EmailDeContatoForm atual={conta?.contactEmail ?? null} />}
 
             {/* Conta que nasceu pelo Google nunca teve senha — não há o que trocar. */}
             {conta?.passwordHash && <ChangePasswordForm />}

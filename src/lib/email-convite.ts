@@ -4,6 +4,7 @@ import { and, count, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { groupInvitations, groups, invites, players, users } from "@/db/schema";
 import { mesmoEmail } from "./email";
+import { emailDeDestino } from "./email-destino";
 import { emailConfigurado, enviarEmail } from "./email-envio";
 import {
   emailDeAvisoDeGrupo,
@@ -96,6 +97,17 @@ async function tetoDiarioAtingido(): Promise<boolean> {
  * Compara em memória, não em SQL: a forma canônica (ponto e +tag de Gmail, ver
  * email.ts) não vira um predicado simples sem duplicar a regra aqui dentro. O
  * conjunto é pequeno por construção — o teto diário o limita a 90 linhas.
+ *
+ * Os dois lados leem REGISTRO, não a conta: `invites.email` e
+ * `group_invitations.email_sent_to` guardam para onde o e-mail foi de fato. Ler
+ * `coalesce(users.email, users.contact_email)` ao vivo aqui seria um furo — o
+ * contact_email é reescrito por qualquer um num request, então trocá-lo depois
+ * de receber faria a linha antiga parar de resolver para aquela caixa, e uma
+ * segunda conta apontada para ela passava pelo freio dentro da janela.
+ *
+ * O `coalesce` com `emailDeDestino()` é só a ponte: linha carimbada antes desta
+ * coluna existir tem `email_sent_to` nulo, e sem ele os envios dos 10 minutos
+ * anteriores ao deploy sumiriam do freio. Passada a janela ele nunca mais casa.
  */
 async function destinatarioRecebeuHaPouco(para: string): Promise<boolean> {
   const [dePlataforma, deGrupo] = await Promise.all([
@@ -109,7 +121,11 @@ async function destinatarioRecebeuHaPouco(para: string): Promise<boolean> {
         ),
       ),
     db
-      .select({ email: users.email })
+      .select({
+        email: sql<
+          string | null
+        >`coalesce(${groupInvitations.emailSentTo}, ${emailDeDestino()})`,
+      })
       .from(groupInvitations)
       .innerJoin(users, eq(users.playerId, groupInvitations.playerId))
       .where(
@@ -169,6 +185,13 @@ export async function enviarConvitePorEmail(token: string): Promise<ResultadoEnv
         eq(invites.token, token),
         isNull(invites.usedAt),
         // Convite sem email é o legado de usuário e senha: não há destinatário.
+        //
+        // E não, o e-mail de contato da conta NÃO serve de reserva aqui — este
+        // é o único e-mail que carrega o link de resgate, que vale por senha.
+        // Mandá-lo para um endereço que ninguém verificou (o campo de contato é
+        // digitado, pela pessoa ou pelo admin) entregaria a conta a quem
+        // digitou. Quem não tem convite com e-mail recebe o link no WhatsApp,
+        // como sempre foi.
         isNotNull(invites.email),
         gt(invites.expiresAt, sql`now()`),
       ),
@@ -230,7 +253,10 @@ async function enviarAvisoDeGrupo(
     .select({
       playerId: groupInvitations.playerId,
       invitedByPlayerId: groupInvitations.invitedByPlayerId,
-      para: users.email,
+      // Verificado na frente, contato atrás — ver src/lib/email-destino.ts. É
+      // esta linha que faz o aviso alcançar quem se cadastrou por usuário e
+      // senha, que antes caía sempre em "convite-inelegivel".
+      para: emailDeDestino(),
       nomeDoGrupo: groups.name,
       quemConvidou: players.name,
     })
@@ -308,7 +334,10 @@ async function enviarAvisoDeGrupo(
     // o custo de falhar é o selo não aparecer (e um reenvio manual possível).
     await db
       .update(groupInvitations)
-      .set({ emailSentAt: new Date() })
+      // O endereço vai junto do carimbo: é ele que a janela por caixa de
+      // entrada lê depois, e reler a conta mais tarde deixaria o freio à mercê
+      // de quem reescreve o próprio contact_email.
+      .set({ emailSentAt: new Date(), emailSentTo: convite.para })
       .where(eq(groupInvitations.id, invitationId))
       .catch((erro) => {
         console.error("[email-convite] não marcou email_sent_at do aviso de grupo:", erro);

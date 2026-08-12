@@ -24,6 +24,10 @@ export const MENSAGENS: Record<string, string> = {
     "Você não pode marcar fut nesse grupo — só o administrador e os organizadores.",
   "nome-duplicado": "Já existe um jogador com esse nome.",
   "email-invalido": "E-mail inválido — confira o endereço da conta Google.",
+  // Separado do de cima de propósito: são dois campos com propósitos opostos —
+  // um é a conta Google que resgata o convite, o outro é só onde a pessoa
+  // recebe aviso. Reaproveitar o texto reataria justamente a confusão.
+  "email-contato-invalido": "E-mail de contato inválido — confira o endereço.",
   "auto-rebaixamento":
     "Você não pode tirar o próprio papel de admin da plataforma — peça a outro admin.",
 

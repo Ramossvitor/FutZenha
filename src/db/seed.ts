@@ -297,6 +297,11 @@ async function main() {
       playerId: row.playerId,
       username: usernames[i],
       passwordHash: senhaDemo,
+      // Não é enfeite: sem endereço o app pede um em toda página (ver
+      // AvisoDeEmailDeContato), e o ambiente local nasceria pedindo. @example.com
+      // pela mesma razão das fixtures — se um envio escapar com key
+      // configurada, não chega a caixa de gente de verdade.
+      contactEmail: `${usernames[i]}@example.com`,
       // O primeiro é o admin da plataforma: o painel /admin precisa de dono, e
       // não existe mais senha global para entrar nele.
       isPlatformAdmin: i === 0,

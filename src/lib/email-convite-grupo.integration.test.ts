@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/db";
-import { groupInvitations, type Player } from "@/db/schema";
+import { groupInvitations, users, type Player } from "@/db/schema";
 import { reenviarAvisoDeGrupo } from "@/lib/email-convite";
 import { criarConta, criarConvite, criarJogador, criarVolumeDeConvites } from "@/test/fixtures";
 import {
@@ -115,6 +115,49 @@ describe("reenviarAvisoDeGrupo", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    // O motivo de tudo isto existir: quem se cadastrou por usuário e senha só
+    // tem o endereço de contato, e antes caía aqui em convite-inelegivel — o
+    // aviso simplesmente não saía, sem ninguém perceber.
+    it("conta só com e-mail de contato recebe o aviso", async () => {
+      const groupId = await criarGrupo();
+      const jogador = await criarJogador();
+      await criarConta(jogador, { contactEmail: "so-contato@example.com" });
+      const convite = await criarConviteDeGrupo(groupId, jogador);
+      const fetchMock = stubResend();
+
+      const resultado = await reenviarAvisoDeGrupo(groupId, convite.id);
+
+      expect(resultado).toEqual({ ok: true });
+      expect(payloadDoEnvio(fetchMock).to).toEqual(["so-contato@example.com"]);
+    });
+
+    // Precedência, não substituição: o verificado vence, senão um contato
+    // digitado depois desviaria o correio de uma conta com endereço provado.
+    it("com os dois endereços, manda para o do Google", async () => {
+      const groupId = await criarGrupo();
+      const jogador = await criarJogador();
+      await criarConta(jogador, { email: EMAIL, contactEmail: "outro@example.com" });
+      const convite = await criarConviteDeGrupo(groupId, jogador);
+      const fetchMock = stubResend();
+
+      await reenviarAvisoDeGrupo(groupId, convite.id);
+
+      expect(payloadDoEnvio(fetchMock).to).toEqual([EMAIL]);
+    });
+
+    it("conta sem endereço nenhum continua inelegível", async () => {
+      const groupId = await criarGrupo();
+      const jogador = await criarJogador();
+      await criarConta(jogador);
+      const convite = await criarConviteDeGrupo(groupId, jogador);
+      const fetchMock = stubResend();
+
+      const resultado = await reenviarAvisoDeGrupo(groupId, convite.id);
+
+      expect(resultado).toEqual({ ok: false, motivo: "convite-inelegivel" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("conta desativada devolve convite-inelegivel", async () => {
       const groupId = await criarGrupo();
       const jogador = await criarJogador();
@@ -191,6 +234,77 @@ describe("reenviarAvisoDeGrupo", () => {
 
       expect(resultado).toEqual({ ok: false, motivo: "envio-recente" });
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    // O endereço de contato precisa contar na janela igual ao verificado: é o
+    // mais fácil de apontar para um terceiro (ninguém o verifica), então deixá-lo
+    // de fora do freio seria abrir justamente a porta que o freio fecha.
+    it("a janela também vale para quem só tem e-mail de contato", async () => {
+      const jogador = await criarJogador();
+      await criarConta(jogador, { contactEmail: "so-contato@example.com" });
+      const grupoA = await criarGrupo("Grupo A");
+      await criarConviteDeGrupo(grupoA, jogador, { emailEnviadoHaMinutos: 5 });
+      const grupoB = await criarGrupo("Grupo B");
+      const convite = await criarConviteDeGrupo(grupoB, jogador);
+      const fetchMock = stubResend();
+
+      const resultado = await reenviarAvisoDeGrupo(grupoB, convite.id);
+
+      expect(resultado).toEqual({ ok: false, motivo: "envio-recente" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    // O buraco que `email_sent_to` fecha. A janela lia a conta ao vivo, e
+    // contact_email é reescrito por qualquer um num request: bastava trocá-lo
+    // depois de receber para a linha carimbada parar de resolver para aquela
+    // caixa, e uma segunda conta apontada para ela entrava dentro da janela.
+    // Agora quem manda registra para onde mandou, e trocar o campo depois não
+    // reescreve o passado.
+    it("trocar o contato depois do envio não reabre a janela para a mesma caixa", async () => {
+      const alvo = "vitima@example.com";
+      const primeiro = await criarJogador();
+      const contaDoPrimeiro = await criarConta(primeiro, { contactEmail: alvo });
+      const grupoA = await criarGrupo("Grupo A");
+      await criarConviteDeGrupo(grupoA, primeiro, {
+        emailEnviadoHaMinutos: 5,
+        emailEnviadoPara: alvo,
+      });
+
+      // O primeiro desvia o próprio contato: a linha carimbada não aponta mais
+      // para a caixa que recebeu, se a janela reler a conta.
+      await db
+        .update(users)
+        .set({ contactEmail: "outro@example.com" })
+        .where(eq(users.id, contaDoPrimeiro.id));
+
+      const segundo = await criarJogador();
+      await criarConta(segundo, { contactEmail: alvo });
+      const grupoB = await criarGrupo("Grupo B");
+      const convite = await criarConviteDeGrupo(grupoB, segundo);
+      const fetchMock = stubResend();
+
+      const resultado = await reenviarAvisoDeGrupo(grupoB, convite.id);
+
+      expect(resultado).toEqual({ ok: false, motivo: "envio-recente" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    // O envio de verdade é quem alimenta o freio acima — se ele não gravar o
+    // endereço, a proteção nasce morta na próxima janela.
+    it("o envio grava para onde o aviso saiu", async () => {
+      const groupId = await criarGrupo();
+      const jogador = await criarJogador();
+      await criarConta(jogador, { contactEmail: "so-contato@example.com" });
+      const convite = await criarConviteDeGrupo(groupId, jogador);
+      stubResend();
+
+      await reenviarAvisoDeGrupo(groupId, convite.id);
+
+      const [depois] = await db
+        .select()
+        .from(groupInvitations)
+        .where(eq(groupInvitations.id, convite.id));
+      expect(depois.emailSentTo).toBe("so-contato@example.com");
     });
 
     it("passada a janela, o outro grupo volta a poder avisar", async () => {

@@ -14,6 +14,7 @@ import {
   users,
   type Group,
 } from "@/db/schema";
+import { emailDeDestino } from "./email-destino";
 import { condicaoLinkVivo } from "./grupos-link";
 import type { Vinculo } from "./grupos-permissions";
 import { siteUrl } from "./site-url";
@@ -230,7 +231,7 @@ export async function convitesEnviados(groupId: number) {
       // mandar — mesma forma de `temConta` em listarMembros. O join espelha a
       // elegibilidade do envio (conta ativa), para o botão não aparecer onde só
       // devolveria convite-inelegivel.
-      temEmail: sql<boolean>`${users.email} is not null`,
+      temEmail: sql<boolean>`${emailDeDestino()} is not null`,
     })
     .from(groupInvitations)
     .innerJoin(players, eq(groupInvitations.playerId, players.id))

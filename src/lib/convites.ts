@@ -1,9 +1,9 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { z } from "zod";
 import { type Executor } from "@/db";
 import { invites, players } from "@/db/schema";
+import { emailSchema } from "./email-contato";
 
 // Espelhado em src/db/migrate.ts, que roda sob tsx e não carrega `server-only`.
 const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
@@ -52,18 +52,14 @@ export async function criarJogadorComConvite(
   return { playerId: created.id, token };
 }
 
-const emailSchema = z.preprocess(
-  (v) => (typeof v === "string" ? v.trim().toLowerCase() : v),
-  z.email("E-mail inválido.").max(160),
-);
-
 /**
  * O campo de e-mail do formulário de convite, vazio inclusive.
  *
  * Vazio não é erro: é o convite antigo, de usuário e senha, que segue valendo
  * enquanto a migração para o Google não termina. Fica aqui, e não em cada
- * action, porque são dois formulários (plataforma e fut) e a normalização
- * para minúsculas é o que faz o convite casar com o que o Google devolve.
+ * action, porque são dois formulários (plataforma e fut). A validação vem do
+ * `emailSchema` compartilhado (src/lib/email-contato.ts), e é a normalização
+ * dele para minúsculas que faz o convite casar com o que o Google devolve.
  */
 export function parseEmailDeConvite(
   valor: FormDataEntryValue | null,

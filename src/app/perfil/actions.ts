@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { ratingReports, ratingRounds, ratings, users } from "@/db/schema";
 import { createSessionToken } from "@/lib/auth";
 import { isUniqueViolation } from "@/lib/db-errors";
+import { parseEmailDeContato } from "@/lib/email-contato";
 import {
   MOVIMENTO_COOKIE,
   MOVIMENTO_COOKIE_OPTIONS,
@@ -101,6 +102,41 @@ export async function denunciarAvaliacao(
     throw error;
   }
 
+  revalidatePath("/perfil");
+  return { success: true };
+}
+
+export type EmailDeContatoState = { error?: string; success?: boolean };
+
+/**
+ * Guarda o endereço em que a pessoa recebe aviso do fut.
+ *
+ * Escreve em `contact_email` e NUNCA em `email`: aquele é credencial — o login
+ * pelo Google vincula uma conta ao endereço conhecido (ver decidirPorContas em
+ * src/lib/regras-login-google.ts), e um campo de perfil que escrevesse lá
+ * deixaria qualquer um digitar o Gmail de outra pessoa e capturar o vínculo.
+ * Pelo mesmo motivo não mexe em `token_version`: contato não é credencial, e
+ * mudá-lo não derruba as sessões abertas.
+ *
+ * O alvo é sempre `session.userId` — Server Action é endpoint HTTP público, e
+ * um id vindo do formulário deixaria qualquer conta escrever na de outra.
+ */
+export async function salvarEmailDeContato(
+  _prev: EmailDeContatoState,
+  formData: FormData,
+): Promise<EmailDeContatoState> {
+  const session = await requirePlayer();
+
+  const contato = parseEmailDeContato(formData.get("contactEmail"));
+  if (!contato.ok) return { error: contato.erro };
+
+  await db
+    .update(users)
+    .set({ contactEmail: contato.email })
+    .where(eq(users.id, session.userId));
+
+  // Só o perfil: o aviso no layout some por estado local, e revalidar o layout
+  // inteiro invalidaria o app todo por causa de um campo.
   revalidatePath("/perfil");
   return { success: true };
 }

@@ -45,6 +45,31 @@ describe("getSession", () => {
     expect(sessao?.isPlatformAdmin).toBe(true);
   });
 
+  // É por esta flag que o layout decide pedir o endereço, e ela olha as duas
+  // colunas na mesma ordem do envio: quem entrou pelo Google nunca vê o pedido.
+  describe("temEmailDeContato", () => {
+    it("é falso para conta sem endereço nenhum", async () => {
+      const { conta } = await criarJogadorComConta();
+      await logarComo(conta);
+
+      expect((await getSession())?.temEmailDeContato).toBe(false);
+    });
+
+    it("é verdadeiro só com o e-mail de contato", async () => {
+      const { conta } = await criarJogadorComConta({}, { contactEmail: "eu@example.com" });
+      await logarComo(conta);
+
+      expect((await getSession())?.temEmailDeContato).toBe(true);
+    });
+
+    it("é verdadeiro só com o e-mail do Google", async () => {
+      const { conta } = await criarJogadorComConta({}, { email: "eu@example.com" });
+      await logarComo(conta);
+
+      expect((await getSession())?.temEmailDeContato).toBe(true);
+    });
+  });
+
   it("bump de token_version depois do login derruba a sessão", async () => {
     const { conta } = await criarJogadorComConta();
     await logarComo(conta);

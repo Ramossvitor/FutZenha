@@ -29,6 +29,31 @@ describe("convitesEnviados", () => {
     });
   });
 
+  // A tela espelha a elegibilidade do envio: se o aviso sai para o endereço de
+  // contato, o selo "e-mail não saiu" e o botão de reenviar têm que valer aqui
+  // também — senão a tela mente sobre o que o botão faz.
+  it("só com e-mail de contato também tem destino", async () => {
+    const groupId = await criarGrupo();
+    const jogador = await criarJogador();
+    await criarConta(jogador, { contactEmail: "so-contato@example.com" });
+    await criarConviteDeGrupo(groupId, jogador);
+
+    const [linha] = await convitesEnviados(groupId);
+
+    expect(linha.temEmail).toBe(true);
+  });
+
+  it("conta sem endereço nenhum não tem destino", async () => {
+    const groupId = await criarGrupo();
+    const jogador = await criarJogador();
+    await criarConta(jogador);
+    await criarConviteDeGrupo(groupId, jogador);
+
+    const [linha] = await convitesEnviados(groupId);
+
+    expect(linha.temEmail).toBe(false);
+  });
+
   it("conta desativada não tem destino — o botão de reenviar não aparece", async () => {
     const groupId = await criarGrupo();
     const jogador = await criarJogador();
