@@ -5,6 +5,7 @@ import { WordmarkLink } from "@/components/ui/marca";
 import type { GrupoAtual } from "@/lib/grupo-atual";
 import type { Session } from "@/lib/session";
 import { ChipDoGrupo } from "./chip-do-grupo";
+import { PuxarParaAtualizar } from "./puxar-para-atualizar";
 
 function Contador({ n }: { n: number }) {
   return (
@@ -32,6 +33,10 @@ export function TopBar({
   naoLidas: number;
 }) {
   return (
+    // O `sticky` daqui já é posição, então serve de bloco contentor para o
+    // `absolute` da pílula do PuxarParaAtualizar lá embaixo — não precisa (nem
+    // pode) somar um `relative`. E nada de `overflow-hidden` para conter a
+    // pílula: ele decepava o Contador do sino, posicionado em -top-1.5 -right-1.5.
     <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-nav px-3 py-2 lg:hidden">
       {session ? (
         <ChipDoGrupo
@@ -70,6 +75,10 @@ export function TopBar({
           Entrar
         </Link>
       )}
+
+      {/* Por último na ordem do documento, mas fora do fluxo: não entra no flex
+          da barra e não rouba largura do chip do grupo. */}
+      <PuxarParaAtualizar />
     </header>
   );
 }

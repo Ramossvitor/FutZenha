@@ -1,6 +1,47 @@
 import { expect, type Page } from "@playwright/test";
 
 /**
+ * Arrasta um dedo pela tela, de verdade.
+ *
+ * Via CDP porque `page.touchscreen` só sabe dar `tap` — não existe arrasto na
+ * API pública. E eventos sintetizados por `page.evaluate` não serviriam: eles
+ * chegam com `isTrusted: false` e `cancelable: false`, e é justamente o
+ * `evento.cancelable` que o puxar-para-atualizar.tsx consulta antes de segurar a
+ * rolagem. Chromium-only, que é o único projeto do playwright.config.
+ */
+export async function arrastarComODedo(
+  page: Page,
+  de: { x: number; y: number },
+  ate: { x: number; y: number },
+  passos = 12,
+): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: de.x, y: de.y }],
+    });
+    // Em passos, e não num salto: o componente decide o eixo do gesto nos
+    // primeiros 8px (ATIVACAO), então um único touchMove pularia a decisão.
+    for (let i = 1; i <= passos; i++) {
+      const fracao = i / passos;
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          {
+            x: de.x + (ate.x - de.x) * fracao,
+            y: de.y + (ate.y - de.y) * fracao,
+          },
+        ],
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  } finally {
+    await cdp.detach();
+  }
+}
+
+/**
  * Data futura em ISO (yyyy-mm-dd), bem depois da "próximo fut" do seed
  * (quarta que vem): os futs criados pelos specs não podem roubar o posto de
  * "Próximo fut" da home, que o lista-espera.spec usa para achar o fut

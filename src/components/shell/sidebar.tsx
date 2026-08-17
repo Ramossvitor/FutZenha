@@ -6,6 +6,7 @@ import type { GrupoAtual } from "@/lib/grupo-atual";
 import { papelLabel } from "@/lib/grupos-permissions";
 import { WordmarkLink } from "@/components/ui/marca";
 import type { Session } from "@/lib/session";
+import { BotaoAtualizar } from "./botao-atualizar";
 import { ChipDoGrupo } from "./chip-do-grupo";
 import { itensLaterais } from "./nav-items";
 import { NavLink } from "./nav-link";
@@ -44,7 +45,19 @@ export function Sidebar({
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-[236px] shrink-0 flex-col gap-5 border-r border-line bg-nav px-3.5 py-4 lg:flex">
-      <WordmarkLink tamanho="md" className="px-1" />
+      {/* O botão de atualizar entra aqui e não na navegação: ele não leva a
+          lugar nenhum, e um item de ação no meio dos links mentiria sobre isso.
+          No celular este papel é do gesto de puxar (puxar-para-atualizar.tsx).
+
+          O wordmark caiu de `md` para `sm` por causa dele: em `md` a marca mede
+          169px dos 208px úteis da coluna (236 menos o px-3.5 dos dois lados), e
+          com o gap e o botão a conta dava 221 — o botão entrava POR CIMA das
+          últimas letras. Nem botão menor nem gap menor resolviam sem deixar a
+          folga em 1px. Em `sm` sobram 23px entre a marca e o botão. */}
+      <div className="flex items-center gap-2">
+        <WordmarkLink tamanho="sm" className="min-w-0 flex-1 px-1" />
+        <BotaoAtualizar />
+      </div>
 
       {session && <ChipDoGrupo forma="lateral" grupo={grupo} temSeletor={temSeletor} />}
 

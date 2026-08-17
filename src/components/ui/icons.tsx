@@ -140,6 +140,23 @@ export function IconeBola(props: Icone) {
   );
 }
 
+/**
+ * Seta circular: 300° de arco com a ponta chegando na abertura, em cima.
+ *
+ * O arco vai de -45° a -105° no sentido horário, que é o caminho longo — é o que
+ * deixa a falha centrada no topo, onde a tangente é quase horizontal e a ponta
+ * fica legível a 18px. Irmão do IconeCarregando aqui embaixo: o mesmo raio, para
+ * a troca de um pelo outro não dar salto de tamanho.
+ */
+export function IconeAtualizar(props: Icone) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M18 6A8.5 8.5 0 1 1 9.8 3.8" />
+      <path d="m7.1 2.9 2.7.9-1.9 2.2" />
+    </svg>
+  );
+}
+
 /** Arco aberto que gira com `animate-spin` — o spinner dos botões em pending. */
 export function IconeCarregando(props: Icone) {
   return (
