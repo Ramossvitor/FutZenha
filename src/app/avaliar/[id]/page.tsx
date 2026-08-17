@@ -10,11 +10,14 @@ import { Estrelas } from "@/components/ui/estrelas";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeCadeado } from "@/components/ui/icons";
 import { Prazo } from "@/components/ui/prazo";
+import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
 import { db } from "@/db";
 import { matchDays, ratingRoundRaters, ratingRounds } from "@/db/schema";
 import { formatDate } from "@/lib/format";
-import { getCompanheiros, getMinhasAvaliacoes, getPendenciasDaRodada } from "@/lib/ratings";
+import { getAvaliadoresDaRodada, getCompanheiros, getMinhasAvaliacoes } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
+import { siteUrl } from "@/lib/site-url";
+import { textoDeCobrancaDeAvaliacao } from "@/lib/whatsapp";
 import { RatingForm, type CompanheiroForm } from "./rating-form";
 
 export const metadata: Metadata = { title: "Avaliar companheiros" };
@@ -50,13 +53,14 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
     );
   if (!rodada) notFound();
 
-  const [companheiros, jaDadas, pendencias] = await Promise.all([
+  const [companheiros, jaDadas, avaliadores] = await Promise.all([
     getCompanheiros(rodada.matchDayId, session.player.id),
     getMinhasAvaliacoes(roundId, session.player.id),
-    getPendenciasDaRodada(roundId),
+    getAvaliadoresDaRodada(roundId),
   ]);
 
   const encerrada = rodada.status !== "open" || rodada.venceu;
+  const faltam = avaliadores.filter((a) => !a.jaAvaliou);
 
   return (
     <div className="flex flex-col gap-6">
@@ -94,7 +98,7 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
               <p className="mt-0.5 text-[12.5px] leading-[1.5] text-fg-2">
                 A pessoa vê a estrela que recebeu, nunca quem deu. Nem quem organiza, nem quem
                 administra. A apuração sai antes do prazo se todo mundo avaliar — ainda faltam{" "}
-                {pendencias.pendentes} de {pendencias.total}.
+                {faltam.length} de {avaliadores.length}.
               </p>
             </div>
           </div>
@@ -146,6 +150,53 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
             }),
           )}
         />
+      )}
+
+      {/* Quem está devendo, com nome, para a rapaziada cobrar — e o link pronto
+          para o grupo. Só com a rodada aberta: depois de apurada, cruzar "só o
+          Zé avaliou" com a estrela que a pessoa recebeu entregaria quem deu. */}
+      {!encerrada && (
+        <Section
+          titulo="Quem já avaliou"
+          acao={
+            <Badge tom="neutral">
+              {avaliadores.length - faltam.length} de {avaliadores.length}
+            </Badge>
+          }
+        >
+          <HairlineList as="ul">
+            {avaliadores.map((a) => (
+              <HairlineRow as="li" key={a.playerId} destaque={a.playerId === session.player.id}>
+                <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
+                  {a.nickname ?? a.name}
+                </span>
+                {a.playerId === session.player.id && (
+                  <Badge tom="outline" caixa="normal">
+                    você
+                  </Badge>
+                )}
+                <Badge tom={a.jaAvaliou ? "accent" : "warn"} ponto>
+                  {a.jaAvaliou ? "já avaliou" : "não avaliou"}
+                </Badge>
+              </HairlineRow>
+            ))}
+          </HairlineList>
+          <WhatsAppShareButton
+            rotulo="Cobrar no WhatsApp"
+            className="self-start"
+            texto={textoDeCobrancaDeAvaliacao(
+              {
+                roundId,
+                date: rodada.matchDayDate,
+                location: rodada.location,
+                horasRestantes: rodada.horasRestantes,
+                total: avaliadores.length,
+                faltam: faltam.map((a) => a.nickname ?? a.name),
+              },
+              siteUrl(),
+            )}
+          />
+        </Section>
       )}
 
       <LinkButton href="/avaliar" variante="ghost" tamanho="sm" className="self-start">

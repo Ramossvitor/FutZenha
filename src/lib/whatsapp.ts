@@ -6,6 +6,7 @@
 // texto da convocação nasce no servidor, mas o botão que o compartilha é um
 // Client Component e o módulo precisa ser importável dos dois lados.
 import { formatDate, formatTime } from "@/lib/format";
+import { textoDePrazo } from "@/lib/prazo";
 
 export type FutParaConvocar = {
   id: number;
@@ -36,6 +37,44 @@ export function textoDeTimes(
     (t) => [`${t.nome}:`, ...t.jogadores.map((j) => `- ${j}`)].join("\n"),
   );
   return [`⚽ Times do fut de ${formatDate(matchDay.date)}`, "", blocos.join("\n\n")].join("\n");
+}
+
+export type AvaliacaoParaCobrar = {
+  roundId: number;
+  date: string;
+  location: string;
+  /** Já calculado no Postgres, como todo prazo do produto (ver lib/prazo.ts). */
+  horasRestantes: number;
+  total: number;
+  /** Rótulos (apelido, ou nome) de quem ainda não avaliou. */
+  faltam: string[];
+};
+
+/**
+ * A cobrança da avaliação, com nome de quem está devendo.
+ *
+ * O link exige login e a rodada só abre para quem está no roster congelado
+ * (ratingRoundRaters), então colá-lo no grupo não expõe nada: quem não jogou
+ * cai num 404.
+ */
+export function textoDeCobrancaDeAvaliacao(
+  rodada: AvaliacaoParaCobrar,
+  urlBase: string,
+): string {
+  const cobranca =
+    rodada.faltam.length === 0
+      ? `Todos os ${rodada.total} já avaliaram 🎉`
+      : `Falta a nota de ${rodada.faltam.length} dos ${rodada.total}: ${rodada.faltam.join(", ")}`;
+
+  return [
+    `⭐ Avaliação do fut de ${formatDate(rodada.date)}`,
+    `📍 ${rodada.location}`,
+    "",
+    cobranca,
+    `⏳ ${textoDePrazo(rodada.horasRestantes)} para o prazo`,
+    "",
+    `Avalia aí: ${urlBase}/avaliar/${rodada.roundId}`,
+  ].join("\n");
 }
 
 // O wa.me sem número abre o WhatsApp com a mensagem pronta e deixa a pessoa
