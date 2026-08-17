@@ -270,19 +270,39 @@ export async function resolverAvaliacaoPorIndice(
   return ordenadas[indice]?.ratingId ?? null;
 }
 
-export type PendenciaDaRodada = { total: number; pendentes: number };
+export type AvaliadorDaRodada = {
+  playerId: number;
+  name: string;
+  nickname: string | null;
+  jaAvaliou: boolean;
+};
 
-export async function getPendenciasDaRodada(roundId: number): Promise<PendenciaDaRodada> {
-  // Conta desativada depois da abertura não pode travar a rodada para sempre.
-  const [row] = await db
+/**
+ * O roster congelado da rodada, com quem já enviou — a lista que deixa a
+ * rapaziada cobrar quem está devendo.
+ *
+ * Conta desativada depois da abertura sai daqui: é o mesmo filtro `users.active`
+ * de fecharSeTodosAvaliaram, então o tamanho da lista é o denominador real do
+ * "todos avaliaram" e uma conta desligada não trava a rodada para sempre.
+ *
+ * A ordem é pendentes primeiro (por nome) e depois quem já avaliou (por nome).
+ * Nunca por `submittedAt`: a ordem de envio é informação que o anonimato não
+ * entrega — é o mesmo motivo do desempate por hash em anonimato.ts.
+ */
+export async function getAvaliadoresDaRodada(roundId: number): Promise<AvaliadorDaRodada[]> {
+  return db
     .select({
-      total: sql<number>`count(*)::int`,
-      pendentes: sql<number>`count(*) filter (
-        where ${ratingRoundRaters.submittedAt} is null and ${users.active}
-      )::int`,
+      playerId: ratingRoundRaters.playerId,
+      name: players.name,
+      nickname: players.nickname,
+      jaAvaliou: sql<boolean>`${ratingRoundRaters.submittedAt} is not null`,
     })
     .from(ratingRoundRaters)
-    .innerJoin(users, eq(ratingRoundRaters.userId, users.id))
-    .where(eq(ratingRoundRaters.roundId, roundId));
-  return row ?? { total: 0, pendentes: 0 };
+    .innerJoin(
+      users,
+      and(eq(ratingRoundRaters.userId, users.id), eq(users.active, true)),
+    )
+    .innerJoin(players, eq(ratingRoundRaters.playerId, players.id))
+    .where(eq(ratingRoundRaters.roundId, roundId))
+    .orderBy(sql`${ratingRoundRaters.submittedAt} is not null`, players.name);
 }

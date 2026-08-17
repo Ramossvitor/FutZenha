@@ -20,12 +20,13 @@ import {
   ratings,
   skillHistory,
   teams,
+  users,
   type Game,
   type MatchDay,
   type Player,
 } from "@/db/schema";
 import { quemViraFalta } from "@/lib/encerramento";
-import { getCompanheiros } from "@/lib/ratings";
+import { getAvaliadoresDaRodada, getCompanheiros } from "@/lib/ratings";
 import { abrirRodada, fecharRodada } from "@/lib/ratings-engine";
 import { getAttendanceStats } from "@/lib/stats";
 import {
@@ -334,6 +335,69 @@ describe("enviarAvaliacoes", () => {
       .from(ratings)
       .where(eq(ratings.raterPlayerId, intruso.jogador.id));
     expect(notas).toHaveLength(0);
+  });
+});
+
+describe("getAvaliadoresDaRodada", () => {
+  /** Trio com nome controlado, para poder asseverar a ordem alfabética. */
+  async function montarRodadaNomeada() {
+    const fut = await criarFut();
+    const ana = await criarJogadorComConta({ name: "Ana" });
+    const bia = await criarJogadorComConta({ name: "Bia" });
+    const caio = await criarJogadorComConta({ name: "Caio" });
+    const semConta = [await criarJogador(), await criarJogador(), await criarJogador()];
+    await criarJogo(fut, [ana.jogador, bia.jogador, caio.jogador], semConta);
+    const rodadaId = (await abrirRodada(db, fut.id))!;
+    return { fut, ana, bia, caio, rodadaId };
+  }
+
+  it("rodada nova lista o roster inteiro como pendente, em ordem alfabética", async () => {
+    const { rodadaId } = await montarRodadaNomeada();
+
+    const avaliadores = await getAvaliadoresDaRodada(rodadaId);
+    expect(avaliadores.map((a) => a.name)).toEqual(["Ana", "Bia", "Caio"]);
+    expect(avaliadores.every((a) => !a.jaAvaliou)).toBe(true);
+  });
+
+  it("quem envia vira 'já avaliou' e desce para depois dos pendentes", async () => {
+    const { fut, bia, rodadaId } = await montarRodadaNomeada();
+
+    await logarComo(bia.conta);
+    const companheiros = await getCompanheiros(fut.id, bia.jogador.id);
+    expect(await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 3))).toEqual({
+      success: true,
+    });
+
+    // Pendentes primeiro (por nome), quem já avaliou depois — nunca na ordem de
+    // envio, que o anonimato não entrega.
+    const avaliadores = await getAvaliadoresDaRodada(rodadaId);
+    expect(avaliadores.map((a) => [a.name, a.jaAvaliou])).toEqual([
+      ["Ana", false],
+      ["Caio", false],
+      ["Bia", true],
+    ]);
+  });
+
+  it("apelido vem junto, para a lista chamar cada um como o fut chama", async () => {
+    const fut = await criarFut();
+    const dono = await criarJogadorComConta({ name: "Eduardo", nickname: "Du" });
+    const trio = await criarTrioComConta();
+    await criarJogo(fut, [dono.jogador, ...trio.jogadores], [await criarJogador()]);
+    const rodadaId = (await abrirRodada(db, fut.id))!;
+
+    const avaliadores = await getAvaliadoresDaRodada(rodadaId);
+    expect(avaliadores.find((a) => a.name === "Eduardo")?.nickname).toBe("Du");
+  });
+
+  it("conta desativada depois da abertura sai da lista", async () => {
+    const { caio, rodadaId } = await montarRodadaNomeada();
+
+    await db.update(users).set({ active: false }).where(eq(users.id, caio.conta.id));
+
+    // Mesmo filtro do fecharSeTodosAvaliaram: o tamanho da lista é o denominador
+    // real do "todos avaliaram", senão uma conta desligada travaria a rodada.
+    const avaliadores = await getAvaliadoresDaRodada(rodadaId);
+    expect(avaliadores.map((a) => a.name)).toEqual(["Ana", "Bia"]);
   });
 });
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { linkWaMe, textoDeConvocacao, textoDeTimes } from "./whatsapp";
+import {
+  linkWaMe,
+  textoDeCobrancaDeAvaliacao,
+  textoDeConvocacao,
+  textoDeTimes,
+} from "./whatsapp";
 
 // 2026-08-13 é uma quinta-feira — data fixa para o weekday não depender do dia
 // em que o teste roda.
@@ -48,6 +53,35 @@ describe("textoDeTimes", () => {
     expect(texto).toContain("Vermelho:\n- Juca");
     // Linha em branco entre os times — sem ela o texto vira um parede no zap.
     expect(texto).toContain("Tonho\n\nVermelho");
+  });
+});
+
+describe("textoDeCobrancaDeAvaliacao", () => {
+  const rodada = {
+    roundId: 42,
+    date: fut.date,
+    location: fut.location,
+    horasRestantes: 14,
+    total: 5,
+    faltam: ["Jorge", "Pedrinho", "Tiago"],
+  };
+
+  it("nomeia quem está devendo, com dia, local, prazo e o link da rodada", () => {
+    const texto = textoDeCobrancaDeAvaliacao(rodada, "https://x.app");
+    expect(texto).toContain("quinta-feira");
+    expect(texto).toContain("13/08");
+    expect(texto).toContain("Quadra do Zé");
+    expect(texto).toContain("Falta a nota de 3 dos 5: Jorge, Pedrinho, Tiago");
+    expect(texto).toContain("faltam 14h para o prazo");
+    expect(texto).toContain("https://x.app/avaliar/42");
+  });
+
+  // Estado quase inalcançável — zero pendentes fecha a rodada — mas o texto não
+  // pode sair como "Falta a nota de 0 dos 5".
+  it("sem ninguém devendo, não cobra ninguém", () => {
+    const texto = textoDeCobrancaDeAvaliacao({ ...rodada, faltam: [] }, "https://x.app");
+    expect(texto).toContain("Todos os 5 já avaliaram");
+    expect(texto).not.toContain("Falta a nota");
   });
 });
 

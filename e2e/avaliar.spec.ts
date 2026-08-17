@@ -13,6 +13,12 @@ test("chega na rodada aberta pelos avisos, dá as notas e vê a confirmação", 
   await expect(page.getByText("Como foi")).toBeVisible();
   await expect(page.getByText("Ninguém vai saber que foi você.")).toBeVisible();
 
+  // A lista de cobrança e o botão de compartilhar são asseverados ANTES do
+  // envio: se este for o último avaliador pendente, a rodada fecha por
+  // completude no submit e a seção some (ela só existe com a rodada aberta).
+  await expect(page.getByText("Quem já avaliou")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cobrar no WhatsApp" })).toBeVisible();
+
   // Uma estrela por companheiro: o rádio em si é sr-only, então o clique vai no
   // rótulo visível da 5ª estrela (o title é o texto que o produto mostra).
   const estrelas5 = page.getByTitle("5 estrelas — estava impossível");
