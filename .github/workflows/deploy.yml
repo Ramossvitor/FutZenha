@@ -19,27 +19,92 @@ concurrency:
 
 permissions:
   contents: read
+  # Para consultar os check-runs do commit da main (job `checar`).
+  checks: read
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 1) GATE — tudo que precisa estar verde antes de publicar.
+  # 1) CHECAR — a main já está verde?
   #
-  # A verificação em si mora em verificacao.yml (a mesma que roda em todo PR
-  # pelo ci.yml): uma única fonte de verdade do que "verde" significa. O
-  # `ref: main` é o que garante "sempre a main", de qualquer dropdown.
+  # Todo push na main roda a mesma verificação deste gate (ci.yml). Se o commit
+  # a publicar já tem aquele check verde, re-rodar tudo aqui só repetiria ~25
+  # minutos de trabalho idêntico. Este job congela o SHA da main uma única vez
+  # e pergunta à API se ele já passou; o gate abaixo só roda como fallback.
+  # ---------------------------------------------------------------------------
+  checar:
+    name: Checar se a main já está verde
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.checar.outputs.sha }}
+      verde: ${{ steps.checar.outputs.verde }}
+    steps:
+      # O checkout resolve "main" para um SHA concreto. Daqui em diante todo o
+      # workflow (consulta, gate, checkout do deploy) usa ESTE SHA — a main
+      # pode avançar no meio do caminho sem trocar o que vai ao ar.
+      - name: Checkout da main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 1
+
+      # O filtro é por sufixo porque o check do reusable aparece com nome
+      # composto — "Verificação / Gate de qualidade" (ver ci.yml). Qualquer
+      # estado que não seja sucesso concluído (em andamento, falho, check
+      # inexistente) cai no fallback: o gate roda aqui mesmo, como sempre rodou.
+      - name: Consultar check-runs do commit
+        id: checar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          sucessos=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs" \
+            --paginate \
+            --jq '[.check_runs[] | select((.name | endswith("Gate de qualidade")) and .conclusion == "success")] | length')
+          if [ "$sucessos" -gt 0 ]; then verde=true; else verde=false; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "verde=$verde" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Gate de qualidade"
+            echo ""
+            if [ "$verde" = "true" ]; then
+              echo "**Pulado:** o commit \`$sha\` já passou pela verificação no CI da main."
+            else
+              echo "**Vai rodar:** nenhum check \"Gate de qualidade\" verde para o commit \`$sha\` (CI ainda em andamento, falho ou inexistente)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 2) GATE — tudo que precisa estar verde antes de publicar.
+  #
+  # A verificação em si mora em verificacao.yml (a mesma que roda em todo PR e
+  # todo push na main pelo ci.yml): uma única fonte de verdade do que "verde"
+  # significa. Só roda quando o `checar` não encontrou o check verde — no fluxo
+  # normal (merge → CI da main verde → deploy) ele é pulado.
   # ---------------------------------------------------------------------------
   gate:
     name: Gate de qualidade
+    needs: checar
+    if: needs.checar.outputs.verde != 'true'
     uses: ./.github/workflows/verificacao.yml
     with:
-      ref: main
+      ref: ${{ needs.checar.outputs.sha }}
 
   # ---------------------------------------------------------------------------
-  # 2) DEPLOY — só roda se o gate inteiro passou.
+  # 3) DEPLOY — só roda se o gate passou OU foi pulado por já estar verde.
+  #
+  # O `!cancelled()` é obrigatório: sem ele, o gate pulado (skipped) pularia
+  # este job também, e o caminho rápido nunca publicaria nada.
   # ---------------------------------------------------------------------------
   deploy:
     name: Publicar na Vercel
-    needs: gate
+    needs: [checar, gate]
+    if: >-
+      !cancelled() &&
+      needs.checar.result == 'success' &&
+      (needs.gate.result == 'success' ||
+       (needs.gate.result == 'skipped' && needs.checar.outputs.verde == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -67,10 +132,10 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
     steps:
-      - name: Checkout do commit aprovado no gate
+      - name: Checkout do commit aprovado
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.gate.outputs.sha }}
+          ref: ${{ needs.checar.outputs.sha }}
           fetch-depth: 1
 
       - name: Node (via .nvmrc)
@@ -91,7 +156,7 @@ jobs:
       - name: Deploy de produção
         id: deploy
         env:
-          SHA: ${{ needs.gate.outputs.sha }}
+          SHA: ${{ needs.checar.outputs.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -106,7 +171,7 @@ jobs:
       - name: Resumo do deploy
         if: always()
         env:
-          SHA: ${{ needs.gate.outputs.sha }}
+          SHA: ${{ needs.checar.outputs.sha }}
           OUTCOME: ${{ steps.deploy.outcome }}
           URL: ${{ steps.deploy.outputs.url }}
         run: |
