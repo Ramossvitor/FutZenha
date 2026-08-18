@@ -15,7 +15,7 @@ import {
   teams,
   users,
 } from "@/db/schema";
-import { getFaltamVotar, getVotacaoDoFut } from "@/lib/deletion";
+import { getFaltamVotar, getJanelaAberturaExclusao, getVotacaoDoFut } from "@/lib/deletion";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
 import { repartirLista } from "@/lib/lista-presenca";
 
@@ -34,8 +34,15 @@ const desfazedor = alias(players, "desfazedor");
 export async function carregarPainel(matchDayId: number) {
   // Uma onda só para tudo o que depende apenas do id — o painel fazia 6 níveis
   // de await em série e era a rota mais pesada do app.
-  const [[matchDay], attendanceRows, teamList, gameList, votacao, convitesParaEntregar] =
-    await Promise.all([
+  const [
+    [matchDay],
+    attendanceRows,
+    teamList,
+    gameList,
+    votacao,
+    janelaExclusao,
+    convitesParaEntregar,
+  ] = await Promise.all([
       // A janela de correção vem calculada pelo Postgres — a regra de pureza do
       // React proíbe Date.now() durante o render.
       db
@@ -55,6 +62,7 @@ export async function carregarPainel(matchDayId: number) {
         .where(eq(games.matchDayId, matchDayId))
         .orderBy(asc(games.sortOrder), asc(games.id)),
       getVotacaoDoFut(matchDayId),
+      getJanelaAberturaExclusao(db, matchDayId),
       // Os convites de quem está neste fut e ainda não tem conta. É o que torna o
       // "cadastrar quem chegou" utilizável: quem organiza precisa do link na mão
       // para mandar no WhatsApp — e, com o envio configurado, reenviar por e-mail
@@ -195,6 +203,7 @@ export async function carregarPainel(matchDayId: number) {
     teamNameById: new Map(teamList.map((t) => [t.id, t.name])),
     votacao,
     faltamVotar,
+    janelaExclusao,
     convitesParaEntregar,
   };
 }

@@ -100,6 +100,9 @@ export async function abrirVotacaoExclusao(matchDayId: number, formData: FormDat
   }
 
   const resultado = await abrirVotacao(matchDayId, parsed.data, session.player.id);
+  if (resultado.tipo === "prazo-encerrado") {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=exclusao-prazo-encerrado`);
+  }
   if (resultado.tipo === "sem-eleitores") {
     // Mesmo sem eleitor, o fut pode ter rodada apurada e avaliações válidas
     // — basta as contas de quem jogou terem sido desativadas depois. O delete

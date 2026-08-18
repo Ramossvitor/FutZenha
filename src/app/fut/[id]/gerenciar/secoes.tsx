@@ -759,7 +759,7 @@ export function SecaoEncerrar({ fut }: { fut: PainelDoFut }) {
 }
 
 export function ZonaDePerigo({ fut }: { fut: PainelDoFut }) {
-  const { matchDay, votacao, faltamVotar } = fut;
+  const { matchDay, votacao, faltamVotar, janelaExclusao } = fut;
 
   return (
     <Section titulo="Zona de perigo">
@@ -820,6 +820,11 @@ export function ZonaDePerigo({ fut }: { fut: PainelDoFut }) {
                 </p>
               )}
             </div>
+          ) : !janelaExclusao.aberta ? (
+            <Banner tom="aviso">
+              O prazo para abrir a votação de exclusão já passou — ele vale até 24 horas depois
+              do fim do prazo de contestação das notas. Este fut fica no histórico.
+            </Banner>
           ) : (
             <form
               action={abrirVotacaoExclusao.bind(null, matchDay.id)}
@@ -828,9 +833,16 @@ export function ZonaDePerigo({ fut }: { fut: PainelDoFut }) {
               <p className="text-[13px] leading-[1.5] text-fg-2">
                 O fut já foi encerrado: os gols, o V/E/D e as avaliações dele contam para todo
                 mundo. Apagar exige a aprovação de quem jogou — 85% dos votos em 48h, e quem não
-                votar conta como contra.{" "}
+                votar conta como contra. O pedido também tem hora: dá para abrir até 24 horas
+                depois do fim do prazo de contestação das notas.{" "}
                 <strong className="text-fg">Só existe uma votação por fut.</strong>
               </p>
+              {janelaExclusao.horasRestantes !== null && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Prazo horas={janelaExclusao.horasRestantes} />
+                  <span className="text-[13px] text-fg-2">para abrir a votação.</span>
+                </div>
+              )}
               <Field htmlFor="reason" label="Por que este fut precisa ser apagado?" obrigatorio>
                 <Input
                   id="reason"

@@ -47,6 +47,8 @@ export const MENSAGENS: Record<string, string> = {
   "precisa-votacao":
     "Fut encerrado não se apaga direto — abra a votação de exclusão para o grupo decidir.",
   "motivo-curto": "Escreva o motivo com pelo menos 10 caracteres.",
+  "exclusao-prazo-encerrado":
+    "O prazo para pedir a exclusão deste fut já passou — ele vale até 24 horas depois do fim do prazo de contestação das notas.",
 
   // súmula ao vivo
   "ja-tem-jogo-aberto":

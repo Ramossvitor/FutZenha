@@ -56,7 +56,7 @@ export default async function AvaliarPage() {
           vazio={
             <EmptyState
               titulo="Nenhuma avaliação aberta"
-              descricao="Depois que um fut que você jogou for encerrado, ele aparece aqui com prazo de 2 dias."
+              descricao="Depois que um fut que você jogou for encerrado, ele aparece aqui com prazo de 36 horas."
             />
           }
         >

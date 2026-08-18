@@ -191,7 +191,7 @@ async function seedRatingRound(matchDayId: number) {
     .insert(schema.ratingRounds)
     .values({
       matchDayId,
-      deadlineAt: sql`now() + make_interval(days => 2)`,
+      deadlineAt: sql`now() + make_interval(hours => 36)`,
     })
     .returning();
   await db.insert(schema.ratingRoundRaters).values(
@@ -202,7 +202,7 @@ async function seedRatingRound(matchDayId: number) {
       playerId: c.playerId,
       type: "rating_round_open" as const,
       title: "Avalie seus companheiros",
-      body: "Você tem 2 dias para avaliar quem jogou com você.",
+      body: "Você tem 36 horas para avaliar quem jogou com você.",
       href: `/avaliar/${round.id}`,
       dedupeKey: `rodada:${round.id}:aberta`,
     })),

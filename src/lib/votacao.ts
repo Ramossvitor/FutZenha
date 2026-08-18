@@ -4,8 +4,15 @@
 /** Fração de SIM sobre o eleitorado inteiro necessária para aprovar. */
 export const QUORUM = 0.85;
 
-/** Prazo da votação, em dias. */
-export const PRAZO_VOTACAO_DIAS = 2;
+/** Prazo da votação, em horas. */
+export const PRAZO_VOTACAO_HORAS = 48;
+
+/**
+ * Depois do fim do prazo de contestação das notas, quanto tempo ainda dá para
+ * abrir o pedido de exclusão do fut. Vencida essa janela, o fut fica no
+ * histórico — só o admin da plataforma consegue apagá-lo.
+ */
+export const PRAZO_ABERTURA_EXCLUSAO_HORAS = 24;
 
 /**
  * Quantos SIM a votação precisa. Arredonda para cima: com 10 eleitores, 85%

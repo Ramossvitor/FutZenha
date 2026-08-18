@@ -75,7 +75,7 @@ A escalação confirmada é **imutável** — é ela que define quem avalia quem
 
 A nota do jogador é **100% calculada** — o admin não digita mais. Todo mundo começa em **5,0**.
 
-1. Encerrada o fut, cada jogador com conta recebe uma notificação e tem **2 dias** para dar de 1 a 5 estrelas aos companheiros com quem dividiu o lado em algum jogo daquele dia. A avaliação só acontece em **grupo de 3 ou mais com conta ativa no mesmo lado** — abaixo disso o time joga e conta para placar, artilharia e presença, mas não mexe em nota nenhuma. É a trava contra nota fabricada: sem ela, duas contas combinadas subiriam de 5,0 a 9,3 em cinco futs de mentira.
+1. Encerrada o fut, cada jogador com conta recebe uma notificação e tem **36 horas** para dar de 1 a 5 estrelas aos companheiros com quem dividiu o lado em algum jogo daquele dia. A avaliação só acontece em **grupo de 3 ou mais com conta ativa no mesmo lado** — abaixo disso o time joga e conta para placar, artilharia e presença, mas não mexe em nota nenhuma. É a trava contra nota fabricada: sem ela, duas contas combinadas subiriam de 5,0 a 9,3 em cinco futs de mentira.
 2. A rodada é apurada quando **todos avaliam** ou quando o prazo vence — o que vier primeiro.
 3. As estrelas viram nota numa escala linear (1★ = 1,0 · 2★ = 3,25 · 3★ = 5,5 · 4★ = 7,75 · 5★ = 10,0), e a nota nova é `(2 × nota atual + média recebida) / 3`. Ou seja, um fut pesa **1/3**.
 4. Todo mundo é notificado da mudança, e a nota nova aparece em `/rankings` e no perfil.
@@ -89,7 +89,7 @@ Detalhes que valem conhecer:
 
 ### Nota injusta
 
-O jogador vê no perfil cada estrela que recebeu, **sem saber quem deu**, e pode reportar uma delas em até 2 dias após a apuração (a partir de 2 avaliações recebidas). Quem julga é o **admin da plataforma**, em `/admin/avaliacoes`, e ele tem 3 dias; **se não responder, a denúncia é aceita automaticamente**. Descartar uma avaliação recalcula a nota de todo mundo daquele fut em diante.
+O jogador vê no perfil cada estrela que recebeu, **sem saber quem deu**, e pode reportar uma delas em até 24 horas após a apuração (a partir de 2 avaliações recebidas). Quem julga é o **admin da plataforma**, em `/admin/avaliacoes`, e ele tem 48 horas; **se não responder, a denúncia é aceita automaticamente**. Descartar uma avaliação recalcula a nota de todo mundo daquele fut em diante.
 
 Julgar denúncia **não** é do admin do fut, de propósito: ele quase sempre jogou a rodada, então poderia julgar a própria denúncia — e, pior, descobriria de quem partiu a nota contestada. Aceitar uma denúncia também dispara o replay que recalcula a nota de todo mundo, o que é decisão de plataforma, não de fut.
 
@@ -99,7 +99,7 @@ O anonimato tem um cuidado que não é óbvio: `ratings.id` é sequencial, entã
 
 ### Excluir um fut
 
-Fut **não encerrado** o admin dele apaga direto. Fut **encerrado** exige votação: o admin do fut abre com justificativa, e passa com **85% de SIM em 48h** entre quem jogou e tem conta. Não votar conta como **contra**, o voto é **definitivo**, e há **uma votação por fut** — rejeitada, ela fica no histórico para sempre. Aprovada, o fut é apagado com tudo que gerou e as notas são recalculadas.
+Fut **não encerrado** o admin dele apaga direto. Fut **encerrado** exige votação: o admin do fut abre com justificativa, e passa com **85% de SIM em 48h** entre quem jogou e tem conta. Não votar conta como **contra**, o voto é **definitivo**, e há **uma votação por fut** — rejeitada, ela fica no histórico para sempre. Aprovada, o fut é apagado com tudo que gerou e as notas são recalculadas. O pedido também tem hora: a votação só pode ser aberta **até 24 horas depois do fim do prazo de contestação das notas** (num fut sem rodada de avaliação, a janela equivalente conta do encerramento) — passado isso, o fut fica no histórico e só o admin da plataforma consegue apagá-lo.
 
 Fora disso, o **admin da plataforma** pode excluir um fut direto em `/admin/futs`, sem votação. É a contrapartida de qualquer um poder criar fut: contra um fut fabricado não adianta votação, porque quem votaria são os "jogadores" dele. A tela mostra quem criou cada fut, quantos jogaram e quantos tinham conta ativa — que é o que denuncia fabricação. Como a exclusão é unilateral e irreversível, o motivo escrito é obrigatório e vai para o log do servidor junto com quem apertou o botão.
 

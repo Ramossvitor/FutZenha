@@ -9,16 +9,18 @@ import {
   matchDayDeletionVotes,
   matchDays,
   players,
+  ratingRounds,
   users,
 } from "@/db/schema";
 import { formatDate } from "./format";
 import { notificar } from "./notifications";
-import { prazoEmDias } from "./ratings";
+import { PRAZO_AVALIACAO_HORAS, PRAZO_DENUNCIA_HORAS, prazoEmHoras } from "./ratings";
 import { aplicarReplay } from "./ratings-engine";
 import {
   avaliarVotacao,
   placar,
-  PRAZO_VOTACAO_DIAS,
+  PRAZO_ABERTURA_EXCLUSAO_HORAS,
+  PRAZO_VOTACAO_HORAS,
   votosNecessarios,
   type PlacarVotacao,
 } from "./votacao";
@@ -52,7 +54,65 @@ export type AberturaVotacao =
   | { tipo: "votacao"; voteId: number; eleitores: number }
   /** Ninguém com conta jogou: não há quem seja afetado, o admin apaga direto. */
   | { tipo: "sem-eleitores" }
-  | { tipo: "ja-existe" };
+  | { tipo: "ja-existe" }
+  /** A janela de abertura fechou: o fut fica no histórico. */
+  | { tipo: "prazo-encerrado" };
+
+export type JanelaExclusao = {
+  aberta: boolean;
+  /** null = o relógio ainda nem começou (rodada de avaliação sem apuração). */
+  horasRestantes: number | null;
+};
+
+/**
+ * Pedir a exclusão tem hora para acontecer: até PRAZO_ABERTURA_EXCLUSAO_HORAS
+ * depois do fim do prazo de contestação das notas. Enquanto a rodada de
+ * avaliação corre, o relógio nem começou — a trava só arma quando a apuração
+ * grava o reportDeadlineAt. Fut sem rodada (não houve grupo mínimo para
+ * avaliar) ganha a janela equivalente a contar do encerramento: o que o fluxo
+ * normal somaria se a rodada corresse o prazo inteiro. Fut encerrado sem
+ * finishedAt (dado legado) fica sem marco temporal — janela fechada, mesmo
+ * precedente da JANELA_CORRECAO de placar; o admin da plataforma segue podendo
+ * apagar pelo painel.
+ */
+export async function getJanelaAberturaExclusao(
+  exec: Executor,
+  matchDayId: number,
+): Promise<JanelaExclusao> {
+  const janelaSemRodadaHoras =
+    PRAZO_AVALIACAO_HORAS + PRAZO_DENUNCIA_HORAS + PRAZO_ABERTURA_EXCLUSAO_HORAS;
+  const limite = sql`case
+    when ${ratingRounds.id} is not null then
+      case
+        when ${ratingRounds.status} = 'open' or ${ratingRounds.reportDeadlineAt} is null
+          then null
+        else ${ratingRounds.reportDeadlineAt}
+          + make_interval(hours => ${PRAZO_ABERTURA_EXCLUSAO_HORAS}::int)
+      end
+    else ${matchDays.finishedAt} + make_interval(hours => ${janelaSemRodadaHoras}::int)
+  end`;
+
+  const [linha] = await exec
+    .select({
+      aberta: sql<boolean>`case
+        when ${ratingRounds.id} is not null then
+          ${ratingRounds.status} = 'open'
+          or ${ratingRounds.reportDeadlineAt} is null
+          or ${limite} > now()
+        else ${matchDays.finishedAt} is not null and ${limite} > now()
+      end`,
+      horasRestantes: sql<number | null>`case
+        when ${limite} is null then null
+        else greatest(0, ceil(extract(epoch from (${limite} - now())) / 3600)::int)
+      end`,
+    })
+    .from(matchDays)
+    .leftJoin(ratingRounds, eq(ratingRounds.matchDayId, matchDays.id))
+    .where(eq(matchDays.id, matchDayId));
+
+  if (!linha) return { aberta: false, horasRestantes: null };
+  return { aberta: linha.aberta, horasRestantes: linha.horasRestantes };
+}
 
 // Autorização não mora aqui: quem chama é a action, que já passou pelo
 // requireFutAdmin. Este módulo também roda a partir do varredor de prazos
@@ -62,6 +122,11 @@ export async function abrirVotacao(
   reason: string,
   openedByPlayerId: number,
 ): Promise<AberturaVotacao> {
+  // Antes de tudo — inclusive do atalho sem-eleitores, que apaga direto na
+  // action: janela vencida fecha os dois caminhos de pedido de exclusão.
+  const janela = await getJanelaAberturaExclusao(db, matchDayId);
+  if (!janela.aberta) return { tipo: "prazo-encerrado" };
+
   const eleitores = await getEleitores(matchDayId);
   if (eleitores.length === 0) return { tipo: "sem-eleitores" };
 
@@ -79,7 +144,7 @@ export async function abrirVotacao(
         matchDayId,
         reason,
         openedByPlayerId,
-        deadlineAt: prazoEmDias(PRAZO_VOTACAO_DIAS),
+        deadlineAt: prazoEmHoras(PRAZO_VOTACAO_HORAS),
         eligibleCount: eleitores.length,
         requiredYes: votosNecessarios(eleitores.length),
       })
