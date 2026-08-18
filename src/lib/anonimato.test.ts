@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ordenarAnonimo } from "./anonimato";
 
-const av = (ratingId: number, stars: number) => ({ ratingId, stars });
+const av = (ratingId: number, halfStars: number) => ({ ratingId, halfStars });
 
 describe("ordenarAnonimo", () => {
   it("lista vazia continua vazia", () => {
@@ -10,7 +10,7 @@ describe("ordenarAnonimo", () => {
 
   it("ordena da maior nota para a menor", () => {
     const r = ordenarAnonimo([av(1, 2), av(2, 5), av(3, 3)]);
-    expect(r.map((x) => x.stars)).toEqual([5, 3, 2]);
+    expect(r.map((x) => x.halfStars)).toEqual([5, 3, 2]);
   });
 
   it("não muda o array recebido", () => {
@@ -44,14 +44,14 @@ describe("ordenarAnonimo", () => {
 
   it("preserva os campos extras de cada avaliação", () => {
     const r = ordenarAnonimo([
-      { ratingId: 1, stars: 2, reportada: true },
-      { ratingId: 2, stars: 5, reportada: false },
+      { ratingId: 1, halfStars: 2, reportada: true },
+      { ratingId: 2, halfStars: 5, reportada: false },
     ]);
-    expect(r[0]).toEqual({ ratingId: 2, stars: 5, reportada: false });
+    expect(r[0]).toEqual({ ratingId: 2, halfStars: 5, reportada: false });
   });
 
   it("a nota manda sobre o embaralhamento", () => {
     const r = ordenarAnonimo([av(999, 1), av(1, 5)]);
-    expect(r.map((x) => x.stars)).toEqual([5, 1]);
+    expect(r.map((x) => x.halfStars)).toEqual([5, 1]);
   });
 });

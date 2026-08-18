@@ -3,7 +3,7 @@
 // A aritmética da nota já está travada em skill.test.ts — aqui o alvo é a
 // composição com o Postgres e com as actions.
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { enviarAvaliacoes } from "@/app/avaliar/[id]/actions";
 import { confirmarEncerramento } from "@/app/fut/[id]/gerenciar/encerrar/actions";
@@ -72,22 +72,22 @@ async function criarTrioComConta() {
   };
 }
 
-/** Todos do trio dão a mesma nota aos outros dois, direto no banco. */
-async function avaliarTrio(roundId: number, trio: Player[], stars: number): Promise<void> {
+/** Todos do trio dão a mesma nota (em meias-estrelas) aos outros dois, direto no banco. */
+async function avaliarTrio(roundId: number, trio: Player[], halfStars: number): Promise<void> {
   const notas = [];
   for (const rater of trio) {
     for (const rated of trio) {
       if (rater.id !== rated.id) {
-        notas.push({ roundId, raterPlayerId: rater.id, ratedPlayerId: rated.id, stars });
+        notas.push({ roundId, raterPlayerId: rater.id, ratedPlayerId: rated.id, halfStars });
       }
     }
   }
   await db.insert(ratings).values(notas);
 }
 
-function formularioDeNotas(companheiros: { playerId: number }[], estrelas: number): FormData {
+function formularioDeNotas(companheiros: { playerId: number }[], meias: number): FormData {
   const form = new FormData();
-  for (const c of companheiros) form.set(`estrelas-${c.playerId}`, String(estrelas));
+  for (const c of companheiros) form.set(`estrelas-${c.playerId}`, String(meias));
   return form;
 }
 
@@ -225,8 +225,8 @@ describe("abrirRodada", () => {
     await criarJogo(fut, timeA.jogadores, timeB.jogadores);
     const rodadaId = (await abrirRodada(db, fut.id))!;
 
-    await avaliarTrio(rodadaId, timeA.jogadores, 5);
-    await avaliarTrio(rodadaId, timeB.jogadores, 1);
+    await avaliarTrio(rodadaId, timeA.jogadores, 10);
+    await avaliarTrio(rodadaId, timeB.jogadores, 2);
 
     const fechou = await db.transaction((tx) => fecharRodada(tx, rodadaId, "admin"));
     expect(fechou).toBe(true);
@@ -245,9 +245,10 @@ describe("abrirRodada", () => {
       .where(eq(ratingRounds.matchDayId, fut.id));
     expect(contestacao.horasDePrazo).toBe(24);
 
-    // 5★ unânime: (2×5,0 + 10,0) / 3 → 6,7. 1★ unânime: (2×5,0 + 1,0) / 3 → 3,7.
+    // 5★ unânime: (2×5,0 + 10,0) / 3 → 6,7. 1★ unânime na régua da meia
+    // estrela vale 2,0: (2×5,0 + 2,0) / 3 → 4,0.
     for (const j of timeA.jogadores) expect(await notaDoJogador(j)).toBe(6.7);
-    for (const j of timeB.jogadores) expect(await notaDoJogador(j)).toBe(3.7);
+    for (const j of timeB.jogadores) expect(await notaDoJogador(j)).toBe(4);
 
     const historico = await db
       .select()
@@ -273,6 +274,60 @@ describe("abrirRodada", () => {
   });
 });
 
+// A aritmética das duas réguas está travada em skill.test.ts — aqui o alvo é a
+// composição: a flag `legacy_scale` sair do banco e chegar no replay.
+describe("replay com rodada legada", () => {
+  it("mistura rodada legada e rodada nova, cada uma na sua régua", async () => {
+    const futAntigo = await criarFut({ date: "2026-08-01" });
+    const futNovo = await criarFut({ date: "2026-08-08" });
+    const trio = await criarTrioComConta();
+    await criarJogo(futAntigo, trio.jogadores, [await criarJogador(), await criarJogador()]);
+    await criarJogo(futNovo, trio.jogadores, [await criarJogador(), await criarJogador()]);
+
+    // Simula uma rodada apurada antes da meia estrela: quem seta a flag é a
+    // MIGRATION (nas rodadas fechadas da época) — fecharRodada nunca seta.
+    const rodadaAntiga = (await abrirRodada(db, futAntigo.id))!;
+    await avaliarTrio(rodadaAntiga, trio.jogadores, 2); // o 1★ da época, dobrado
+    await db
+      .update(ratingRounds)
+      .set({ legacyScale: true })
+      .where(eq(ratingRounds.id, rodadaAntiga));
+    await db.transaction((tx) => fecharRodada(tx, rodadaAntiga, "admin"));
+
+    const rodadaNova = (await abrirRodada(db, futNovo.id))!;
+    await avaliarTrio(rodadaNova, trio.jogadores, 2); // as MESMAS meias 2
+    await db.transaction((tx) => fecharRodada(tx, rodadaNova, "admin"));
+
+    // Meias 2 = 1★: 1,0 na tabela congelada, 2,0 na régua nova. As notas:
+    // (2×5,0 + 1,0) / 3 → 3,7 e depois (2×3,7 + 2,0) / 3 → 3,1.
+    const historico = await db
+      .select()
+      .from(skillHistory)
+      .where(eq(skillHistory.playerId, trio.jogadores[0].id))
+      .orderBy(asc(skillHistory.roundId));
+    expect(historico.map((h) => h.averageReceived)).toEqual([1, 2]);
+    expect(historico.map((h) => h.skillAfter)).toEqual([3.7, 3.1]);
+    for (const j of trio.jogadores) expect(await notaDoJogador(j)).toBe(3.1);
+  });
+
+  it("meia estrela em rodada legada é dado corrompido: o replay falha alto", async () => {
+    const fut = await criarFut();
+    const trio = await criarTrioComConta();
+    await criarJogo(fut, trio.jogadores, [await criarJogador(), await criarJogador()]);
+    const rodadaId = (await abrirRodada(db, fut.id))!;
+
+    await avaliarTrio(rodadaId, trio.jogadores, 7);
+    await db
+      .update(ratingRounds)
+      .set({ legacyScale: true })
+      .where(eq(ratingRounds.id, rodadaId));
+
+    await expect(
+      db.transaction((tx) => fecharRodada(tx, rodadaId, "admin")),
+    ).rejects.toThrow(/legada/);
+  });
+});
+
 describe("enviarAvaliacoes", () => {
   async function montarRodadaComTrio() {
     const fut = await criarFut();
@@ -290,7 +345,8 @@ describe("enviarAvaliacoes", () => {
     const companheiros = await getCompanheiros(fut.id, trio.jogadores[0].id);
     expect(companheiros).toHaveLength(2);
 
-    const resultado = await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 4));
+    // 3,5 estrelas — meia estrela atravessando a action inteira.
+    const resultado = await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 7));
     expect(resultado).toEqual({ success: true });
 
     const notas = await db
@@ -298,7 +354,7 @@ describe("enviarAvaliacoes", () => {
       .from(ratings)
       .where(eq(ratings.raterPlayerId, trio.jogadores[0].id));
     expect(notas).toHaveLength(2);
-    expect(notas.every((n) => n.stars === 4)).toBe(true);
+    expect(notas.every((n) => n.halfStars === 7)).toBe(true);
 
     const [rater] = await db
       .select()
@@ -321,7 +377,7 @@ describe("enviarAvaliacoes", () => {
     for (const [i, conta] of trio.contas.entries()) {
       await logarComo(conta);
       const companheiros = await getCompanheiros(fut.id, trio.jogadores[i].id);
-      const resultado = await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 4));
+      const resultado = await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 8));
       expect(resultado).toEqual({ success: true });
     }
 
@@ -329,8 +385,8 @@ describe("enviarAvaliacoes", () => {
     expect(rodada.status).toBe("closed");
     expect(rodada.closeReason).toBe("todos_avaliaram");
 
-    // Dois 4★ recebidos: média 7,75 → (2×5,0 + 7,75) / 3 → 5,9.
-    for (const j of trio.jogadores) expect(await notaDoJogador(j)).toBe(5.9);
+    // Dois 4★ recebidos: média 8,0 → (2×5,0 + 8,0) / 3 → 6,0.
+    for (const j of trio.jogadores) expect(await notaDoJogador(j)).toBe(6);
   });
 
   it("avaliador fora da lista de raters não consegue enviar", async () => {
@@ -341,7 +397,7 @@ describe("enviarAvaliacoes", () => {
     const resultado = await enviarAvaliacoes(
       rodadaId,
       {},
-      formularioDeNotas([{ playerId: trio.jogadores[0].id }], 5),
+      formularioDeNotas([{ playerId: trio.jogadores[0].id }], 10),
     );
     expect(resultado.error).toBe("Esta avaliação não está mais aberta para você.");
 
@@ -379,7 +435,7 @@ describe("getAvaliadoresDaRodada", () => {
 
     await logarComo(bia.conta);
     const companheiros = await getCompanheiros(fut.id, bia.jogador.id);
-    expect(await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 3))).toEqual({
+    expect(await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 6))).toEqual({
       success: true,
     });
 

@@ -4,7 +4,7 @@
 // expor o id na tela) revela a ordem em que as pessoas enviaram. Num grupo
 // pequeno, "quem avaliou primeiro" é informação suficiente para deduzir.
 
-export type AvaliacaoAnonima<T> = T & { ratingId: number; stars: number };
+export type AvaliacaoAnonima<T> = T & { ratingId: number; halfStars: number };
 
 /**
  * Hash multiplicativo de Knuth. Só precisa embaralhar de forma estável — a
@@ -23,6 +23,6 @@ function embaralhar(ratingId: number): number {
  */
 export function ordenarAnonimo<T>(avaliacoes: AvaliacaoAnonima<T>[]): AvaliacaoAnonima<T>[] {
   return [...avaliacoes].sort(
-    (a, b) => b.stars - a.stars || embaralhar(a.ratingId) - embaralhar(b.ratingId),
+    (a, b) => b.halfStars - a.halfStars || embaralhar(a.ratingId) - embaralhar(b.ratingId),
   );
 }

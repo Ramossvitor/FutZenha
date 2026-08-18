@@ -28,6 +28,21 @@ export function formatSkill(skill: number): string {
   return skill.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
+// Meias-estrelas (a unidade do banco) para estrelas (a da tela): 7 → "3,5",
+// 8 → "4". A meia só aparece quando existe — "4,0 estrelas" soaria a nota.
+export function formatMeias(halfStars: number): string {
+  return (halfStars / 2).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+}
+
+/**
+ * Como o produto fala de um valor em meias-estrelas: "0,5 estrela",
+ * "1 estrela", "3,5 estrelas". É o title/aria de tudo que mostra estrela —
+ * inclusive o seletor do E2E (avaliar.spec), que clica pelo title.
+ */
+export function rotuloDeEstrelas(meias: number): string {
+  return `${formatMeias(meias)} ${meias <= 2 ? "estrela" : "estrelas"}`;
+}
+
 export function todayISO(): string {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;

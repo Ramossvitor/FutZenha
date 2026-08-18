@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
 import { SubmitButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { EstrelasInput } from "@/components/ui/estrelas";
+import { EstrelasInput } from "@/components/ui/estrelas-input";
 import { IconeLuva } from "@/components/ui/icons";
 import { Meter } from "@/components/ui/meter";
 import { enviarAvaliacoes, type AvaliarState } from "./actions";
@@ -18,6 +18,7 @@ export type CompanheiroForm = {
   rotulo: string;
   nome: string;
   isGoalkeeper: boolean;
+  /** Em meias-estrelas (1..10), como tudo que fala com o EstrelasInput. */
   estrelasAtuais?: number;
 };
 

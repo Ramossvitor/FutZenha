@@ -6,18 +6,25 @@
 // em cada rodada. Nada de delta incremental — descartar uma avaliação antiga é
 // só rodar o replay de novo sem ela.
 
-// Escala interna: centésimos (1000 = 10,0). É a menor unidade em que o mapa
-// linear das estrelas é exato — 2★ vale 3,25, que não cabe em décimos.
+// Escala interna: centésimos (1000 = 10,0). Na régua atual bastariam décimos,
+// mas a tabela legada tem 2★ = 3,25 — que não cabe em décimos — e ela nunca
+// sai do sistema: toda rodada `legacy_scale` do banco passa por aqui a cada
+// replay, para sempre.
 const CENTESIMOS = 100;
 
 export const SKILL_INICIAL_CENT = 5 * CENTESIMOS;
 export const SKILL_MIN_CENT = 1 * CENTESIMOS;
 export const SKILL_MAX_CENT = 10 * CENTESIMOS;
 
-// 1★ = 1,0 … 5★ = 10,0, linearmente: 1 + (estrelas - 1) × 2,25.
-const ESTRELA_EM_CENTESIMOS = [null, 100, 325, 550, 775, 1000] as const;
-export const ESTRELAS_MIN = 1;
-export const ESTRELAS_MAX = 5;
+// A unidade do voto é MEIA ESTRELA inteira: 1 = 0,5★ … 10 = 5★. Régua atual:
+// cada meia vale 1 ponto (cent = meias × 100), então 0,5★ = 1,0 e 5★ = 10,0.
+export const MEIAS_MIN = 1;
+export const MEIAS_MAX = 10;
+
+// Régua congelada das rodadas apuradas antes da meia estrela (legacy_scale):
+// 1★ = 1,0 … 5★ = 10,0, linearmente 1 + (estrelas - 1) × 2,25. Indexada por
+// ESTRELAS INTEIRAS (meias / 2) — nessas rodadas só existem meias pares.
+const LEGADO_EM_CENTESIMOS = [null, 100, 325, 550, 775, 1000] as const;
 
 // Peso da rodada sobre a nota: nova = (2 × atual + recebida) / 3.
 // Mudar a inércia da nota é mudar estes dois números e rodar o replay.
@@ -80,7 +87,8 @@ export function notaParaCent(nota: number): number {
 export type RatingInput = {
   raterPlayerId: number;
   ratedPlayerId: number;
-  stars: number;
+  /** Meias-estrelas inteiras (1..10) — 7 = 3,5★. */
+  halfStars: number;
 };
 
 export type RoundInput = {
@@ -88,6 +96,9 @@ export type RoundInput = {
   matchDayId: number;
   /** "YYYY-MM-DD" — a data do fut, que é o que ordena o replay. */
   matchDayDate: string;
+  /** Rodada apurada antes da meia estrela: converte pela tabela congelada
+   *  e só aceita meias pares (as estrelas inteiras da época, dobradas). */
+  legacyScale: boolean;
   /** Só as avaliações válidas. Filtrar as descartadas é do chamador. */
   ratings: RatingInput[];
 };
@@ -129,14 +140,20 @@ function ordenar(rounds: RoundInput[]): RoundInput[] {
   );
 }
 
-// O banco já barra os três casos (check de stars, check de rater <> rated,
-// unique do par). Falhar alto aqui é o que denuncia dado corrompido em vez de
-// deixá-lo virar nota silenciosamente errada.
+// O banco já barra os três primeiros casos (check de half_stars, check de
+// rater <> rated, unique do par). Falhar alto aqui é o que denuncia dado
+// corrompido em vez de deixá-lo virar nota silenciosamente errada. A paridade
+// em rodada legada é só daqui: o banco não sabe a régua de cada rodada.
 function validar(round: RoundInput): void {
   const vistos = new Set<string>();
   for (const r of round.ratings) {
-    if (!Number.isInteger(r.stars) || r.stars < ESTRELAS_MIN || r.stars > ESTRELAS_MAX) {
-      throw new Error(`Rodada ${round.roundId}: estrelas inválidas (${r.stars})`);
+    if (!Number.isInteger(r.halfStars) || r.halfStars < MEIAS_MIN || r.halfStars > MEIAS_MAX) {
+      throw new Error(`Rodada ${round.roundId}: meias-estrelas inválidas (${r.halfStars})`);
+    }
+    if (round.legacyScale && r.halfStars % 2 !== 0) {
+      throw new Error(
+        `Rodada ${round.roundId}: meia estrela (${r.halfStars}) em rodada legada`,
+      );
     }
     if (r.raterPlayerId === r.ratedPlayerId) {
       throw new Error(`Rodada ${round.roundId}: jogador ${r.raterPlayerId} avaliou a si mesmo`);
@@ -160,7 +177,9 @@ export function replaySkills(rounds: RoundInput[]): ReplayResult {
     const recebidas = new Map<number, { somaCent: number; total: number }>();
     for (const r of round.ratings) {
       const acc = recebidas.get(r.ratedPlayerId) ?? { somaCent: 0, total: 0 };
-      acc.somaCent += ESTRELA_EM_CENTESIMOS[r.stars]!;
+      acc.somaCent += round.legacyScale
+        ? LEGADO_EM_CENTESIMOS[r.halfStars / 2]!
+        : r.halfStars * CENTESIMOS;
       acc.total += 1;
       recebidas.set(r.ratedPlayerId, acc);
     }

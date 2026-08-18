@@ -11,7 +11,7 @@ import { Prazo } from "@/components/ui/prazo";
 import { db } from "@/db";
 import { matchDays, ratingRoundRaters, ratingRounds, users } from "@/db/schema";
 import { cx } from "@/lib/cx";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatMeias } from "@/lib/format";
 import { getContextoDaDenuncia, getDenunciasAbertas } from "@/lib/reports";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import { apurarAgora, julgarDenuncia } from "./actions";
@@ -93,8 +93,8 @@ export default async function AdminAvaliacoesPage() {
                 <CardBody className="flex flex-col gap-3">
                   <p className="flex flex-wrap items-center gap-2 text-[13px] text-fg-2">
                     Contesta a nota de
-                    <Estrelas valor={d.starsDenunciada} />
-                    <span>({d.starsDenunciada} de 5)</span>
+                    <Estrelas meias={d.halfStarsDenunciada} />
+                    <span>({formatMeias(d.halfStarsDenunciada)} de 5)</span>
                     {d.raterName && (
                       <span>
                         dada por <strong className="text-fg">{d.raterName}</strong>
@@ -119,7 +119,7 @@ export default async function AdminAvaliacoesPage() {
                                 : "border-line bg-surface-2 text-fg-2",
                           )}
                         >
-                          {c.stars}/5{c.raterName && ` · ${c.raterName}`}
+                          {formatMeias(c.halfStars)}/5{c.raterName && ` · ${c.raterName}`}
                           {c.reclamada && " · reclamada"}
                         </span>
                       ))}
