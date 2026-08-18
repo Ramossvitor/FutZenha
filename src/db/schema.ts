@@ -606,7 +606,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
 // torna a abertura idempotente. Os prazos são congelados na criação: nada de
-// recalcular "agora + 2 dias" a cada leitura.
+// recalcular "agora + prazo" a cada leitura.
 export const ratingRounds = pgTable(
   "rating_rounds",
   {

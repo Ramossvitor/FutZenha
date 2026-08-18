@@ -17,8 +17,8 @@ import {
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
   MIN_AVALIACOES_PARA_DENUNCIAR,
-  PRAZO_ADMIN_DIAS,
-  prazoEmDias,
+  PRAZO_ADMIN_HORAS,
+  prazoEmHoras,
   resolverAvaliacaoPorIndice,
 } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
@@ -92,7 +92,7 @@ export async function denunciarAvaliacao(
       reporterPlayerId: session.player.id,
       // O .trim() do schema já é transform de saída no Zod 4.
       reason: parsedReason.data || null,
-      adminDeadlineAt: prazoEmDias(PRAZO_ADMIN_DIAS),
+      adminDeadlineAt: prazoEmHoras(PRAZO_ADMIN_HORAS),
     });
   } catch (error) {
     // Só a unique em rating_id vira mensagem. Qualquer outra falha (conexão

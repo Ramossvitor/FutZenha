@@ -3,7 +3,7 @@
 // A aritmética da nota já está travada em skill.test.ts — aqui o alvo é a
 // composição com o Postgres e com as actions.
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { enviarAvaliacoes } from "@/app/avaliar/[id]/actions";
 import { confirmarEncerramento } from "@/app/fut/[id]/gerenciar/encerrar/actions";
@@ -195,10 +195,17 @@ describe("abrirRodada", () => {
     expect(segunda).toBeNull();
 
     const rodadas = await db
-      .select()
+      .select({
+        // arredondado no banco: o prazo nasce de now() no INSERT, então aqui
+        // ele já correu alguns milissegundos
+        horasDePrazo: sql<number>`round(extract(epoch from (
+          ${ratingRounds.deadlineAt} - now()
+        )) / 3600)::int`,
+      })
       .from(ratingRounds)
       .where(eq(ratingRounds.matchDayId, fut.id));
     expect(rodadas).toHaveLength(1);
+    expect(rodadas[0].horasDePrazo).toBe(36);
     const raters = await db
       .select()
       .from(ratingRoundRaters)
@@ -228,7 +235,15 @@ describe("abrirRodada", () => {
     expect(rodada.status).toBe("closed");
     expect(rodada.closeReason).toBe("admin");
     expect(rodada.closedAt).not.toBeNull();
-    expect(rodada.reportDeadlineAt).not.toBeNull();
+    const [contestacao] = await db
+      .select({
+        horasDePrazo: sql<number>`round(extract(epoch from (
+          ${ratingRounds.reportDeadlineAt} - now()
+        )) / 3600)::int`,
+      })
+      .from(ratingRounds)
+      .where(eq(ratingRounds.matchDayId, fut.id));
+    expect(contestacao.horasDePrazo).toBe(24);
 
     // 5★ unânime: (2×5,0 + 10,0) / 3 → 6,7. 1★ unânime: (2×5,0 + 1,0) / 3 → 3,7.
     for (const j of timeA.jogadores) expect(await notaDoJogador(j)).toBe(6.7);

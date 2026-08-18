@@ -14,9 +14,9 @@ import { formatSkill } from "./format";
 import { notificar } from "./notifications";
 import {
   getRatersElegiveis,
-  PRAZO_AVALIACAO_DIAS,
-  PRAZO_DENUNCIA_DIAS,
-  prazoEmDias,
+  PRAZO_AVALIACAO_HORAS,
+  PRAZO_DENUNCIA_HORAS,
+  prazoEmHoras,
 } from "./ratings";
 import { diffNotas, replaySkills, type RatingInput, type SkillChange } from "./skill";
 
@@ -56,7 +56,7 @@ export async function abrirRodada(exec: Executor, matchDayId: number): Promise<n
 
   const [round] = await exec
     .insert(ratingRounds)
-    .values({ matchDayId, deadlineAt: prazoEmDias(PRAZO_AVALIACAO_DIAS) })
+    .values({ matchDayId, deadlineAt: prazoEmHoras(PRAZO_AVALIACAO_HORAS) })
     .onConflictDoNothing({ target: ratingRounds.matchDayId })
     .returning();
   // Já existia uma rodada para este fut — nada a fazer.
@@ -72,7 +72,7 @@ export async function abrirRodada(exec: Executor, matchDayId: number): Promise<n
       playerId: r.playerId,
       type: "rating_round_open" as const,
       title: "Avalie seus companheiros",
-      body: `Você tem ${PRAZO_AVALIACAO_DIAS} dias para avaliar quem jogou com você.`,
+      body: `Você tem ${PRAZO_AVALIACAO_HORAS} horas para avaliar quem jogou com você.`,
       href: `/avaliar/${round.id}`,
       dedupeKey: `rodada:${round.id}:aberta`,
     })),
@@ -227,7 +227,7 @@ export async function fecharRodada(
     .set({
       status: "closed",
       closedAt: sql`now()`,
-      reportDeadlineAt: prazoEmDias(PRAZO_DENUNCIA_DIAS),
+      reportDeadlineAt: prazoEmHoras(PRAZO_DENUNCIA_HORAS),
       closeReason: motivo,
     })
     .where(and(eq(ratingRounds.id, roundId), eq(ratingRounds.status, "open")))

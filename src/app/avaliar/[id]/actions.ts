@@ -126,7 +126,7 @@ export async function enviarAvaliacoes(
   }
 
   // Se este era o último que faltava, a rodada fecha e as notas saem na hora —
-  // ninguém precisa esperar os 2 dias. Uma falha AQUI não pode virar erro na
+  // ninguém precisa esperar as 36 horas. Uma falha AQUI não pode virar erro na
   // tela: as notas desta pessoa já commitaram, e o fechamento é idempotente —
   // o varredor de pendências fecha a rodada no prazo de qualquer jeito.
   try {

@@ -17,19 +17,19 @@ import {
 import { ordenarAnonimo } from "./anonimato";
 import { companheirosPorJogador, gruposElegiveis, type EscalacaoRow } from "./lineup";
 
-// Prazos do ciclo de avaliação, em dias. São gravados como timestamp absoluto na
+// Prazos do ciclo de avaliação, em horas. São gravados como timestamp absoluto na
 // criação de cada rodada/denúncia — mudar aqui não mexe no que já está em curso.
-export const PRAZO_AVALIACAO_DIAS = 2; // encerrar o fut → avaliar
-export const PRAZO_DENUNCIA_DIAS = 2; // apurar a rodada → reportar nota injusta
-export const PRAZO_ADMIN_DIAS = 3; // reportar → admin responder (silêncio = aceita)
+export const PRAZO_AVALIACAO_HORAS = 36; // encerrar o fut → avaliar
+export const PRAZO_DENUNCIA_HORAS = 24; // apurar a rodada → reportar nota injusta
+export const PRAZO_ADMIN_HORAS = 48; // reportar → admin responder (silêncio = aceita)
 
 // Denúncia só faz sentido a partir daqui: com uma única avaliação recebida,
 // reportar seria apontar o dedo para uma pessoa óbvia.
 export const MIN_AVALIACOES_PARA_DENUNCIAR = 2;
 
-/** `now() + N dias` calculado pelo Postgres, não pelo relógio do app. */
-export function prazoEmDias(dias: number) {
-  return sql<Date>`now() + make_interval(days => ${dias}::int)`;
+/** `now() + N horas` calculado pelo Postgres, não pelo relógio do app. */
+export function prazoEmHoras(horas: number) {
+  return sql<Date>`now() + make_interval(hours => ${horas}::int)`;
 }
 
 /**

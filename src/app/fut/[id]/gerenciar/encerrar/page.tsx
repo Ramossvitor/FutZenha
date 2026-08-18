@@ -366,7 +366,7 @@ export default async function EncerrarFutPage({
               {[
                 "A escalação congela pra sempre. Quem jogou de que lado não muda mais.",
                 "Os números entram nos rankings na hora.",
-                "A rodada de avaliação abre e o relógio de 2 dias começa a correr.",
+                "A rodada de avaliação abre e o relógio de 36 horas começa a correr.",
                 "Placar e gols ainda dão pra corrigir por 24h. Depois disso, só apagando o fut — e aí precisa de votação.",
               ].map((t) => (
                 <li key={t} className="flex items-start gap-2">

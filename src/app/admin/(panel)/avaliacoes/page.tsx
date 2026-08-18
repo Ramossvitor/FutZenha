@@ -71,7 +71,7 @@ export default async function AdminAvaliacoesPage() {
         {denuncias.length === 0 ? (
           <EmptyState
             titulo="Nada para julgar"
-            descricao="Quando alguém contestar uma nota, ela aparece aqui com prazo de 3 dias."
+            descricao="Quando alguém contestar uma nota, ela aparece aqui com prazo de 48 horas."
           />
         ) : (
           denuncias.map((d, i) => {

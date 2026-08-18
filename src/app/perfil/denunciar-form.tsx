@@ -17,7 +17,7 @@ export function DenunciarForm({ roundId, indice }: { roundId: number; indice: nu
   if (state.success) {
     return (
       <p className="text-[12px] font-semibold text-accent-ink">
-        Denúncia enviada. Quem administra a plataforma tem 3 dias para responder.
+        Denúncia enviada. Quem administra a plataforma tem 48 horas para responder.
       </p>
     );
   }
