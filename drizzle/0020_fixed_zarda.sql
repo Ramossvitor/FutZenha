@@ -1,0 +1,1 @@
+ALTER TABLE "goals" ADD COLUMN "somado_no_placar" boolean DEFAULT false NOT NULL;

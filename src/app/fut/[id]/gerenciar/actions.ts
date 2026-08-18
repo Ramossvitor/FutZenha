@@ -26,6 +26,8 @@ import { avisoDeTimesSorteados } from "@/lib/avisos-fut";
 import { abrirVotacao, apagarFut, motivoExclusaoSchema } from "@/lib/deletion";
 import { drawTeams } from "@/lib/draw";
 import { formatDate } from "@/lib/format";
+import { criarJogoComEscalacao } from "@/lib/jogos";
+import { revalidateMatchDay } from "../revalidate";
 import { listaFechada } from "@/lib/lista-presenca";
 import { parseMatchDayForm } from "@/lib/match-day-form";
 import { notificar } from "@/lib/notifications";
@@ -38,6 +40,7 @@ import {
   registrarFalta,
   sairDaLista,
   subirDaEspera,
+  travarFut,
 } from "@/lib/presenca";
 import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
@@ -149,12 +152,6 @@ async function assertPlacarEditavel(matchDayId: number) {
   }
 }
 
-function revalidateMatchDay(matchDayId: number) {
-  revalidatePath("/");
-  revalidatePath("/futs");
-  revalidatePath(`/fut/${matchDayId}/gerenciar`);
-  revalidatePath(`/fut/${matchDayId}`);
-}
 
 export async function drawTeamsAction(matchDayId: number, formData: FormData) {
   const { session, matchDay } = await requireFutAdmin(matchDayId);
@@ -289,29 +286,24 @@ export async function createGame(matchDayId: number, formData: FormData) {
     redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
-  const existing = await db.select().from(games).where(eq(games.matchDayId, matchDayId));
-
-  // A escalação do jogo é um snapshot dos times do fut tirado agora. Depois
-  // disso ela é editável por jogo e independente do colete.
-  const lineup = await db
-    .select({ playerId: teamPlayers.playerId, teamId: teamPlayers.teamId })
-    .from(teamPlayers)
-    .where(inArray(teamPlayers.teamId, [teamAId, teamBId]));
-
+  // Jogo e snapshot da escalação nascem juntos no helper — é o mesmo caminho
+  // do iniciarJogo da súmula ao vivo (src/lib/jogos.ts).
+  //
+  // O fut é travado, e a contagem para o sortOrder roda DENTRO da transação,
+  // pela mesma razão que lá: o snapshot sai de `team_players`, e sem o lock um
+  // drawTeamsAction concorrente reescreve os times entre a leitura e o insert
+  // da escalação — que é a fonte do V/E/D e do universo de avaliação.
   await db.transaction(async (tx) => {
-    const [created] = await tx
-      .insert(games)
-      .values({ matchDayId, teamAId, teamBId, scoreA, scoreB, sortOrder: existing.length })
-      .returning();
-    if (lineup.length > 0) {
-      await tx.insert(gamePlayers).values(
-        lineup.map((row) => ({
-          gameId: created.id,
-          playerId: row.playerId,
-          side: row.teamId === teamAId ? ("A" as const) : ("B" as const),
-        })),
-      );
-    }
+    await travarFut(tx, matchDayId);
+    const existing = await tx.select({ id: games.id }).from(games).where(eq(games.matchDayId, matchDayId));
+    await criarJogoComEscalacao(tx, {
+      matchDayId,
+      teamAId,
+      teamBId,
+      scoreA,
+      scoreB,
+      sortOrder: existing.length,
+    });
   });
   revalidateMatchDay(matchDayId);
 }
@@ -339,7 +331,7 @@ export async function deleteGame(matchDayId: number, gameId: number) {
 }
 
 export async function addGoal(matchDayId: number, gameId: number, formData: FormData) {
-  await requireFutAdmin(matchDayId);
+  const { session } = await requireFutAdmin(matchDayId);
   await assertPlacarEditavel(matchDayId);
   const playerId = Number(formData.get("playerId"));
   const quantity = Number(formData.get("quantity") ?? 1);
@@ -357,12 +349,63 @@ export async function addGoal(matchDayId: number, gameId: number, formData: Form
   // entrou em campo — a artilharia (src/lib/stats.ts) conta toda linha de gol
   // de fut encerrado, então seria placar inventado no ranking de alguém.
   const [escalado] = await db
-    .select({ playerId: gamePlayers.playerId })
+    .select({ playerId: gamePlayers.playerId, side: gamePlayers.side })
     .from(gamePlayers)
     .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerId, playerId)));
   if (!escalado) redirect(`/fut/${matchDayId}/gerenciar?erro=artilheiro-fora-do-jogo`);
 
-  await db.insert(goals).values({ gameId, playerId, quantity });
+  // `side` e `createdByPlayerId` entram também por aqui para a auditoria e a
+  // leitura por lado valerem nos dois fluxos, não só na súmula ao vivo.
+  await db.insert(goals).values({
+    gameId,
+    playerId,
+    quantity,
+    side: escalado.side,
+    createdByPlayerId: session.player.id,
+  });
+  revalidateMatchDay(matchDayId);
+}
+
+/**
+ * Atribui autor a um gol que a súmula lançou como "gol contra / sem autor" —
+ * o "atribuível depois" prometido pelo painel. Só para gol AINDA sem autor:
+ * trocar autor errado continua sendo remover e lançar de novo, que deixa
+ * rastro. Gol contra de verdade fica sem autor para sempre, e é por isso que o
+ * candidato precisa ser do MESMO lado do gol: creditar artilharia a quem
+ * marcou contra inverteria o sentido do registro.
+ */
+export async function definirAutorDoGol(matchDayId: number, goalId: number, formData: FormData) {
+  await requireFutAdmin(matchDayId);
+  await assertPlacarEditavel(matchDayId);
+  const playerId = Number(formData.get("playerId"));
+  if (!Number.isInteger(playerId) || !Number.isInteger(goalId)) {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  }
+
+  // Escopo pelo fut (goalId vem do cliente) + as condições de elegibilidade
+  // da linha: ativa e sem autor.
+  const [gol] = await db
+    .select({ gameId: goals.gameId, side: goals.side })
+    .from(goals)
+    .innerJoin(games, and(eq(games.id, goals.gameId), eq(games.matchDayId, matchDayId)))
+    .where(and(eq(goals.id, goalId), isNull(goals.playerId), isNull(goals.desfeitoEm)));
+  if (!gol) redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
+
+  const [escalado] = await db
+    .select({ side: gamePlayers.side })
+    .from(gamePlayers)
+    .where(and(eq(gamePlayers.gameId, gol.gameId), eq(gamePlayers.playerId, playerId)));
+  if (!escalado || (gol.side !== null && escalado.side !== gol.side)) {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=artilheiro-fora-do-jogo`);
+  }
+
+  // O isNull repetido no WHERE é o guard de corrida de dois admins definindo
+  // o autor ao mesmo tempo: o segundo update não encontra a linha e não
+  // sobrescreve o primeiro.
+  await db
+    .update(goals)
+    .set({ playerId })
+    .where(and(eq(goals.id, goalId), isNull(goals.playerId)));
   revalidateMatchDay(matchDayId);
 }
 

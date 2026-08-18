@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
 import { STATUS_FUT } from "@/lib/match-day-form";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
+import { sumulaDisponivel } from "@/lib/sumula";
 import { carregarPainel } from "./dados";
 import {
   SecaoDados,
@@ -46,9 +47,19 @@ export default async function GerenciarFutPage({
         selos={<Badge tom="outline">{STATUS_FUT[fut.matchDay.status]}</Badge>}
         descricao="Você organiza este fut."
         acao={
-          <LinkButton href={`/fut/${fut.matchDay.id}`} variante="secondary" tamanho="sm">
-            Ver página pública
-          </LinkButton>
+          <span className="flex flex-wrap gap-1.5">
+            {/* A súmula só faz sentido com times sorteados — antes não há
+                lado para creditar gol. Mesma regra da página do painel e do
+                iniciarJogo (src/lib/sumula.ts). */}
+            {sumulaDisponivel(fut.matchDay) && (
+              <LinkButton href={`/fut/${fut.matchDay.id}/sumula`} tamanho="sm">
+                Súmula ao vivo
+              </LinkButton>
+            )}
+            <LinkButton href={`/fut/${fut.matchDay.id}`} variante="secondary" tamanho="sm">
+              Ver página pública
+            </LinkButton>
+          </span>
         }
       />
 

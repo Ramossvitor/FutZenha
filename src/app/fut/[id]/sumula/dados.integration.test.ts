@@ -1,0 +1,147 @@
+// A camada de leitura do painel. O alvo é a derivação que nenhuma action
+// exercita: quem entra na lista de candidatos à delegação, o que o delegado
+// NÃO enxerga, e o recorte dos lançamentos (desfeitos inclusive, gol do
+// /gerenciar de fora).
+
+import { eq } from "drizzle-orm";
+import { describe, expect, it } from "vitest";
+import { addGoal } from "@/app/fut/[id]/gerenciar/actions";
+import { db } from "@/db";
+import { sumulaOperadores, users } from "@/db/schema";
+import { confirmarPresenca, criarJogadorComConta } from "@/test/fixtures";
+import { criarDelegado, formDeGol, formDeTimes, golsDoJogo, montarSumula } from "@/test/fixtures-sumula";
+import { desfazerLancamento, iniciarJogo, lancarGol } from "./actions";
+import { carregarSumula } from "./dados";
+
+describe("carregarSumula: candidatos à delegação", () => {
+  it("oferece só quem a delegarSumula aceitaria", async () => {
+    const s = await montarSumula();
+    const elegivel = await criarJogadorComConta();
+    await confirmarPresenca(s.fut, elegivel.jogador, { minutosAtras: 10 });
+
+    // Fora da lista, na espera, e com a conta desativada — os três casos que a
+    // action recusa, e que o select não pode oferecer.
+    const semPresenca = await criarJogadorComConta();
+    const naEspera = await criarJogadorComConta();
+    await confirmarPresenca(s.fut, naEspera.jogador, { status: "waitlist", minutosAtras: 5 });
+    const desativado = await criarJogadorComConta();
+    await confirmarPresenca(s.fut, desativado.jogador, { minutosAtras: 8 });
+    await db.update(users).set({ active: false }).where(eq(users.id, desativado.conta.id));
+
+    const dados = await carregarSumula(s.fut, true);
+    const ids = dados.candidatos.map((c) => c.playerId);
+
+    expect(ids).toEqual([elegivel.jogador.id]);
+    for (const fora of [semPresenca, naEspera, desativado]) {
+      expect(ids).not.toContain(fora.jogador.id);
+    }
+  });
+
+  it("quem já tem a súmula sai da lista de candidatos", async () => {
+    const s = await montarSumula();
+    const delegado = await criarDelegado(s.fut);
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(dados.operadores.map((o) => o.playerId)).toEqual([delegado.jogador.id]);
+    expect(dados.candidatos.map((c) => c.playerId)).not.toContain(delegado.jogador.id);
+  });
+
+  it("o criador do fut não é candidato a receber a própria súmula", async () => {
+    const s = await montarSumula();
+    await confirmarPresenca(s.fut, s.admin, { minutosAtras: 30 });
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(dados.candidatos.map((c) => c.playerId)).not.toContain(s.admin.id);
+  });
+
+  it("delegado não recebe a lista de candidatos", async () => {
+    const s = await montarSumula();
+    const elegivel = await criarJogadorComConta();
+    await confirmarPresenca(s.fut, elegivel.jogador, { minutosAtras: 10 });
+
+    const dados = await carregarSumula(s.fut, false);
+
+    expect(dados.candidatos).toEqual([]);
+  });
+
+  it("traz quem passou a súmula, para a auditoria da seção", async () => {
+    const s = await montarSumula();
+    const alvo = await criarJogadorComConta();
+    await confirmarPresenca(s.fut, alvo.jogador, { minutosAtras: 10 });
+    await db
+      .insert(sumulaOperadores)
+      .values({ matchDayId: s.fut.id, playerId: alvo.jogador.id, createdByPlayerId: s.admin.id });
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(dados.operadores[0]).toMatchObject({ playerId: alvo.jogador.id, delegadoPor: s.admin.name });
+  });
+});
+
+describe("carregarSumula: o jogo aberto e seus lançamentos", () => {
+  it("acha o jogo em andamento e monta a escalação por lado", async () => {
+    const s = await montarSumula();
+    await iniciarJogo(s.fut.id, formDeTimes(s.timeAId, s.timeBId));
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(dados.aberto).not.toBeNull();
+    expect(dados.aberto?.segundosEmAndamento).not.toBeNull();
+    expect(dados.lineupRows.filter((m) => m.side === "A").map((m) => m.playerId).sort()).toEqual(
+      s.ladoA.map((p) => p.id).sort(),
+    );
+    expect(dados.lineupRows.filter((m) => m.side === "B")).toHaveLength(2);
+  });
+
+  // A auditoria visível é metade do desenho anti-abuso: o desfeito FICA na
+  // lista, riscado, com o nome de quem desfez.
+  it("lista os desfeitos junto com os ativos, do mais recente ao mais antigo", async () => {
+    const s = await montarSumula();
+    await iniciarJogo(s.fut.id, formDeTimes(s.timeAId, s.timeBId));
+    const abertoId = (await carregarSumula(s.fut, true)).aberto!.id;
+    await lancarGol(s.fut.id, abertoId, formDeGol("A", s.ladoA[0].id));
+    await lancarGol(s.fut.id, abertoId, formDeGol("B"));
+    const gols = await golsDoJogo(abertoId);
+    await desfazerLancamento(s.fut.id, gols[1].id);
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(dados.lancamentoRows.map((l) => l.id)).toEqual([gols[1].id, gols[0].id]);
+    expect(dados.lancamentoRows[0]).toMatchObject({
+      desfeito: true,
+      desfeitoPor: s.admin.name,
+      // Gol contra / sem autor: sem autor, mas com lado.
+      autorNome: null,
+      side: "B",
+    });
+    expect(dados.lancamentoRows[1]).toMatchObject({ desfeito: false, lancadoPor: s.admin.name });
+  });
+
+  it("gol lançado pelo /gerenciar fica fora do painel", async () => {
+    const s = await montarSumula();
+    await iniciarJogo(s.fut.id, formDeTimes(s.timeAId, s.timeBId));
+    const abertoId = (await carregarSumula(s.fut, true)).aberto!.id;
+    await lancarGol(s.fut.id, abertoId, formDeGol("A", s.ladoA[0].id));
+
+    const form = new FormData();
+    form.set("playerId", String(s.ladoA[1].id));
+    await addGoal(s.fut.id, abertoId, form);
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(await golsDoJogo(abertoId)).toHaveLength(2);
+    expect(dados.lancamentoRows).toHaveLength(1);
+  });
+
+  it("sem jogo em andamento, não há lançamento nem escalação para mostrar", async () => {
+    const s = await montarSumula();
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(dados.aberto).toBeNull();
+    expect(dados.lancamentoRows).toEqual([]);
+    expect(dados.lineupRows).toEqual([]);
+  });
+});
