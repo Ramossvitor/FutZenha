@@ -11,6 +11,7 @@ import { Nota } from "@/components/ui/nota";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
 import { formatSkill, formatTime } from "@/lib/format";
+import { jogoEmAndamento } from "@/lib/sumula";
 import { listaFechada } from "@/lib/lista-presenca";
 import { emailConfigurado } from "@/lib/email-envio";
 import { siteUrl } from "@/lib/site-url";
@@ -20,6 +21,7 @@ import {
   addGoal,
   convidarParaFut,
   createGame,
+  definirAutorDoGol,
   definirPresenca,
   deleteGame,
   deleteGoal,
@@ -482,6 +484,14 @@ export function SecaoJogos({ fut }: { fut: PainelDoFut }) {
           <Card key={game.id}>
             <CardHeader>
               <Eyebrow>jogo {i + 1}</Eyebrow>
+              {/* A súmula ao vivo tem este jogo aberto agora. Editar aqui
+                  continua permitido (o admin é irrestrito), mas dessincroniza
+                  placar × lançamentos de propósito — o selo é o aviso. */}
+              {jogoEmAndamento(game) && (
+                <Badge tom="accent" ponto>
+                  em andamento
+                </Badge>
+              )}
               <span className="flex flex-1 items-center gap-2">
                 <VestChip time={timeA} tamanho="sm" />
                 <span className="font-display text-[13px] font-bold text-fg-2">{timeA}</span>
@@ -529,21 +539,78 @@ export function SecaoJogos({ fut }: { fut: PainelDoFut }) {
 
               {gameGoals.length > 0 && (
                 <HairlineList as="ul">
-                  {gameGoals.map((goal) => (
-                    <HairlineRow as="li" key={goal.id}>
-                      <span className="flex-1 truncate text-[13px] text-fg-2">
-                        {goal.nickname ?? goal.playerName}
-                        {goal.quantity > 1 ? ` ×${goal.quantity}` : ""}
-                      </span>
-                      {podeEditarPlacar && (
-                        <form action={deleteGoal.bind(null, matchDay.id, goal.id)}>
-                          <SubmitButton variante="ghost" tamanho="sm" className="text-danger-ink">
-                            Remover
-                          </SubmitButton>
-                        </form>
-                      )}
-                    </HairlineRow>
-                  ))}
+                  {gameGoals.map((goal) => {
+                    // Autor nulo = gol contra / sem autor lançado pela súmula
+                    // ao vivo; o lado gravado diz de quem foi o ponto.
+                    const rotulo =
+                      goal.playerName === null
+                        ? `Gol contra / sem autor${
+                            goal.side === null ? "" : ` (${goal.side === "A" ? timeA : timeB})`
+                          }`
+                        : (goal.nickname ?? goal.playerName);
+                    const lancadoPor = goal.lancadoPor ?? goal.lancadoPorNome;
+                    const desfeitoPor = goal.desfeitoPor ?? goal.desfeitoPorNome;
+                    return (
+                      <HairlineRow as="li" key={goal.id} apagado={goal.desfeito}>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={`block truncate text-[13px] ${
+                              goal.desfeito
+                                ? "line-through"
+                                : goal.playerName === null
+                                  ? "text-fg-4 italic"
+                                  : "text-fg-2"
+                            }`}
+                          >
+                            {rotulo}
+                            {goal.quantity > 1 ? ` ×${goal.quantity}` : ""}
+                          </span>
+                          {/* A trilha da súmula: quem lançou — e, riscado, quem
+                              desfez o quê. É aqui que o admin confere se a
+                              ferramenta foi usada direito. */}
+                          {(goal.desfeito ? desfeitoPor : lancadoPor) && (
+                            <span className="block truncate text-[11.5px] text-fg-4">
+                              {goal.desfeito
+                                ? `desfeito por ${desfeitoPor}`
+                                : `lançado por ${lancadoPor}`}
+                            </span>
+                          )}
+                        </span>
+                        {!goal.desfeito && podeEditarPlacar && goal.playerName === null && (
+                          <form
+                            action={definirAutorDoGol.bind(null, matchDay.id, goal.id)}
+                            className="flex items-center gap-1.5"
+                          >
+                            {/* Só quem jogou do lado do gol: creditar quem
+                                marcou contra inverteria o registro. */}
+                            <Select
+                              name="playerId"
+                              aria-label="Autor do gol"
+                              className="h-8 w-36 text-[12px]"
+                            >
+                              {lineup
+                                .filter((m) => goal.side === null || m.side === goal.side)
+                                .map((m) => (
+                                  <option key={m.playerId} value={m.playerId}>
+                                    {m.nickname ?? m.playerName}
+                                  </option>
+                                ))}
+                            </Select>
+                            <SubmitButton variante="ghost" tamanho="sm">
+                              Definir autor
+                            </SubmitButton>
+                          </form>
+                        )}
+                        {!goal.desfeito && podeEditarPlacar && (
+                          <form action={deleteGoal.bind(null, matchDay.id, goal.id)}>
+                            <SubmitButton variante="ghost" tamanho="sm" className="text-danger-ink">
+                              Remover
+                            </SubmitButton>
+                          </form>
+                        )}
+                      </HairlineRow>
+                    );
+                  })}
                 </HairlineList>
               )}
 

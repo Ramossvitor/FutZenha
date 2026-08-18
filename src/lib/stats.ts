@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, gamePlayers, games, goals, matchDays, players, users } from "@/db/schema";
 import { escopo, jogouNoGrupo, type EscopoStats } from "./stats-escopo";
@@ -36,9 +36,13 @@ export async function getTopScorers(e: EscopoStats = {}) {
     .from(goals)
     .innerJoin(games, eq(goals.gameId, games.id))
     .innerJoin(matchDays, eq(games.matchDayId, matchDays.id))
+    // O innerJoin em players também é filtro: gol sem autor (gol contra /
+    // ninguém viu, player_id nulo) soma no placar mas não credita artilharia.
     .innerJoin(players, eq(goals.playerId, players.id))
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
-    .where(escopo(e))
+    // Gol desfeito na súmula ao vivo é soft-delete — sem este filtro ele
+    // voltaria a contar aqui.
+    .where(and(escopo(e), isNull(goals.desfeitoEm)))
     .groupBy(players.id, players.name, players.nickname)
     .orderBy(desc(sql`sum(${goals.quantity})`), players.name);
 }

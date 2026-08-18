@@ -348,6 +348,13 @@ export const games = pgTable("games", {
   scoreB: integer("score_b").notNull().default(0),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // A súmula ao vivo (/fut/[id]/sumula). Em andamento ⇔ `started_at` preenchido
+  // e `finished_at` nulo. Jogo do fluxo clássico — placar digitado pronto no
+  // /gerenciar — fica com os dois nulos e nunca é "em andamento", então nada
+  // muda para os jogos já gravados. Dois timestamps, e não um enum de status,
+  // porque o par também carrega o "desde 19h32" do painel e o carimbo de fim.
+  startedAt: timestamp("started_at"),
+  finishedAt: timestamp("finished_at"),
 });
 
 // Escalação do jogo: quem entrou em campo por qual lado. É um snapshot tirado
@@ -373,17 +380,85 @@ export const gamePlayers = pgTable(
 );
 
 // O placar do jogo é digitado pelo admin e não precisa bater com a soma dos
-// gols individuais — isso cobre gol contra e gol de autor esquecido.
-export const goals = pgTable("goals", {
-  id: serial("id").primaryKey(),
-  gameId: integer("game_id")
-    .notNull()
-    .references(() => games.id, { onDelete: "cascade" }),
-  playerId: integer("player_id")
-    .notNull()
-    .references(() => players.id, { onDelete: "cascade" }),
-  quantity: integer("quantity").notNull().default(1),
-});
+// gols individuais — isso cobre gol contra e gol de autor esquecido. A súmula
+// ao vivo mantém os dois em sincronia ao lançar (mesma transação), mas o dado
+// continua independente: o /gerenciar pode divergi-los de propósito.
+export const goals = pgTable(
+  "goals",
+  {
+    id: serial("id").primaryKey(),
+    gameId: integer("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    // Nulo = gol contra / autor que ninguém viu: soma no placar sem creditar
+    // artilharia (getTopScorers usa innerJoin em players, então sai sozinho).
+    // O autor pode ser atribuído depois, no /gerenciar.
+    playerId: integer("player_id").references(() => players.id, { onDelete: "cascade" }),
+    // De que lado saiu o gol. Nulo nas linhas anteriores à súmula — para elas o
+    // lado continua derivável pela escalação (game_players), como a página do
+    // fut sempre fez. O check abaixo garante que gol sem autor tenha lado:
+    // sem nenhum dos dois, a linha não diz nada.
+    side: gameSideEnum("side"),
+    quantity: integer("quantity").notNull().default(1),
+    // O que separa os dois escritores de `goals`, e o único jeito de saber se
+    // desfazer esta linha deve mexer no placar.
+    //
+    // `lancarGol` (súmula) incrementa `games.score*` no mesmo commit em que
+    // insere: para as linhas dele, e SÓ para elas, o desfazer decrementa. O
+    // `addGoal` do /gerenciar nunca toca no placar — lá o número é digitado à
+    // parte — então uma linha dele decrementada seria placar comido de graça.
+    // Não dá para inferir: as duas gravam `side` e `created_by_player_id`, e a
+    // quantidade padrão do addGoal também é 1. Daí a coluna explícita.
+    somadoNoPlacar: boolean("somado_no_placar").notNull().default(false),
+    // Auditoria da súmula: quem lançou e quando. `set null` — apagar o
+    // operador não apaga o gol de quem jogou.
+    createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    // Rows anteriores à migration 0019 foram backfilled com o timestamp do
+    // deploy — este campo só é confiável para gol lançado a partir dela.
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    // O desfazer do painel é soft-delete: a linha fica, marcada com quem
+    // desfez e quando — é o que dá ao admin o histórico completo (inclusive
+    // das remoções, que é onde mora o abuso) sem uma tabela de eventos
+    // paralela. Todo leitor de gols precisa filtrar `desfeito_em is null`;
+    // o deleteGoal do /gerenciar continua hard delete (edição irrestrita).
+    desfeitoEm: timestamp("desfeito_em"),
+    desfeitoPorPlayerId: integer("desfeito_por_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    check("goals_autor_ou_lado", sql`${t.playerId} is not null or ${t.side} is not null`),
+    index("goals_game_idx").on(t.gameId),
+  ],
+);
+
+// Quem pode operar a súmula ao vivo além de quem gerencia o fut: o admin
+// "passa a súmula" para quem está revezando. Escopo por fut, não por jogo —
+// quem segura o celular fica com ele por vários jogos. Revogar é apagar a
+// linha; a PK composta torna a delegação idempotente (onConflictDoNothing).
+// O delegado NÃO ganha nenhum outro poder do /gerenciar.
+export const sumulaOperadores = pgTable(
+  "sumula_operadores",
+  {
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    // Registro da delegação: quem passou a súmula, e quando.
+    createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.matchDayId, t.playerId] }),
+    index("sumula_operadores_player_idx").on(t.playerId),
+  ],
+);
 
 // Conta de acesso de um jogador (1:1 com players). username é sempre salvo em
 // minúsculas (normalizado na aplicação). token_version invalida sessões antigas
@@ -788,6 +863,7 @@ export type Team = typeof teams.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type GamePlayer = typeof gamePlayers.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
+export type SumulaOperador = typeof sumulaOperadores.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type RatingRound = typeof ratingRounds.$inferSelect;

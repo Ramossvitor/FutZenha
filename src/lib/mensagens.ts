@@ -48,6 +48,19 @@ export const MENSAGENS: Record<string, string> = {
     "Fut encerrado não se apaga direto — abra a votação de exclusão para o grupo decidir.",
   "motivo-curto": "Escreva o motivo com pelo menos 10 caracteres.",
 
+  // súmula ao vivo
+  "ja-tem-jogo-aberto":
+    "Já existe um jogo em andamento — finalize a súmula dele antes de iniciar outro.",
+  "jogo-nao-esta-aberto": "Esse jogo não está mais em andamento.",
+  "desfazer-indisponivel":
+    "Só dá para desfazer o último lançamento de cada lado enquanto o jogo está em andamento. Fale com quem organiza o fut.",
+  "jogo-em-andamento":
+    "Há um jogo com súmula em andamento — finalize-o antes de encerrar o fut.",
+  "operador-invalido":
+    "Só quem está na lista deste fut e tem conta ativa pode receber a súmula.",
+  "fut-encerrado": "Este fut já foi encerrado — a súmula ao vivo não está mais disponível.",
+  "sumula-indisponivel": "A súmula ao vivo só abre depois do sorteio dos times.",
+
   // grupo
   "entrada-fechada": "Este grupo não está aceitando entradas agora.",
   "admin-precisa-transferir":

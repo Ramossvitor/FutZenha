@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { podeDefinirPresencaPor, podeGerenciarFut, podeJulgarDenuncia } from "./permissions";
+import {
+  podeDefinirPresencaPor,
+  podeGerenciarFut,
+  podeJulgarDenuncia,
+  podeOperarSumula,
+} from "./permissions";
 
 const criador = { playerId: 10, isPlatformAdmin: false };
 const outro = { playerId: 20, isPlatformAdmin: false };
@@ -176,6 +181,34 @@ describe("podeDefinirPresencaPor com a lista fechada", () => {
         FECHADA,
       ),
     ).toBe(true);
+  });
+});
+
+describe("podeOperarSumula", () => {
+  const fut = { createdByPlayerId: 10 };
+
+  it("quem gerencia o fut opera a súmula sem precisar de delegação", () => {
+    expect(podeOperarSumula(criador, fut)).toBe(true);
+    expect(podeOperarSumula(plataforma, fut)).toBe(true);
+    expect(podeOperarSumula(outro, { createdByPlayerId: 10, groupId: 7 }, "admin")).toBe(true);
+  });
+
+  it("jogador comum só entra com delegação", () => {
+    expect(podeOperarSumula(outro, fut)).toBe(false);
+    expect(podeOperarSumula(outro, fut, null, true)).toBe(true);
+  });
+
+  // A delegação é da súmula, não do fut: quem confere se o delegado pode
+  // encerrar, sortear ou editar placar no /gerenciar é `podeGerenciarFut`,
+  // e ela não sabe que a delegação existe. Este teste documenta a fronteira.
+  it("delegação NÃO promove ninguém a admin do fut", () => {
+    expect(podeGerenciarFut(outro, fut)).toBe(false);
+  });
+
+  it("em fut de grupo, membro e organizador continuam de fora sem delegação", () => {
+    const futDoGrupo = { createdByPlayerId: 10, groupId: 7 };
+    expect(podeOperarSumula(outro, futDoGrupo, "member")).toBe(false);
+    expect(podeOperarSumula(outro, futDoGrupo, "organizer")).toBe(false);
   });
 });
 

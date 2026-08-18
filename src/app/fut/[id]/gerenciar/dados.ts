@@ -1,6 +1,7 @@
 import "server-only";
 import { notFound } from "next/navigation";
 import { and, asc, eq, getTableColumns, gt, inArray, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import {
   attendances,
@@ -17,6 +18,11 @@ import {
 import { getFaltamVotar, getVotacaoDoFut } from "@/lib/deletion";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
 import { repartirLista } from "@/lib/lista-presenca";
+
+// Quem lançou e quem desfez cada gol na súmula ao vivo — duas pontas
+// diferentes da mesma tabela de jogadores.
+const lancador = alias(players, "lancador");
+const desfazedor = alias(players, "desfazedor");
 
 /**
  * Tudo o que o painel precisa, numa função só.
@@ -122,11 +128,25 @@ export async function carregarPainel(matchDayId: number) {
             id: goals.id,
             gameId: goals.gameId,
             quantity: goals.quantity,
+            // leftJoin: gol sem autor (gol contra / ninguém viu, vindo da
+            // súmula ao vivo) tem player_id nulo e ainda assim aparece na
+            // lista — o `side` gravado é o que diz de que lado ele saiu.
             playerName: players.name,
             nickname: players.nickname,
+            side: goals.side,
+            // A auditoria da súmula, inclusive os desfeitos: aqui é onde o
+            // admin investiga abuso, então as remoções aparecem riscadas em
+            // vez de sumirem. Todo OUTRO leitor filtra `desfeito_em is null`.
+            desfeito: sql<boolean>`${goals.desfeitoEm} is not null`,
+            lancadoPor: lancador.nickname,
+            lancadoPorNome: lancador.name,
+            desfeitoPor: desfazedor.nickname,
+            desfeitoPorNome: desfazedor.name,
           })
           .from(goals)
-          .innerJoin(players, eq(goals.playerId, players.id))
+          .leftJoin(players, eq(goals.playerId, players.id))
+          .leftJoin(lancador, eq(goals.createdByPlayerId, lancador.id))
+          .leftJoin(desfazedor, eq(goals.desfeitoPorPlayerId, desfazedor.id))
           .where(inArray(goals.gameId, gameIds))
       : Promise.resolve([]),
     // Escalação real de cada jogo — é ela, e não o colete do fut, que diz

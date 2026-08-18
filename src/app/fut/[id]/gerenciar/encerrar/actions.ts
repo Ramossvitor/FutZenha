@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, notExists, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
 import { attendances, gamePlayers, games, matchDays } from "@/db/schema";
 import { formatDate } from "@/lib/format";
+import { revalidateMatchDay } from "../../revalidate";
 import { notificar } from "@/lib/notifications";
 import { avaliarMarcacao, entrarNaLista, mereceAviso, travarFut } from "@/lib/presenca";
 import { abrirRodada } from "@/lib/ratings-engine";
@@ -28,9 +29,10 @@ async function assertEditavel(matchDayId: number, gameId: number) {
 }
 
 function revalidar(matchDayId: number) {
+  // A tela de encerramento é a única que só existe aqui; o resto do fut sai da
+  // lista compartilhada (../../revalidate), que inclui a súmula ao vivo.
   revalidatePath(`/fut/${matchDayId}/gerenciar/encerrar`);
-  revalidatePath(`/fut/${matchDayId}/gerenciar`);
-  revalidatePath(`/fut/${matchDayId}`);
+  revalidateMatchDay(matchDayId);
 }
 
 export async function moverLado(matchDayId: number, gameId: number, playerId: number) {
@@ -179,6 +181,20 @@ export async function confirmarEncerramento(matchDayId: number) {
     redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=jogo-sem-time`);
   }
 
+  // Jogo com súmula ao vivo aberta trava o encerramento — finalizar de ofício
+  // gravaria um fim que ninguém pediu e mascararia o esquecimento; o erro
+  // aponta o caminho. A checagem repete DENTRO da transação porque é lá, sob o
+  // mesmo lock que o iniciarJogo da súmula disputa, que ela vira garantia.
+  const jogoAberto = and(
+    eq(games.matchDayId, matchDayId),
+    isNotNull(games.startedAt),
+    isNull(games.finishedAt),
+  );
+  const emAndamento = await db.select({ id: games.id }).from(games).where(jogoAberto);
+  if (emAndamento.length > 0) {
+    redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=jogo-em-andamento`);
+  }
+
   // Encerrar com a escalação confirmada é o gatilho da avaliação, e as duas
   // coisas têm que ser o mesmo commit: um fut que ficasse `finished` sem
   // rodada seria um beco sem saída — a checagem de `finished` acima impede repetir a ação, o
@@ -188,6 +204,14 @@ export async function confirmarEncerramento(matchDayId: number) {
     // passa entre o marcarFaltasAutomaticas e o commit — e entra `in` numa
     // fut que acabou de encerrar, sem ter jogado.
     await travarFut(tx, matchDayId);
+    // Re-check sob o lock: um iniciarJogo concorrente também trava o fut, então
+    // ou ele commitou antes (e este select o vê), ou está esperando o lock (e o
+    // status `finished` deste commit o recusará). O redirect daqui lança e
+    // desfaz a transação — nenhum write aconteceu ainda.
+    const aindaAberto = await tx.select({ id: games.id }).from(games).where(jogoAberto);
+    if (aindaAberto.length > 0) {
+      redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=jogo-em-andamento`);
+    }
     await marcarFaltasAutomaticas(tx, matchDayId, lados.length);
 
     await tx

@@ -111,6 +111,33 @@ export function podeDefinirPresencaPor(
   return listaFechada && alvo.elegivel;
 }
 
+/**
+ * Quem opera a súmula ao vivo (/fut/[id]/sumula): quem gerencia o fut, ou quem
+ * recebeu a súmula por delegação ("passar a súmula", tabela sumula_operadores).
+ *
+ * `ehDelegado` chega resolvido de fora — este módulo é puro e não consulta a
+ * tabela; quem lê é o guard (src/lib/require-operador-sumula.ts), pelo par
+ * (matchDayId, playerId) da sessão, nunca por id vindo do cliente.
+ *
+ * A delegação dá SÓ a súmula — mas a súmula inteira: o delegado abre e
+ * finaliza jogos (iniciarJogo/finalizarJogo), lança gol e desfaz o lançamento
+ * mais recente de cada lado. Vale registrar que abrir jogo tira o snapshot da
+ * escalação, que é a fonte do V/E/D e do universo de avaliação — por isso o
+ * texto do painel diz isso a quem concede, e não só "lança gol".
+ *
+ * O que NÃO vem junto é o /gerenciar: presenças, sorteio, edição irrestrita de
+ * placar e gols, delegar a súmula adiante e encerrar o fut continuam atrás de
+ * `podeGerenciarFut`.
+ */
+export function podeOperarSumula(
+  ator: Ator,
+  fut: FutGerenciavel,
+  papelNoGrupo: PapelNoGrupo | null = null,
+  ehDelegado = false,
+): boolean {
+  return ehDelegado || podeGerenciarFut(ator, fut, papelNoGrupo);
+}
+
 // Não existe aqui um `podeGerarConvite`, e é de propósito. A regra — convite
 // para quem já tem conta é reset de senha, logo é da plataforma e só dela — não
 // tem onde ser avaliada: `createInvite` é exclusiva do admin da plataforma
