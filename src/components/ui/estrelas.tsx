@@ -1,21 +1,10 @@
-import { Fragment } from "react";
 import { cx } from "@/lib/cx";
-
-const NOTAS = [1, 2, 3, 4, 5] as const;
-
-/** Como o produto fala de cada nota. */
-export const ROTULO_DA_NOTA: Record<number, string> = {
-  1: "jogou de terno",
-  2: "tem dias melhores",
-  3: "fez o feijão com arroz",
-  4: "jogou muito",
-  5: "estava impossível",
-};
+import { rotuloDeEstrelas } from "@/lib/format";
 
 // SVG e não o caractere ★: em parte dos aparelhos o glifo vem com apresentação
 // de emoji (amarelo, colorido, ignorando o `color`), e o tamanho muda conforme
 // a fonte que carregou. Um path não muda de ideia.
-function Estrela({ className }: { className?: string }) {
+export function Estrela({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden className={cx("size-full", className)}>
       <path
@@ -27,99 +16,35 @@ function Estrela({ className }: { className?: string }) {
 }
 
 /**
- * As estrelas recebidas, só leitura.
+ * As estrelas recebidas, só leitura. `meias` é em meias-estrelas (1..10):
+ * valor ímpar acende meia estrela — um overlay de 50% com overflow escondido
+ * por cima da estrela apagada.
  */
-export function Estrelas({ valor, className }: { valor: number; className?: string }) {
+export function Estrelas({ meias, className }: { meias: number; className?: string }) {
   return (
     <span className={cx("inline-flex items-center gap-0.5", className)}>
-      <span className="sr-only">
-        {valor} de {NOTAS.length} estrelas
-      </span>
-      {NOTAS.map((_, i) => (
+      <span className="sr-only">{rotuloDeEstrelas(meias)} de 5 estrelas</span>
+      {[1, 2, 3, 4, 5].map((s) => (
         <span
-          key={i}
+          key={s}
           aria-hidden
-          className={cx("size-4", i < valor ? "text-accent-ink" : "text-line-strong")}
+          className={cx(
+            "relative size-4",
+            meias >= s * 2 ? "text-accent-ink" : "text-line-strong",
+          )}
         >
           <Estrela />
+          {meias === s * 2 - 1 && (
+            <span className="absolute inset-y-0 left-0 w-1/2 overflow-hidden text-accent-ink">
+              {/* 200% da metade = 100% da célula: escala com o size-* que o
+                  histograma do perfil impõe de fora, sem tamanho fixo aqui. */}
+              <span className="block h-full w-[200%]">
+                <Estrela />
+              </span>
+            </span>
+          )}
         </span>
       ))}
     </span>
-  );
-}
-
-/**
- * O seletor de 1 a 5 estrelas, sem uma linha de JavaScript.
- *
- * O truque é o DOM invertido (5 → 1) somado a `flex-row-reverse`, que devolve a
- * ordem visual. Como o combinador `~` do `peer-checked` só alcança irmãos
- * POSTERIORES, marcar a terceira estrela pinta a terceira, a segunda e a
- * primeira — que é o preenchimento cumulativo que se espera de uma nota.
- *
- * O código anterior prometia isso num comentário mas nunca fez: cada par
- * input+label estava embrulhado no próprio <span>, e `~` não atravessa
- * elemento pai. Na prática acendia só a estrela clicada, solta no meio das
- * apagadas. Por isso os dez elementos aqui são irmãos diretos.
- */
-export function EstrelasInput({
-  name,
-  legenda,
-  valorPadrao,
-  aoEscolher,
-  className,
-}: {
-  name: string;
-  legenda: string;
-  valorPadrao?: number;
-  /**
-   * Avisa quem está por cima que uma nota foi escolhida.
-   *
-   * O preenchimento continua sendo CSS puro e o rádio continua não-controlado —
-   * isto existe só para a tela poder contar quantas notas já foram dadas.
-   */
-  aoEscolher?: (nota: number) => void;
-  className?: string;
-}) {
-  return (
-    // `justify-end` com `flex-row-reverse` alinha à ESQUERDA: o eixo principal
-    // corre da direita para a esquerda, então o fim dele é a borda esquerda.
-    <fieldset className={cx("flex flex-row-reverse items-center justify-end", className)}>
-      <legend className="sr-only">{legenda}</legend>
-      {[...NOTAS].reverse().map((n) => (
-        // Fragment sem nó no DOM: os dez elementos precisam ser irmãos diretos
-        // para o `~` do peer-checked alcançá-los.
-        <Fragment key={n}>
-          <input
-            type="radio"
-            id={`${name}-${n}`}
-            name={name}
-            value={n}
-            defaultChecked={valorPadrao === n}
-            required
-            onChange={aoEscolher && (() => aoEscolher(n))}
-            className="peer sr-only"
-          />
-          <label
-            htmlFor={`${name}-${n}`}
-            title={`${n} ${n === 1 ? "estrela" : "estrelas"} — ${ROTULO_DA_NOTA[n]}`}
-            // p-1 dá 40px de alvo com a estrela de 32px, dentro do mínimo de toque
-            //
-            // O pulo vai no <span> de dentro, e NUNCA no <label>: a caixa do
-            // label é o alvo de toque, e escalar o alvo faria o Playwright
-            // esperar a bounding box assentar antes de cada um dos cinco
-            // cliques em sequência do avaliar.spec. Animar um descendente não
-            // mexe na border-box de ninguém.
-            className="cursor-pointer p-1 text-line-strong transition-colors peer-checked:text-accent-ink peer-checked:[&>span:first-child]:animate-pulo peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring"
-          >
-            <span className="block size-8">
-              <Estrela />
-            </span>
-            <span className="sr-only">
-              {n} {n === 1 ? "estrela" : "estrelas"}
-            </span>
-          </label>
-        </Fragment>
-      ))}
-    </fieldset>
   );
 }

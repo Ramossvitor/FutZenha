@@ -128,7 +128,7 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
                   {c.nickname ?? c.name}
                 </span>
                 {jaDadas.has(c.playerId) ? (
-                  <Estrelas valor={jaDadas.get(c.playerId)!} />
+                  <Estrelas meias={jaDadas.get(c.playerId)!} />
                 ) : (
                   <span className="text-[12px] text-fg-4">não avaliou</span>
                 )}

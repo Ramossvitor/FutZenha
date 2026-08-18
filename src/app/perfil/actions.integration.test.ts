@@ -89,13 +89,13 @@ describe("denunciarAvaliacao", () => {
         roundId: rodada.id,
         raterPlayerId: avaliadorA.jogador.id,
         ratedPlayerId: denunciante.jogador.id,
-        stars: 1,
+        halfStars: 2,
       },
       {
         roundId: rodada.id,
         raterPlayerId: avaliadorB.jogador.id,
         ratedPlayerId: denunciante.jogador.id,
-        stars: 2,
+        halfStars: 4,
       },
     ]);
 

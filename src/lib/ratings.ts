@@ -155,23 +155,24 @@ export async function getRodadasAbertasDoJogador(playerId: number): Promise<Roda
   }));
 }
 
-/** O que este jogador já enviou nesta rodada, para reabrir o formulário. */
+/** O que este jogador já enviou nesta rodada (em meias-estrelas), para
+ *  reabrir o formulário. */
 export async function getMinhasAvaliacoes(
   roundId: number,
   raterPlayerId: number,
 ): Promise<Map<number, number>> {
   const rows = await db
-    .select({ ratedPlayerId: ratings.ratedPlayerId, stars: ratings.stars })
+    .select({ ratedPlayerId: ratings.ratedPlayerId, halfStars: ratings.halfStars })
     .from(ratings)
     .where(and(eq(ratings.roundId, roundId), eq(ratings.raterPlayerId, raterPlayerId)));
-  return new Map(rows.map((r) => [r.ratedPlayerId, r.stars]));
+  return new Map(rows.map((r) => [r.ratedPlayerId, r.halfStars]));
 }
 
 export type EstrelaRecebida = {
   /** Posição na lista ordenada — é por ela que o jogador denuncia. O id real
    *  nunca sai do servidor: sendo serial, entregaria a ordem de envio. */
   indice: number;
-  stars: number;
+  halfStars: number;
   descartada: boolean;
   denunciaStatus: "open" | "accepted" | "rejected" | null;
 };
@@ -200,7 +201,7 @@ export async function getEstrelasRecebidas(playerId: number): Promise<RodadaAval
       matchDayId: ratingRounds.matchDayId,
       matchDayDate: matchDays.date,
       ratingId: ratings.id,
-      stars: ratings.stars,
+      halfStars: ratings.halfStars,
       descartada: sql<boolean>`${ratings.discardedAt} is not null`,
       denunciaStatus: ratingReports.status,
       // Denúncia só vale dentro do prazo e a partir de 2 avaliações recebidas:
@@ -243,7 +244,7 @@ export async function getEstrelasRecebidas(playerId: number): Promise<RodadaAval
       podeDenunciar: primeira.dentroDoPrazo && grupo.length >= MIN_AVALIACOES_PARA_DENUNCIAR,
       estrelas: ordenarAnonimo(grupo).map((r, indice) => ({
         indice,
-        stars: r.stars,
+        halfStars: r.halfStars,
         descartada: r.descartada,
         denunciaStatus: r.denunciaStatus,
       })),
@@ -262,7 +263,7 @@ export async function resolverAvaliacaoPorIndice(
   indice: number,
 ): Promise<number | null> {
   const linhas = await db
-    .select({ ratingId: ratings.id, stars: ratings.stars })
+    .select({ ratingId: ratings.id, halfStars: ratings.halfStars })
     .from(ratings)
     .where(and(eq(ratings.roundId, roundId), eq(ratings.ratedPlayerId, ratedPlayerId)));
 

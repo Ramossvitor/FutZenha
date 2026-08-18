@@ -540,8 +540,9 @@ export const invites = pgTable("invites", {
 // ---------------------------------------------------------------------------
 // Avaliação entre companheiros
 //
-// Encerrar um fut abre uma rodada. Cada jogador com conta avalia, de 1 a 5
-// estrelas, os companheiros com quem dividiu o lado em algum jogo daquele dia.
+// Encerrar um fut abre uma rodada. Cada jogador com conta avalia, de 0,5 a 5
+// estrelas (de meia em meia), os companheiros com quem dividiu o lado em algum
+// jogo daquele dia.
 // A rodada fecha quando todos avaliam ou quando o prazo vence, e a nota de
 // todo mundo é recalculada do zero (ver src/lib/skill.ts).
 // ---------------------------------------------------------------------------
@@ -621,6 +622,10 @@ export const ratingRounds = pgTable(
     closedAt: timestamp("closed_at"),
     reportDeadlineAt: timestamp("report_deadline_at"),
     closeReason: ratingRoundCloseReasonEnum("close_reason"),
+    // Rodada apurada antes da meia estrela: os votos dela valem pela tabela
+    // antiga (1★=1,0 … 5★=10,0 linear), congelada no motor. O replay ramifica
+    // por esta flag — é o que impede a régua nova de reescrever nota passada.
+    legacyScale: boolean("legacy_scale").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("rating_rounds_pendentes_idx").on(t.status, t.deadlineAt)],
@@ -661,7 +666,10 @@ export const ratings = pgTable(
     ratedPlayerId: integer("rated_player_id")
       .notNull()
       .references(() => players.id, { onDelete: "cascade" }),
-    stars: integer("stars").notNull(),
+    // Meias-estrelas inteiras: 7 = 3,5★, 10 = 5★. A unidade é meia estrela para
+    // toda a aritmética ficar em inteiros; em rodada `legacy_scale` só existem
+    // valores pares (as estrelas inteiras da época, dobradas na migration).
+    halfStars: integer("half_stars").notNull(),
     discardedAt: timestamp("discarded_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -669,7 +677,7 @@ export const ratings = pgTable(
   (t) => [
     // Um voto por par por rodada — permite reenviar (upsert) antes do prazo.
     unique().on(t.roundId, t.raterPlayerId, t.ratedPlayerId),
-    check("ratings_stars_check", sql`${t.stars} between 1 and 5`),
+    check("ratings_half_stars_check", sql`${t.halfStars} between 1 and 10`),
     check("ratings_no_self_check", sql`${t.raterPlayerId} <> ${t.ratedPlayerId}`),
     index("ratings_round_rated_idx").on(t.roundId, t.ratedPlayerId),
     index("ratings_rated_idx").on(t.ratedPlayerId),

@@ -75,9 +75,9 @@ A escalação confirmada é **imutável** — é ela que define quem avalia quem
 
 A nota do jogador é **100% calculada** — o admin não digita mais. Todo mundo começa em **5,0**.
 
-1. Encerrada o fut, cada jogador com conta recebe uma notificação e tem **36 horas** para dar de 1 a 5 estrelas aos companheiros com quem dividiu o lado em algum jogo daquele dia. A avaliação só acontece em **grupo de 3 ou mais com conta ativa no mesmo lado** — abaixo disso o time joga e conta para placar, artilharia e presença, mas não mexe em nota nenhuma. É a trava contra nota fabricada: sem ela, duas contas combinadas subiriam de 5,0 a 9,3 em cinco futs de mentira.
+1. Encerrada o fut, cada jogador com conta recebe uma notificação e tem **36 horas** para dar de 0,5 a 5 estrelas (de meia em meia) aos companheiros com quem dividiu o lado em algum jogo daquele dia. A avaliação só acontece em **grupo de 3 ou mais com conta ativa no mesmo lado** — abaixo disso o time joga e conta para placar, artilharia e presença, mas não mexe em nota nenhuma. É a trava contra nota fabricada: sem ela, duas contas combinadas subiriam de 5,0 a 9,3 em cinco futs de mentira.
 2. A rodada é apurada quando **todos avaliam** ou quando o prazo vence — o que vier primeiro.
-3. As estrelas viram nota numa escala linear (1★ = 1,0 · 2★ = 3,25 · 3★ = 5,5 · 4★ = 7,75 · 5★ = 10,0), e a nota nova é `(2 × nota atual + média recebida) / 3`. Ou seja, um fut pesa **1/3**.
+3. As estrelas viram nota de forma direta: **cada meia estrela vale 1 ponto** (0,5★ = 1,0 … 5★ = 10,0), e a nota nova é `(2 × nota atual + média recebida) / 3`. Ou seja, um fut pesa **1/3**. Rodadas apuradas antes da meia estrela continuam valendo pela tabela da época (1★ = 1,0 · 2★ = 3,25 · 3★ = 5,5 · 4★ = 7,75 · 5★ = 10,0), congelada via `rating_rounds.legacy_scale` — o replay nunca reescreve nota passada com régua nova.
 4. Todo mundo é notificado da mudança, e a nota nova aparece em `/rankings` e no perfil.
 
 Detalhes que valem conhecer:

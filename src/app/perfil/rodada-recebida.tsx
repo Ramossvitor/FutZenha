@@ -28,10 +28,15 @@ const SELO = {
  */
 export function RodadaRecebida({ rodada }: { rodada: RodadaAvaliada }) {
   const validas = rodada.estrelas.filter((e) => !e.descartada);
-  const contagem = [5, 4, 3, 2, 1].map((n) => ({
-    n,
-    quantas: validas.filter((e) => e.stars === n).length,
-  }));
+  // Só os valores que a rodada de fato recebeu, do maior para o menor. Com
+  // meias-estrelas a grade completa teria dez linhas — quase todas zeradas
+  // numa rodada de 2 a 6 avaliações, dobrando o card sem informar nada.
+  const contagem = [...new Set(validas.map((e) => e.halfStars))]
+    .sort((a, b) => b - a)
+    .map((v) => ({
+      v,
+      quantas: validas.filter((e) => e.halfStars === v).length,
+    }));
   const maior = Math.max(1, ...contagem.map((c) => c.quantas));
 
   const delta =
@@ -79,17 +84,14 @@ export function RodadaRecebida({ rodada }: { rodada: RodadaAvaliada }) {
           {validas.length === 1 ? "avaliação" : "avaliações"}
         </Eyebrow>
 
-        {contagem.map(({ n, quantas }, i) => (
-          <div key={n} className="flex items-center gap-2.5">
-            <Estrelas valor={n} className="w-[5.5rem] shrink-0 [&>span]:size-3" />
+        {contagem.map(({ v, quantas }, i) => (
+          <div key={v} className="flex items-center gap-2.5">
+            <Estrelas meias={v} className="w-[5.5rem] shrink-0 [&>span]:size-3" />
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-line-soft">
               {/* Enche de baixo para cima, uma barra atrás da outra — o mesmo
-                  flood da Meter, que estas cinco não usavam. */}
+                  flood da Meter. */}
               <div
-                className={cx(
-                  "h-full origin-left animate-flood rounded-full",
-                  quantas > 0 ? "bg-accent" : "bg-transparent",
-                )}
+                className="h-full origin-left animate-flood rounded-full bg-accent"
                 style={{
                   width: `${(quantas / maior) * 100}%`,
                   animationDelay: `${Math.min(i, 3) * 40}ms`,
@@ -97,10 +99,7 @@ export function RodadaRecebida({ rodada }: { rodada: RodadaAvaliada }) {
               />
             </div>
             <span
-              className={cx(
-                "w-4 text-right font-display text-[13px] font-extrabold",
-                quantas > 0 ? "text-fg" : "text-fg-faint",
-              )}
+              className="w-4 text-right font-display text-[13px] font-extrabold text-fg"
               data-num
             >
               {quantas}
@@ -128,7 +127,7 @@ export function RodadaRecebida({ rodada }: { rodada: RodadaAvaliada }) {
             <HairlineList as="ul">
               {rodada.estrelas.map((e) => (
                 <HairlineRow as="li" key={e.indice} apagado={e.descartada}>
-                  <Estrelas valor={e.stars} />
+                  <Estrelas meias={e.halfStars} />
                   <span className="flex-1" />
                   {e.descartada && <Badge tom="neutral">descartada</Badge>}
                   {e.denunciaStatus && (

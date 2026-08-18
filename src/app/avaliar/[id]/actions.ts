@@ -11,7 +11,9 @@ import { requirePlayer } from "@/lib/require-player";
 
 export type AvaliarState = { error?: string; success?: boolean };
 
-const estrelasSchema = z.coerce.number().int().min(1).max(5);
+// O form fala meias-estrelas inteiras (1..10): 7 = 3,5★. Nenhum float
+// atravessa o FormData — é o que evita a armadilha "3,5" vs "3.5" de locale.
+const meiasSchema = z.coerce.number().int().min(1).max(10);
 
 export async function enviarAvaliacoes(
   roundId: number,
@@ -46,13 +48,13 @@ export async function enviarAvaliacoes(
 
   // Só aceita o conjunto exato de companheiros: nota faltando é formulário
   // incompleto, e id estranho é gente que não jogou do lado dele.
-  const notas: { ratedPlayerId: number; stars: number }[] = [];
+  const notas: { ratedPlayerId: number; halfStars: number }[] = [];
   for (const companheiro of companheiros) {
-    const parsed = estrelasSchema.safeParse(formData.get(`estrelas-${companheiro.playerId}`));
+    const parsed = meiasSchema.safeParse(formData.get(`estrelas-${companheiro.playerId}`));
     if (!parsed.success) {
       return { error: `Falta a nota de ${companheiro.nickname ?? companheiro.name}.` };
     }
-    notas.push({ ratedPlayerId: companheiro.playerId, stars: parsed.data });
+    notas.push({ ratedPlayerId: companheiro.playerId, halfStars: parsed.data });
   }
 
   const fechouNoMeio = await db.transaction(async (tx) => {
@@ -83,13 +85,13 @@ export async function enviarAvaliacoes(
           roundId,
           raterPlayerId: session.player.id,
           ratedPlayerId: n.ratedPlayerId,
-          stars: n.stars,
+          halfStars: n.halfStars,
         })),
       )
       // Reenviar antes do prazo sobrescreve — a unique do trio é o que permite.
       .onConflictDoUpdate({
         target: [ratings.roundId, ratings.raterPlayerId, ratings.ratedPlayerId],
-        set: { stars: sql`excluded.stars`, updatedAt: new Date() },
+        set: { halfStars: sql`excluded.half_stars`, updatedAt: new Date() },
       });
 
     await tx

@@ -118,6 +118,7 @@ export async function aplicarReplay(exec: Executor, motivo: MotivoReplay): Promi
       roundId: ratingRounds.id,
       matchDayId: ratingRounds.matchDayId,
       matchDayDate: matchDays.date,
+      legacyScale: ratingRounds.legacyScale,
     })
     .from(ratingRounds)
     .innerJoin(matchDays, eq(ratingRounds.matchDayId, matchDays.id))
@@ -134,7 +135,7 @@ export async function aplicarReplay(exec: Executor, motivo: MotivoReplay): Promi
       roundId: ratings.roundId,
       raterPlayerId: ratings.raterPlayerId,
       ratedPlayerId: ratings.ratedPlayerId,
-      stars: ratings.stars,
+      halfStars: ratings.halfStars,
     })
     .from(ratings)
     .where(
@@ -153,7 +154,7 @@ export async function aplicarReplay(exec: Executor, motivo: MotivoReplay): Promi
     const item = {
       raterPlayerId: r.raterPlayerId,
       ratedPlayerId: r.ratedPlayerId,
-      stars: r.stars,
+      halfStars: r.halfStars,
     };
     if (lista) lista.push(item);
     else porRodada.set(r.roundId, [item]);

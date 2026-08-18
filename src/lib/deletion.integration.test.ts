@@ -120,7 +120,7 @@ async function apurarRodadaComNota(
     roundId: rodada.id,
     raterPlayerId: avaliador.jogador.id,
     ratedPlayerId: avaliado.jogador.id,
-    stars: 5,
+    halfStars: 10,
   });
   await db.insert(skillHistory).values({
     playerId: avaliado.jogador.id,

@@ -9,6 +9,7 @@ import {
   ratingRounds,
   ratings,
 } from "@/db/schema";
+import { ordenarAnonimo } from "./anonimato";
 import { notificar } from "./notifications";
 import { aplicarReplay } from "./ratings-engine";
 
@@ -124,7 +125,8 @@ export type DenunciaNaFila = {
   roundId: number;
   matchDayId: number;
   matchDayDate: string;
-  starsDenunciada: number;
+  /** Meias-estrelas (7 = 3,5★) da nota contestada. */
+  halfStarsDenunciada: number;
   horasParaResponder: number;
   /**
    * Quem deu a nota reclamada — `null` quando o julgador jogou a rodada.
@@ -155,7 +157,7 @@ export async function getDenunciasAbertas(julgadorPlayerId: number): Promise<Den
       roundId: ratingRounds.id,
       matchDayId: ratingRounds.matchDayId,
       matchDayDate: matchDays.date,
-      starsDenunciada: ratings.stars,
+      halfStarsDenunciada: ratings.halfStars,
       horasParaResponder: sql<number>`greatest(0, ceil(extract(epoch from (
         ${ratingReports.adminDeadlineAt} - now()
       )) / 3600)::int)`,
@@ -197,7 +199,7 @@ export async function julgadorImpedido(
 }
 
 export type EstrelaNoContexto = {
-  stars: number;
+  halfStars: number;
   descartada: boolean;
   /** Esta é a nota que foi reportada. */
   reclamada: boolean;
@@ -230,19 +232,23 @@ export async function getContextoDaDenuncia(
   const linhas = await db
     .select({
       ratingId: ratings.id,
-      stars: ratings.stars,
+      halfStars: ratings.halfStars,
       descartada: sql<boolean>`${ratings.discardedAt} is not null`,
       raterName: sql<string>`(select name from players where id = ${ratings.raterPlayerId})`,
     })
     .from(ratings)
-    .where(and(eq(ratings.roundId, roundId), eq(ratings.ratedPlayerId, playerId)))
-    .orderBy(asc(ratings.stars));
+    .where(and(eq(ratings.roundId, roundId), eq(ratings.ratedPlayerId, playerId)));
 
-  return linhas.map(({ ratingId, raterName, ...linha }) => ({
-    ...linha,
-    raterName: impedido ? null : raterName,
-    reclamada: ratingId === ratingIdDenunciado,
-  }));
+  // Crescente por nota, com o desempate embaralhado do ordenarAnonimo — nunca
+  // a ordem física do Postgres, que num empate tende a ser a ordem de envio e
+  // a entregaria ao julgador impedido (que vê estas notas sem nome).
+  return ordenarAnonimo(linhas)
+    .reverse()
+    .map(({ ratingId, raterName, ...linha }) => ({
+      ...linha,
+      raterName: impedido ? null : raterName,
+      reclamada: ratingId === ratingIdDenunciado,
+    }));
 }
 
 /**
