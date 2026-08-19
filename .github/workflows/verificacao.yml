@@ -221,21 +221,48 @@ jobs:
       # 9 pacotes de fonte CJK/cirílico/tailandês que nenhum smoke usa (não há
       # comparação de screenshot na suíte). Não é motivo para segurar PR.
       #
-      # 120 s de teto porque o normal são 17 s; o que passa disso é mirror
-      # morto, não lentidão. Foi o que aconteceu em 19/08/2026: o
-      # azure.archive.ubuntu.com parou de responder, o apt caiu no
-      # archive.ubuntu.com e travou 22 min sem uma linha de log, comendo o
-      # timeout inteiro do job e derrubando o gate junto.
+      # O caso que motivou tudo isto, em 19/08/2026: o azure.archive.ubuntu.com
+      # parou de responder, o apt caiu no archive.ubuntu.com e ficou 22 min sem
+      # imprimir uma linha, comendo o timeout inteiro do job e derrubando o gate.
       #
       # O ::warning:: é o que impede isto de virar degradação silenciosa: se ele
       # passar a aparecer em todo run com o apt saudável, é problema de imagem.
       - name: Instalar o Chromium do Playwright
-        timeout-minutes: 5
+        timeout-minutes: 6
         run: |
           set -euo pipefail
           npx playwright install chromium
-          timeout -k 15 120 npx playwright install-deps chromium \
-            || echo "::warning::apt indisponível; seguindo sem as fontes extras"
+
+          # Faz o apt desistir sozinho, em vez de depender só do relógio de
+          # fora. Sem isto, esperar o azure morrer consumia 62 s do teto de
+          # 120 s (30 s no run das 15:40) e sobrava menos da metade para o
+          # mirror que de fato responde: a gente cortava a tentativa boa por
+          # causa do tempo gasto na ruim.
+          printf '%s\n' \
+            'Acquire::http::Timeout "15";' \
+            'Acquire::https::Timeout "15";' \
+            'Acquire::Retries "1";' \
+            | sudo tee /etc/apt/apt.conf.d/99-timeout-ci > /dev/null
+
+          # Com o apt desistindo em ~15 s por mirror, o caso ruim inteiro fecha
+          # em ~1 min, e o teto de fora deixa de ser corte às cegas para virar
+          # backstop de verdade.
+          #
+          # O código precisa ser capturado com `|| codigo=$?`: dentro de um
+          # `if`, o $? seguinte é o status do próprio if, não o do comando.
+          codigo=0
+          timeout -k 15 180 npx playwright install-deps chromium || codigo=$?
+          if [ "$codigo" -eq 0 ]; then
+            exit 0
+          fi
+          # 124/137 = cortado por não responder, ou seja, rede. Qualquer outro
+          # código é o apt tendo respondido e recusado, ou seja, imagem. A
+          # distinção poupa a próxima investigação.
+          if [ "$codigo" -eq 124 ] || [ "$codigo" -eq 137 ]; then
+            echo "::warning::apt travou sem responder (exit $codigo); seguindo sem as fontes extras"
+          else
+            echo "::warning::apt falhou (exit $codigo); seguindo sem as fontes extras"
+          fi
 
       # E2E de fumaça contra o build de verdade, num banco só dele: o
       # e2e/global-setup.ts cria futzenha_e2e, migra e semeia sozinho. Não há
