@@ -127,9 +127,9 @@ describe("sairDaLista", () => {
     await confirmarPresenca(fut, chegouAntes, { status: "waitlist", minutosAtras: 15 });
     await confirmarPresenca(fut, chegouDepois, { status: "waitlist", minutosAtras: 5 });
 
-    const promovido = await sair(fut, desistente);
+    const resultado = await sair(fut, desistente);
 
-    expect(promovido).toBe(chegouAntes.id);
+    expect(resultado).toEqual({ saiuDeVaga: true, promovido: chegouAntes.id });
     expect((await linhaDe(fut, chegouAntes))?.status).toBe("in");
     expect((await linhaDe(fut, chegouDepois))?.status).toBe("waitlist");
     const saida = await linhaDe(fut, desistente);
@@ -148,9 +148,9 @@ describe("sairDaLista", () => {
       minutosAtras: 10,
     });
 
-    const promovido = await sair(fut, desistente);
+    const resultado = await sair(fut, desistente);
 
-    expect(promovido).toBe(idMenor.id);
+    expect(resultado).toEqual({ saiuDeVaga: true, promovido: idMenor.id });
     expect((await linhaDe(fut, idMaior))?.status).toBe("waitlist");
   });
 
@@ -165,11 +165,11 @@ describe("sairDaLista", () => {
     await confirmarPresenca(fut, daEspera, { status: "waitlist", minutosAtras: 20 });
     await confirmarPresenca(fut, outroDaEspera, { status: "waitlist", minutosAtras: 10 });
 
-    expect(await sair(fut, daEspera)).toBeNull();
+    expect(await sair(fut, daEspera)).toEqual({ saiuDeVaga: false, promovido: null });
     expect((await linhaDe(fut, outroDaEspera))?.status).toBe("waitlist");
 
     // Sair de novo já estando fora: também não deixa vaga para trás.
-    expect(await sair(fut, daEspera)).toBeNull();
+    expect(await sair(fut, daEspera)).toEqual({ saiuDeVaga: false, promovido: null });
     expect((await linhaDe(fut, outroDaEspera))?.status).toBe("waitlist");
   });
 
@@ -180,7 +180,7 @@ describe("sairDaLista", () => {
     await confirmarPresenca(fut, b, { minutosAtras: 20 });
     await confirmarPresenca(fut, daEspera, { status: "waitlist", minutosAtras: 10 });
 
-    expect(await sair(fut, a)).toBeNull();
+    expect(await sair(fut, a)).toEqual({ saiuDeVaga: true, promovido: null });
     expect((await linhaDe(fut, a))?.status).toBe("out");
     expect((await linhaDe(fut, daEspera))?.status).toBe("waitlist");
   });
@@ -200,7 +200,7 @@ describe("sairDaLista", () => {
     await mudarLimite(fut, 2);
 
     // Depois da saída ainda há 2 dentro para 2 vagas: não abriu vaga nenhuma.
-    expect(await sair(fut, a)).toBeNull();
+    expect(await sair(fut, a)).toEqual({ saiuDeVaga: true, promovido: null });
     expect((await linhaDe(fut, a))?.status).toBe("out");
     expect((await linhaDe(fut, daEspera))?.status).toBe("waitlist");
   });
@@ -239,12 +239,23 @@ describe("subirDaEspera", () => {
     await confirmarPresenca(fut, daEspera, { status: "waitlist", minutosAtras: 10 });
     await confirmarPresenca(fut, deFora, { status: "out" });
 
-    await db.transaction((tx) => subirDaEspera(tx, fut.id, daEspera.id));
-    await db.transaction((tx) => subirDaEspera(tx, fut.id, deFora.id));
+    expect(await db.transaction((tx) => subirDaEspera(tx, fut.id, daEspera.id))).toBe(true);
+    expect(await db.transaction((tx) => subirDaEspera(tx, fut.id, deFora.id))).toBe(false);
 
     expect((await linhaDe(fut, daEspera))?.status).toBe("in");
     // "Fora" não vira presença por um id repetido do cliente.
     expect((await linhaDe(fut, deFora))?.status).toBe("out");
+  });
+
+  // O retorno é o que decide o convite de agenda: promover de novo quem já está
+  // `in` não pode contar como promoção, ou o convite sai repetido.
+  it("não conta promoção para quem já está na lista", async () => {
+    const fut = await criarFut({ maxPlayers: 2, status: "teams_drawn" });
+    const daEspera = await criarJogador();
+    await confirmarPresenca(fut, daEspera, { status: "waitlist", minutosAtras: 10 });
+
+    expect(await db.transaction((tx) => subirDaEspera(tx, fut.id, daEspera.id))).toBe(true);
+    expect(await db.transaction((tx) => subirDaEspera(tx, fut.id, daEspera.id))).toBe(false);
   });
 });
 

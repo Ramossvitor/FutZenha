@@ -40,6 +40,19 @@ test.describe("fut lotado do seed", () => {
     await expect(page.getByText("/ 6 vagas")).toBeVisible();
     await expect(page.getByText("Lista de espera · 2")).toBeVisible();
 
+    // Fut na agenda: os links existem em qualquer fut não encerrado, mesmo
+    // antes de confirmar presença.
+    await expect(page.getByRole("link", { name: "Google Agenda" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Apple e outros (.ics)" })).toBeVisible();
+    // O .ics vem de rota, não de data: URI (é o que faz o iPhone oferecer
+    // "Adicionar ao Calendário"). Só o servidor real prova que o segmento com
+    // ponto no nome virou rota, e que o Content-Disposition chega.
+    const ics = await page.request.get(`${urlDoFut}/agenda.ics`);
+    expect(ics.status()).toBe(200);
+    expect(ics.headers()["content-type"]).toContain("text/calendar");
+    expect(ics.headers()["content-disposition"]).toContain("attachment");
+    expect(await ics.text()).toContain("BEGIN:VCALENDAR");
+
     // Lotada: o CTA do du é a espera, não o "Vou".
     await page.getByRole("button", { name: "Entrar na espera" }).click();
     await expect(page.getByText("Lista de espera · 3")).toBeVisible();

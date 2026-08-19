@@ -13,12 +13,20 @@ import { enviarConvitePorEmail } from "@/lib/email-convite";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import { redirectPosEnvio } from "@/app/redirect-pos-envio";
 
+// O regex barra quebra de linha no meio do nome (o `.trim()` só corta as
+// pontas), pelo mesmo motivo do nome de grupo em grupos-form.ts: nome e apelido
+// viram o CN do ATTENDEE no .ics do convite de agenda (ver agenda.ts), e ali uma
+// quebra encerraria a linha. O gerador também se defende; recusar na entrada é a
+// camada que impede o lixo de chegar ao banco.
+const SEM_QUEBRA = /^[^\r\n]+$/;
+
 const playerSchema = z.object({
-  name: z.string().trim().min(1, "Nome é obrigatório").max(60),
+  name: z.string().trim().min(1, "Nome é obrigatório").max(60).regex(SEM_QUEBRA),
   nickname: z
     .string()
     .trim()
     .max(60)
+    .refine((v) => v === "" || SEM_QUEBRA.test(v))
     .transform((v) => (v === "" ? null : v)),
   isGoalkeeper: z.coerce.boolean(),
 });

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { matchDays } from "@/db/schema";
+import { agendarCancelamentosDeAgenda, agendarConvitesDeAgenda } from "@/lib/agenda-convite";
 import { ehElegivel } from "@/lib/elegiveis";
 import { listaFechada } from "@/lib/lista-presenca";
 import { notificar } from "@/lib/notifications";
@@ -37,6 +38,9 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
   if (!(await ehElegivel(matchDay, session.player.id))) return;
 
   let houvePromocao = false;
+  let confirmei = false;
+  let saiDeVaga = false;
+  let promovidoDaEspera: number | null = null;
   await db.transaction(async (tx) => {
     // O teste de cima é o atalho barato; a palavra final é da linha travada. Sem
     // isto, um "Vou" concorrendo com o sorteio passava no status velho e entrava
@@ -45,18 +49,28 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
     if (listaFechada(fresca.status)) return;
 
     if (parsedStatus === "in") {
-      await entrarNaLista(tx, parsedId, session.player.id);
+      const entrada = await entrarNaLista(tx, parsedId, session.player.id);
+      // Só a transição para vaga gera convite de agenda — reconfirmar quem já
+      // está `in` é a tela sendo idempotente, não um evento novo.
+      confirmei = entrada.para === "in" && entrada.de !== "in";
     } else {
-      const promovido = await sairDaLista(tx, parsedId, session.player.id);
-      if (promovido !== null) {
-        await notificar(tx, [avisoDePromocao(matchDay, promovido)]);
+      const saida = await sairDaLista(tx, parsedId, session.player.id);
+      saiDeVaga = saida.saiuDeVaga;
+      if (saida.promovido !== null) {
+        await notificar(tx, [avisoDePromocao(matchDay, saida.promovido)]);
         houvePromocao = true;
+        promovidoDaEspera = saida.promovido;
       }
     }
   });
   // "Abriu vaga" é o aviso mais sensível a tempo do app — sai nesta invocação,
   // não na próxima varredura.
   if (houvePromocao) agendarDespachoDePush(true);
+  // Agenda por e-mail: rede fora da transação, como todo efeito (ver
+  // agenda-convite.ts — quem valida o estado é o próprio despacho).
+  if (confirmei) agendarConvitesDeAgenda(parsedId, [session.player.id]);
+  if (saiDeVaga) agendarCancelamentosDeAgenda(parsedId, [session.player.id]);
+  if (promovidoDaEspera !== null) agendarConvitesDeAgenda(parsedId, [promovidoDaEspera]);
 
   revalidatePath("/");
   revalidatePath(`/fut/${parsedId}`);

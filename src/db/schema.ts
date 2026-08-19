@@ -307,6 +307,13 @@ export const attendances = pgTable(
     // como na lista do WhatsApp. Nulo também em `out` que nunca chegou a entrar.
     confirmedAt: timestamp("confirmed_at"),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    // Versão do evento de agenda deste par (fut, jogador) — vira SEQUENCE no
+    // .ics (ver src/lib/agenda.ts). Incrementada a cada transição da lista
+    // (entrar, sair, promoção) e quando data/hora/local do fut mudam. Buracos
+    // na contagem são inofensivos; o que importa é nunca repetir número num
+    // UID — cliente estrito ignora REQUEST com SEQUENCE ≤ o do último CANCEL,
+    // e é isso que faz "desmarquei e remarquei" reativar o evento.
+    calendarSequence: integer("calendar_sequence").notNull().default(0),
   },
   (t) => [unique().on(t.matchDayId, t.playerId)],
 );

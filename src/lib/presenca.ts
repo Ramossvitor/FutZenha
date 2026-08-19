@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
 import { attendances, matchDays, users } from "@/db/schema";
 import { ehElegivel, type EscopoDaLista } from "./elegiveis";
@@ -164,6 +164,12 @@ async function linhasDaLista(exec: Executor, matchDayId: number): Promise<LinhaD
     .where(eq(attendances.matchDayId, matchDayId));
 }
 
+export type ResultadoDeEntrada = {
+  /** Situação anterior — nulo para quem nunca esteve na lista deste fut. */
+  de: "in" | "out" | "waitlist" | "no_show" | null;
+  para: "in" | "waitlist";
+};
+
 /**
  * Põe alguém na lista — como vaga ou como espera, quem decide é a linha travada.
  *
@@ -175,12 +181,15 @@ async function linhasDaLista(exec: Executor, matchDayId: number): Promise<LinhaD
  * (a tela é idempotente) não pode mandar a pessoa para o fim da fila. Quem passou
  * por `sairDaLista` teve o marco zerado e entra no fim mesmo — é o combinado de
  * quem desiste e volta atrás.
+ *
+ * Devolve de onde para onde a pessoa foi: só a transição para vaga é evento
+ * novo de agenda, e reconfirmar quem já está `in` não pode virar e-mail.
  */
 export async function entrarNaLista(
   exec: Executor,
   matchDayId: number,
   playerId: number,
-): Promise<void> {
+): Promise<ResultadoDeEntrada> {
   const fut = await travarFut(exec, matchDayId);
   exigirNaoEncerrada(fut, matchDayId);
   const linhas = await linhasDaLista(exec, matchDayId);
@@ -197,15 +206,31 @@ export async function entrarNaLista(
     .values({ matchDayId, playerId, status, confirmedAt })
     .onConflictDoUpdate({
       target: [attendances.matchDayId, attendances.playerId],
-      set: { status, confirmedAt, updatedAt: new Date() },
+      set: {
+        status,
+        confirmedAt,
+        updatedAt: new Date(),
+        // Toda transição versiona o evento de agenda (ver calendar_sequence
+        // no schema) — quem lê é src/lib/agenda-convite.ts.
+        calendarSequence: sql`${attendances.calendarSequence} + 1`,
+      },
     });
+  return { de: atual?.status ?? null, para: status };
 }
+
+export type ResultadoDeSaida = {
+  /** Se a pessoa ocupava vaga (`in`) — é o que decide se existe evento a cancelar. */
+  saiuDeVaga: boolean;
+  promovido: number | null;
+};
 
 /**
  * Tira alguém da lista e, se isso abriu uma vaga, promove o primeiro da espera.
  *
  * Devolve o `playerId` promovido, para quem chama avisar a pessoa (ver
- * avisoDePromocao) — no mesmo commit, pelo mesmo motivo do aviso de inclusão.
+ * avisoDePromocao) — no mesmo commit, pelo mesmo motivo do aviso de inclusão. E
+ * devolve se a saída foi de uma vaga: só quem ocupava uma tinha evento na
+ * agenda para cancelar.
  *
  * A promoção só é automática com a lista **aberta**. Fechada, a vaga que abre é
  * de quem o admin disser: ele está registrando quem apareceu, e subir sozinho
@@ -219,7 +244,7 @@ export async function sairDaLista(
   exec: Executor,
   matchDayId: number,
   playerId: number,
-): Promise<number | null> {
+): Promise<ResultadoDeSaida> {
   const fut = await travarFut(exec, matchDayId);
   exigirNaoEncerrada(fut, matchDayId);
   const linhas = await linhasDaLista(exec, matchDayId);
@@ -230,30 +255,43 @@ export async function sairDaLista(
     .values({ matchDayId, playerId, status: "out", confirmedAt: null })
     .onConflictDoUpdate({
       target: [attendances.matchDayId, attendances.playerId],
-      set: { status: "out", confirmedAt: null, updatedAt: new Date() },
+      set: {
+        status: "out",
+        confirmedAt: null,
+        updatedAt: new Date(),
+        calendarSequence: sql`${attendances.calendarSequence} + 1`,
+      },
     });
 
-  if (!ocupavaVaga || listaFechada(fut.status)) return null;
+  if (!ocupavaVaga || listaFechada(fut.status)) {
+    return { saiuDeVaga: ocupavaVaga, promovido: null };
+  }
   // "Abriu uma vaga" é literal: o limite pode ter sido reduzido para baixo dos
   // confirmados (updateMatchDay aceita, e não rebaixa ninguém), e aí a saída
   // ainda deixa a lista cheia — promover aqui furaria o limite novo.
   const ocupadasAposSaida = linhas.filter(
     (l) => l.status === "in" && l.playerId !== playerId,
   ).length;
-  if (fut.maxPlayers !== null && ocupadasAposSaida >= fut.maxPlayers) return null;
+  if (fut.maxPlayers !== null && ocupadasAposSaida >= fut.maxPlayers) {
+    return { saiuDeVaga: true, promovido: null };
+  }
   const proximo = proximoDaEspera(linhas);
-  if (!proximo) return null;
+  if (!proximo) return { saiuDeVaga: true, promovido: null };
 
   await exec
     .update(attendances)
-    .set({ status: "in", updatedAt: new Date() })
+    .set({
+      status: "in",
+      updatedAt: new Date(),
+      calendarSequence: sql`${attendances.calendarSequence} + 1`,
+    })
     .where(
       and(
         eq(attendances.matchDayId, matchDayId),
         eq(attendances.playerId, proximo.playerId),
       ),
     );
-  return proximo.playerId;
+  return { saiuDeVaga: true, promovido: proximo.playerId };
 }
 
 /**
@@ -262,24 +300,34 @@ export async function sairDaLista(
  * O escopo por `waitlist` no `where` é a guarda: `playerId` vem do cliente, e
  * sem ele isto viraria um "marcar presença" sem passar pelo
  * podeDefinirPresencaPor — daria para pôr no fut quem tinha marcado "Fora".
+ *
+ * Devolve se alguém subiu de fato. Quem já estava `in` não casa o `where` e não
+ * versiona nada: sem este retorno, quem chama mandaria convite de agenda repetido
+ * com a SEQUENCE velha (um duplo clique em "Promover" bastava).
  */
 export async function subirDaEspera(
   exec: Executor,
   matchDayId: number,
   playerId: number,
-): Promise<void> {
+): Promise<boolean> {
   const fut = await travarFut(exec, matchDayId);
   exigirNaoEncerrada(fut, matchDayId);
-  await exec
+  const subiram = await exec
     .update(attendances)
-    .set({ status: "in", updatedAt: new Date() })
+    .set({
+      status: "in",
+      updatedAt: new Date(),
+      calendarSequence: sql`${attendances.calendarSequence} + 1`,
+    })
     .where(
       and(
         eq(attendances.matchDayId, matchDayId),
         eq(attendances.playerId, playerId),
         eq(attendances.status, "waitlist"),
       ),
-    );
+    )
+    .returning({ playerId: attendances.playerId });
+  return subiram.length > 0;
 }
 
 /**
@@ -339,7 +387,11 @@ export async function preencherVagasAbertas(
 
   await exec
     .update(attendances)
-    .set({ status: "in", updatedAt: new Date() })
+    .set({
+      status: "in",
+      updatedAt: new Date(),
+      calendarSequence: sql`${attendances.calendarSequence} + 1`,
+    })
     .where(
       and(
         eq(attendances.matchDayId, matchDayId),

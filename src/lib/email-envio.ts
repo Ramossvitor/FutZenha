@@ -36,6 +36,12 @@ const JITTER_MAXIMO_MS = 250;
 /** O que um template produz. `texto` é a alternativa sem HTML — cliente que só mostra texto. */
 export type EmailPronto = { assunto: string; html: string; texto: string };
 
+/**
+ * Anexo do payload do Resend. `conteudo` é o texto cru do arquivo — vira
+ * base64 aqui dentro, porque é o transporte que conhece o formato do Resend.
+ */
+export type AnexoDeEmail = { nomeDoArquivo: string; conteudo: string; contentType: string };
+
 export type ResultadoEnvio =
   | { ok: true }
   | { ok: false; motivo: "nao-configurado" | "limite" | "rajada" | "recusado" | "indisponivel" };
@@ -56,6 +62,16 @@ export function emailConfigurado(): boolean {
 // Interno: só `enviarEmail` monta payload de Resend, e é aqui.
 function emailFrom(): string {
   return process.env.EMAIL_FROM || "FutZenha <convite@futzenha.com.br>";
+}
+
+/**
+ * Só o endereço do remetente, sem o nome de exibição — vira o ORGANIZER dos
+ * convites de agenda (src/lib/agenda-convite.ts).
+ */
+export function enderecoDoRemetente(): string {
+  const from = emailFrom();
+  const angulado = from.match(/<([^>]+)>/);
+  return angulado ? angulado[1] : from;
 }
 
 // O corpo de erro do Resend é `{ name, message, statusCode }` (ver
@@ -129,9 +145,29 @@ function retryAfterDaResposta(resposta: Response): number | null {
  * a causou — o convite já está criado e o link continua entregável na mão. Quem
  * chama decide o que fazer com o motivo.
  */
-export async function enviarEmail(msg: { para: string } & EmailPronto): Promise<ResultadoEnvio> {
+export async function enviarEmail(
+  msg: { para: string; anexos?: AnexoDeEmail[] } & EmailPronto,
+): Promise<ResultadoEnvio> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, motivo: "nao-configurado" };
+
+  // Montado uma vez só: o corpo é o mesmo em toda retentativa, e o base64 do
+  // anexo não precisa ser refeito a cada rajada.
+  const payload: Record<string, unknown> = {
+    from: emailFrom(),
+    to: [msg.para],
+    subject: msg.assunto,
+    html: msg.html,
+    text: msg.texto,
+  };
+  if (msg.anexos && msg.anexos.length > 0) {
+    payload.attachments = msg.anexos.map((anexo) => ({
+      filename: anexo.nomeDoArquivo,
+      content: Buffer.from(anexo.conteudo, "utf-8").toString("base64"),
+      content_type: anexo.contentType,
+    }));
+  }
+  const corpoDoEnvio = JSON.stringify(payload);
 
   for (let tentativa = 1; ; tentativa++) {
     let resposta: Response;
@@ -139,13 +175,7 @@ export async function enviarEmail(msg: { para: string } & EmailPronto): Promise<
       resposta = await fetch(RESEND_ENDPOINT, {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: emailFrom(),
-          to: [msg.para],
-          subject: msg.assunto,
-          html: msg.html,
-          text: msg.texto,
-        }),
+        body: corpoDoEnvio,
         cache: "no-store",
         signal: AbortSignal.timeout(TIMEOUT_ENVIO_MS),
       });

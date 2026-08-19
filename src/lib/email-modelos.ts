@@ -13,7 +13,9 @@
 // primeira coisa que a pessoa vê do produto e precisa parecer o produto. A
 // versão `texto` sempre repete a URL crua — é o que sobrevive a qualquer cliente.
 
+import { urlGoogleAgenda, type FutParaAgenda } from "./agenda";
 import type { EmailPronto } from "./email-envio";
+import { formatDate, formatTime } from "./format";
 import { siteUrl } from "./site-url";
 
 /**
@@ -196,4 +198,79 @@ export function emailDeAvisoDeGrupo(dados: {
   ].join("\n");
 
   return { assunto: `Convite para o grupo ${dados.nomeDoGrupo} no FutZenha`, html, texto };
+}
+
+export type TipoDeEventoDeAgenda = "convite" | "atualizacao" | "saida" | "fut-cancelado";
+
+/**
+ * O e-mail que carrega o .ics do fut. O texto muda por tipo, mas a estrutura é
+ * uma: o que aconteceu, o botão do Google (para cliente que ignora o anexo) e
+ * o link do fut. Em cancelamento não há botão nem link — o evento está saindo
+ * da agenda, e no fut apagado a página nem existe mais.
+ */
+export function emailDeEventoDeAgenda(dados: {
+  tipo: TipoDeEventoDeAgenda;
+  nome: string;
+  fut: FutParaAgenda;
+}): EmailPronto {
+  const urlDoFut = `${siteUrl()}/fut/${dados.fut.id}`;
+  const hora = formatTime(dados.fut.startTime);
+  const quando = `${formatDate(dados.fut.date)}${hora ? ` às ${hora}` : ""}`;
+  const nome = escaparHtml(dados.nome);
+  const local = escaparHtml(dados.fut.location);
+  const quandoHtml = escaparHtml(quando);
+
+  // `corpo` e `corpoTexto` dizem a mesma coisa em duas linguagens. O texto sai
+  // dos valores CRUS, como em todos os templates daqui: derivá-lo do HTML
+  // deixaria `&#39;` e `&amp;` visíveis em cliente de texto puro — e local de
+  // fut ("Arena D'Oeste", "Zé & Cia") tem apóstrofo e "e comercial" à vontade.
+  const cabecalhos: Record<
+    TipoDeEventoDeAgenda,
+    { assunto: string; titulo: string; corpo: string; corpoTexto: string }
+  > = {
+    convite: {
+      assunto: `Na agenda: fut de ${quando}`,
+      titulo: "Fut na agenda",
+      corpo: `Olá, <strong>${nome}</strong>! Presença confirmada no fut de <strong>${quandoHtml}</strong>, em <strong>${local}</strong>. O convite de calendário vai anexo — na maioria dos clientes ele entra na agenda sozinho, ou com um toque em &quot;Sim&quot;.`,
+      corpoTexto: `Olá, ${dados.nome}! Presença confirmada no fut de ${quando}, em ${dados.fut.location}. O convite de calendário vai anexo — na maioria dos clientes ele entra na agenda sozinho, ou com um toque em "Sim".`,
+    },
+    atualizacao: {
+      assunto: `Fut atualizado: ${quando}`,
+      titulo: "O fut mudou",
+      corpo: `O fut mudou: agora é <strong>${quandoHtml}</strong>, em <strong>${local}</strong>. Se o evento já está na sua agenda, este e-mail o atualiza sozinho.`,
+      corpoTexto: `O fut mudou: agora é ${quando}, em ${dados.fut.location}. Se o evento já está na sua agenda, este e-mail o atualiza sozinho.`,
+    },
+    saida: {
+      assunto: `Fora da lista: fut de ${quando}`,
+      titulo: "Você saiu da lista",
+      corpo: `Você saiu da lista do fut de <strong>${quandoHtml}</strong>, em <strong>${local}</strong>. O cancelamento anexo tira o evento da sua agenda.`,
+      corpoTexto: `Você saiu da lista do fut de ${quando}, em ${dados.fut.location}. O cancelamento anexo tira o evento da sua agenda.`,
+    },
+    "fut-cancelado": {
+      assunto: `Cancelado: fut de ${quando}`,
+      titulo: "Fut cancelado",
+      corpo: `O fut de <strong>${quandoHtml}</strong>, em <strong>${local}</strong>, foi cancelado. O cancelamento anexo tira o evento da sua agenda.`,
+      corpoTexto: `O fut de ${quando}, em ${dados.fut.location}, foi cancelado. O cancelamento anexo tira o evento da sua agenda.`,
+    },
+  };
+  const { assunto, titulo, corpo, corpoTexto } = cabecalhos[dados.tipo];
+  const comBotao = dados.tipo === "convite" || dados.tipo === "atualizacao";
+
+  const html = moldura(
+    [
+      `<p style="margin:0 0 4px 0;font-size:18px;font-weight:bold;color:${FG};">${titulo}</p>`,
+      `<p style="margin:12px 0;">${corpo}</p>`,
+      comBotao
+        ? `<p style="margin:20px 0;">${botao(urlGoogleAgenda(dados.fut, siteUrl()), "Adicionar ao Google Agenda")}</p>`
+        : "",
+      comBotao ? urlDeApoio(urlDoFut) : "",
+    ].join(""),
+  );
+
+  const texto = [
+    corpoTexto,
+    ...(comBotao ? ["", `Página do fut: ${urlDoFut}`] : []),
+  ].join("\n");
+
+  return { assunto, html, texto };
 }

@@ -6,6 +6,10 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { matchDays } from "@/db/schema";
+import {
+  agendarCancelamentosPosExclusao,
+  lerDestinosDeCancelamento,
+} from "@/lib/agenda-convite";
 import { apagarFut, motivoExclusaoSchema } from "@/lib/deletion";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 
@@ -38,7 +42,14 @@ export async function excluirFutAbusivo(matchDayId: number, formData: FormData) 
       `${session.username}: ${parsed.data}`,
   );
 
-  await db.transaction((tx) => apagarFut(tx, id, `nota:abuso:${id}`));
+  const destinos = await db.transaction(async (tx) => {
+    // Fut ainda por acontecer está na agenda de quem confirmou — o cancelamento
+    // sai junto da exclusão. Encerrado é passado: nada a cancelar.
+    const lidos = fut.status === "finished" ? [] : await lerDestinosDeCancelamento(tx, id);
+    await apagarFut(tx, id, `nota:abuso:${id}`);
+    return lidos;
+  });
+  agendarCancelamentosPosExclusao(fut, destinos);
 
   revalidatePath("/");
   revalidatePath("/futs");

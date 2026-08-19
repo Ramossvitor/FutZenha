@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   emailDeAvisoDeGrupo,
   emailDeConvitePlataforma,
+  emailDeEventoDeAgenda,
   emailDeResetDeAcesso,
   escaparHtml,
+  type TipoDeEventoDeAgenda,
 } from "./email-modelos";
 
 describe("escaparHtml", () => {
@@ -130,5 +132,81 @@ describe("emailDeAvisoDeGrupo", () => {
     expect(emailDeAvisoDeGrupo(dados).assunto).toBe(
       "Convite para o grupo Pelada <b>dos Amigos</b> no FutZenha",
     );
+  });
+});
+
+describe("emailDeEventoDeAgenda", () => {
+  // Nome de jogador e local do fut são texto livre de formulário. O apóstrofo e
+  // o "e comercial" não são exóticos em nome de quadra — são o caso comum que
+  // denuncia escape vazando para a versão texto.
+  const FUT = {
+    id: 7,
+    date: "2026-08-22",
+    startTime: "20:00:00",
+    location: "Arena D'Oeste & Cia",
+    notes: null,
+  };
+  const dados = { nome: "Zé <script>alert(1)</script>", fut: FUT };
+  const evento = (tipo: TipoDeEventoDeAgenda) => emailDeEventoDeAgenda({ ...dados, tipo });
+
+  it("escapa nome e local no html", () => {
+    const email = evento("convite");
+    expect(email.html).not.toContain("<script>");
+    expect(email.html).toContain("&lt;script&gt;");
+    expect(email.html).toContain("Arena D&#39;Oeste &amp; Cia");
+  });
+
+  // Mesmo par de testes dos outros templates: o `texto` não é HTML, e entidade
+  // ali chega crua na caixa de entrada ("Arena D&#39;Oeste").
+  it("não escapa nada na versão texto", () => {
+    for (const tipo of ["convite", "atualizacao", "saida", "fut-cancelado"] as const) {
+      const email = evento(tipo);
+      expect(email.texto).toContain("Arena D'Oeste & Cia");
+      expect(email.texto).not.toContain("&#39;");
+      expect(email.texto).not.toContain("&amp;");
+      expect(email.texto).not.toContain("&quot;");
+    }
+    expect(evento("convite").texto).toContain("Zé <script>alert(1)</script>");
+  });
+
+  it("html e texto levam a data e a hora do fut", () => {
+    const email = evento("convite");
+    expect(email.html).toContain("às 20:00");
+    expect(email.texto).toContain("às 20:00");
+  });
+
+  // Cancelamento não oferece caminho de volta: o evento está saindo da agenda, e
+  // no fut apagado a página do link nem existe mais.
+  it("saída e fut cancelado não levam botão nem link do fut", () => {
+    for (const tipo of ["saida", "fut-cancelado"] as const) {
+      const email = evento(tipo);
+      expect(email.html).not.toContain("calendar.google.com");
+      expect(email.html).not.toContain("/fut/7");
+      expect(email.texto).not.toContain("/fut/7");
+    }
+  });
+
+  it("convite e atualização levam o botão do Google e o link do fut", () => {
+    for (const tipo of ["convite", "atualizacao"] as const) {
+      const email = evento(tipo);
+      expect(email.html).toContain("calendar.google.com");
+      expect(email.texto).toContain("/fut/7");
+    }
+  });
+
+  it("cada tipo tem o seu assunto", () => {
+    expect(evento("convite").assunto).toContain("Na agenda:");
+    expect(evento("atualizacao").assunto).toContain("Fut atualizado:");
+    expect(evento("saida").assunto).toContain("Fora da lista:");
+    expect(evento("fut-cancelado").assunto).toContain("Cancelado:");
+  });
+
+  it("sem horário o assunto fala só da data", () => {
+    const email = emailDeEventoDeAgenda({
+      ...dados,
+      tipo: "convite",
+      fut: { ...FUT, startTime: null },
+    });
+    expect(email.assunto).not.toContain("às");
   });
 });
