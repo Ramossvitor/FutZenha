@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
+import { BotoesDeAgenda } from "@/components/ui/botoes-de-agenda";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { Card, CardHeader, Eyebrow, PageHeader, Section } from "@/components/ui/card";
 import { ConfeteDoSorteio } from "@/components/ui/confete-do-sorteio";
@@ -685,6 +686,13 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
               acoes={{ aoAssinar: assinarPush, aoCancelar: cancelarPush }}
             />
           )}
+
+        {/* O fut na agenda de quem vai — Google direto, Outlook, ou o .ics para
+            Apple e o resto. O convite por e-mail entra sozinho ao confirmar;
+            estes são o caminho manual (e o de quem olha sem confirmar). */}
+        {matchDay.status !== "finished" && (
+          <BotoesDeAgenda fut={matchDay} urlBase={siteUrl()} />
+        )}
 
         {/* Convocação pronta para o grupo — enquanto a lista está aberta,
             qualquer um do fut pode chamar a galera, não só o admin. */}

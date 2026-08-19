@@ -18,6 +18,13 @@ import {
   users,
   type MatchDay,
 } from "@/db/schema";
+import {
+  agendarAtualizacoesDeAgenda,
+  agendarCancelamentosDeAgenda,
+  agendarCancelamentosPosExclusao,
+  agendarConvitesDeAgenda,
+  lerDestinosDeCancelamento,
+} from "@/lib/agenda-convite";
 import { criarJogadorComConvite, parseEmailDeConvite } from "@/lib/convites";
 import { enviarConvitePorEmail } from "@/lib/email-convite";
 import { isUniqueViolation } from "@/lib/db-errors";
@@ -53,19 +60,40 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
   const parsed = parseMatchDayForm(formData);
   if (!parsed.success) redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
 
-  const houvePromocao = await db.transaction(async (tx) => {
+  // O form manda "HH:MM" e o banco guarda "HH:MM:SS" — compara nos 5 primeiros.
+  const horaAntiga = matchDay.startTime?.slice(0, 5) ?? null;
+  const horaNova = parsed.data.startTime?.slice(0, 5) ?? null;
+  const eventoMudou =
+    parsed.data.date !== matchDay.date ||
+    horaNova !== horaAntiga ||
+    parsed.data.location !== matchDay.location;
+
+  const promovidos = await db.transaction(async (tx) => {
     await tx.update(matchDays).set(parsed.data).where(eq(matchDays.id, matchDayId));
     // Subir (ou limpar) o limite abre vagas sem ninguém sair. A espera sobe
     // aqui, na ordem de chegada — sem isto ela ficava parada, e o próximo "Vou"
     // entrava na frente de quem confirmou antes.
-    const promovidos = await preencherVagasAbertas(tx, matchDayId);
+    const sobem = await preencherVagasAbertas(tx, matchDayId);
     await notificar(
       tx,
-      promovidos.map((p) => avisoDePromocao(matchDay, p)),
+      sobem.map((p) => avisoDePromocao(matchDay, p)),
     );
-    return promovidos.length > 0;
+    if (eventoMudou) {
+      // Data/hora/local novos versionam o evento de todo mundo: a atualização
+      // sai com SEQUENCE maior e o evento já na agenda se corrige sozinho.
+      await tx
+        .update(attendances)
+        .set({ calendarSequence: sql`${attendances.calendarSequence} + 1` })
+        .where(eq(attendances.matchDayId, matchDayId));
+    }
+    return sobem;
   });
-  if (houvePromocao) agendarDespachoDePush(true);
+  if (promovidos.length > 0) agendarDespachoDePush(true);
+  // Um e-mail por pessoa, e o certo para cada uma: quem já estava na lista
+  // recebe "o fut mudou"; quem subiu da espera neste mesmo salvamento nunca teve
+  // o evento, então recebe o convite — daí o `exceto`.
+  if (eventoMudou) agendarAtualizacoesDeAgenda(matchDayId, promovidos);
+  if (promovidos.length > 0) agendarConvitesDeAgenda(matchDayId, promovidos);
   revalidatePath("/");
   revalidatePath(`/fut/${matchDayId}/gerenciar`);
   revalidatePath(`/fut/${matchDayId}`);
@@ -82,7 +110,15 @@ export async function deleteMatchDay(matchDayId: number) {
     redirect(`/fut/${matchDayId}/gerenciar?erro=precisa-votacao`);
   }
 
-  await db.delete(matchDays).where(eq(matchDays.id, matchDayId));
+  // Os destinos do cancelamento saem ANTES do delete: o cascade leva as
+  // attendances junto, e depois não há de onde ler e-mail nem SEQUENCE.
+  const destinos = await db.transaction(async (tx) => {
+    const lidos = await lerDestinosDeCancelamento(tx, matchDayId);
+    await tx.delete(matchDays).where(eq(matchDays.id, matchDayId));
+    return lidos;
+  });
+  agendarCancelamentosPosExclusao(matchDay, destinos);
+
   revalidatePath("/");
   revalidatePath("/futs");
   redirect("/futs");
@@ -437,7 +473,9 @@ export async function deleteGoal(matchDayId: number, goalId: number) {
 // escalação errada só se conserta excluindo o fut.
 
 const convidadoSchema = z.object({
-  name: z.string().trim().min(1, "Nome é obrigatório").max(60),
+  // Sem quebra de linha, como no playerSchema de /admin/jogadores: o nome vira
+  // o CN do ATTENDEE no .ics do convite de agenda (ver agenda.ts).
+  name: z.string().trim().min(1, "Nome é obrigatório").max(60).regex(/^[^\r\n]+$/),
   isGoalkeeper: z.coerce.boolean(),
 });
 
@@ -555,14 +593,20 @@ export async function definirPresenca(
   const avisar = status === "in" && mereceAviso(session, playerId, alvo);
 
   let houveAviso = avisar;
+  let confirmado = false;
+  let saiuDeVaga = false;
+  let promovidoDaEspera: number | null = null;
   await db.transaction(async (tx) => {
     if (status === "in") {
-      await entrarNaLista(tx, matchDay.id, playerId);
+      const entrada = await entrarNaLista(tx, matchDay.id, playerId);
+      confirmado = entrada.para === "in" && entrada.de !== "in";
     } else {
-      const promovido = await sairDaLista(tx, matchDay.id, playerId);
-      if (promovido !== null) {
-        await notificar(tx, [avisoDePromocao(matchDay, promovido)]);
+      const saida = await sairDaLista(tx, matchDay.id, playerId);
+      saiuDeVaga = saida.saiuDeVaga;
+      if (saida.promovido !== null) {
+        await notificar(tx, [avisoDePromocao(matchDay, saida.promovido)]);
         houveAviso = true;
+        promovidoDaEspera = saida.promovido;
       }
     }
 
@@ -580,6 +624,9 @@ export async function definirPresenca(
     }
   });
   if (houveAviso) agendarDespachoDePush(true);
+  if (confirmado) agendarConvitesDeAgenda(matchDay.id, [playerId]);
+  if (saiuDeVaga) agendarCancelamentosDeAgenda(matchDay.id, [playerId]);
+  if (promovidoDaEspera !== null) agendarConvitesDeAgenda(matchDay.id, [promovidoDaEspera]);
 
   revalidatePath("/");
   revalidatePath(`/fut/${matchDayId}/gerenciar`);
@@ -604,7 +651,11 @@ export async function promoverDaEspera(matchDayId: number, playerId: number) {
     redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 
-  await db.transaction((tx) => subirDaEspera(tx, matchDayId, playerId));
+  const subiu = await db.transaction((tx) => subirDaEspera(tx, matchDayId, playerId));
+  // Só quem subiu de fato ganha convite: quem já estava `in` não casa o `where`
+  // do subirDaEspera e ficou com a SEQUENCE velha — o despacho, que procura por
+  // status `in`, acharia a pessoa e mandaria um convite repetido.
+  if (subiu) agendarConvitesDeAgenda(matchDayId, [playerId]);
   revalidateMatchDay(matchDayId);
 }
 

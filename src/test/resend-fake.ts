@@ -30,12 +30,16 @@ export function stubResend(...respostas: RespostaFake[]): ReturnType<typeof vi.f
   return fetchMock;
 }
 
-/** O corpo do primeiro POST ao Resend, para asserir destinatário, assunto e texto. */
-export function payloadDoEnvio(fetchMock: ReturnType<typeof vi.fn>): {
+/** O corpo do POST `indice` ao Resend, para asserir destinatário, assunto, texto e anexos. */
+export function payloadDoEnvio(
+  fetchMock: ReturnType<typeof vi.fn>,
+  indice = 0,
+): {
   to: string[];
   subject: string;
   text: string;
+  attachments?: { filename: string; content: string; content_type: string }[];
 } {
-  const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+  const [, init] = fetchMock.mock.calls[indice] as [string, RequestInit];
   return JSON.parse(init.body as string);
 }
