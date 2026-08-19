@@ -227,6 +227,17 @@ describe("abrirRodada", () => {
     const avisoDoA = avisos.find((n) => n.playerId === timeA.jogadores[0].id);
     expect(avisoDoA?.title).toBe("Sua nota subiu!");
     expect(avisoDoA?.dedupeKey).toBe(`nota:rodada:${rodadaId}`);
+    // O time B caiu de 5,0 para 4,0 — a direção contrária tem título próprio.
+    const avisoDoB = avisos.find((n) => n.playerId === timeB.jogadores[0].id);
+    expect(avisoDoB?.title).toBe("Sua nota baixou");
+
+    // O aviso não entrega o número: quem quiser saber quanto ficou clica e vai
+    // para o perfil. O `not.toMatch(/\d/)` é o que segura o spoiler de voltar.
+    for (const aviso of [avisoDoA, avisoDoB]) {
+      expect(aviso?.body).toBe("Depois do último fut. Toque para ver quanto ficou.");
+      expect(aviso?.body).not.toMatch(/\d/);
+      expect(aviso?.href).toBe("/perfil");
+    }
   });
 });
 
