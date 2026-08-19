@@ -193,6 +193,50 @@ jobs:
         run: npx next build
 
       # --- Gate 8/8 -----------------------------------------------------------
+      # As três etapas abaixo preparam e rodam o E2E de fumaça.
+      #
+      # A chave já foi o hash do package-lock inteiro, e aí bump de QUALQUER
+      # dependência descartava 270 MB e rebaixava o Chromium sem o browser ter
+      # mudado. Quem determina a revisão baixada é a versão do playwright-core.
+      - name: Versão do Playwright (chave do cache)
+        id: pw
+        run: |
+          echo "versao=$(node -p "require('./node_modules/playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache dos browsers do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.versao }}
+
+      # Isto já foi um `npx playwright install --with-deps chromium` só. O flag
+      # juntava numa etapa duas coisas de risco muito diferente: baixar o
+      # browser (local, com cache) e mexer no apt (mirror de terceiro).
+      # Separadas, o gate só depende da primeira.
+      #
+      # O apt continua sendo tentado — é ele que cobre o dia em que a imagem do
+      # runner parar de trazer alguma lib do Chromium —, mas best-effort e com
+      # teto. Hoje ele não acrescenta nada: nos logs das verificações verdes as
+      # 17 libs aparecem como "is already the newest version", e o que sobra são
+      # 9 pacotes de fonte CJK/cirílico/tailandês que nenhum smoke usa (não há
+      # comparação de screenshot na suíte). Não é motivo para segurar PR.
+      #
+      # 120 s de teto porque o normal são 17 s; o que passa disso é mirror
+      # morto, não lentidão. Foi o que aconteceu em 19/08/2026: o
+      # azure.archive.ubuntu.com parou de responder, o apt caiu no
+      # archive.ubuntu.com e travou 22 min sem uma linha de log, comendo o
+      # timeout inteiro do job e derrubando o gate junto.
+      #
+      # O ::warning:: é o que impede isto de virar degradação silenciosa: se ele
+      # passar a aparecer em todo run com o apt saudável, é problema de imagem.
+      - name: Instalar o Chromium do Playwright
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          npx playwright install chromium
+          timeout -k 15 120 npx playwright install-deps chromium \
+            || echo "::warning::apt indisponível; seguindo sem as fontes extras"
+
       # E2E de fumaça contra o build de verdade, num banco só dele: o
       # e2e/global-setup.ts cria futzenha_e2e, migra e semeia sozinho. Não há
       # passo de seed aqui porque o seed é destrutivo, e o banco futzenha deste
@@ -203,16 +247,12 @@ jobs:
       # mascararia a falha — o servidor subiria contra o banco errado e os
       # specs quebrariam sem dizer por quê, em vez de o src/db/index.ts gritar
       # "DATABASE_URL não definida".
-      - name: Cache dos browsers do Playwright
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Instalar o Chromium do Playwright
-        run: npx playwright install --with-deps chromium
-
+      #
+      # Teto próprio porque o normal são 43 s (38 testes, 1 worker) e o
+      # webServer.timeout do playwright.config.ts é 120 s. Cobre o caso de o
+      # `next start` não subir — sem isto, isso consumiria os 25 min do job.
       - name: E2E (Playwright)
+        timeout-minutes: 10
         env:
           # Porta 5432 (o runner não tem o conflito que levou o local para a
           # 5433) e sufixo _e2e, que o resolverUrlDeE2E exige — mesma dupla de
