@@ -10,7 +10,6 @@ import {
   skillHistory,
   users,
 } from "@/db/schema";
-import { formatSkill } from "./format";
 import { apurarMvp } from "./mvp";
 import { notificar } from "./notifications";
 import { getAgregadosMvp, getRatersElegiveis, prazoEmHoras } from "./ratings";
@@ -190,16 +189,24 @@ export async function aplicarReplay(exec: Executor, motivo: MotivoReplay): Promi
     await exec.update(players).set({ skill: p.depois }).where(eq(players.id, p.id));
   }
 
+  // O aviso dá a direção, nunca o número: saber quanto ficou é o que faz a
+  // pessoa abrir o app. Por isso o corpo só explica de onde veio o recálculo e
+  // o href leva ao perfil, onde a nota está em destaque. Vale para o push
+  // também — é o mesmo title/body que sai em src/lib/push-envio.ts.
+  const corpo =
+    motivo.tipo === "rodada"
+      ? "Depois do último fut. Toque para ver quanto ficou."
+      : "Uma avaliação foi revista. Toque para ver quanto ficou.";
+
   await notificar(
     exec,
     mudaram.map((p) => ({
       playerId: p.id,
       type: motivo.tipo === "rodada" ? ("skill_changed" as const) : ("skill_recalculated" as const),
-      title: p.depois > p.antes ? "Sua nota subiu!" : "Sua nota mudou",
-      body:
-        motivo.tipo === "rodada"
-          ? `De ${formatSkill(p.antes)} para ${formatSkill(p.depois)} depois do último fut.`
-          : `De ${formatSkill(p.antes)} para ${formatSkill(p.depois)} — uma avaliação foi revista.`,
+      // `mudaram` só traz quem mudou de fato (diffNotas), então não subir é
+      // sempre baixar — não existe terceiro caso a cobrir.
+      title: p.depois > p.antes ? "Sua nota subiu!" : "Sua nota baixou",
+      body: corpo,
       href: "/perfil",
       dedupeKey: motivo.dedupeKey,
     })),
