@@ -5,6 +5,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { companheirosPorJogador, gruposElegiveis } from "../lib/lineup";
 import { hashPassword } from "../lib/password";
+// Relativo e não "@/": o seed roda sob tsx, fora do Next. `regras.ts` é puro
+// justamente para servir também a estes scripts.
+import { PRAZO_AVALIACAO_HORAS } from "../lib/regras";
 import { siteUrl } from "../lib/site-url";
 import * as schema from "./schema";
 
@@ -202,7 +205,7 @@ async function seedRatingRound(matchDayId: number) {
       playerId: c.playerId,
       type: "rating_round_open" as const,
       title: "Avalie seus companheiros",
-      body: "Você tem 36 horas para avaliar quem jogou com você.",
+      body: `Você tem ${PRAZO_AVALIACAO_HORAS} horas para avaliar quem jogou com você.`,
       href: `/avaliar/${round.id}`,
       dedupeKey: `rodada:${round.id}:aberta`,
     })),

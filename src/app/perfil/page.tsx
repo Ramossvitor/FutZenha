@@ -222,6 +222,12 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
               </HairlineRowLink>
             </li>
           )}
+          <li>
+            <HairlineRowLink href="/guia">
+              <span className="flex-1">Guia do FutZenha</span>
+              <IconeSeta className="size-4 text-fg-dim" />
+            </HairlineRowLink>
+          </li>
           <HairlineRow as="li">
             <form action={logout} className="flex-1">
               <SubmitButton

@@ -8,6 +8,7 @@ import { Prazo } from "@/components/ui/prazo";
 import { getVotacoesAbertasDoJogador } from "@/lib/deletion";
 import { formatDate } from "@/lib/format";
 import { getRodadasAbertasDoJogador } from "@/lib/ratings";
+import { PRAZO_AVALIACAO_HORAS } from "@/lib/regras";
 import { requirePlayer } from "@/lib/require-player";
 
 export const metadata: Metadata = { title: "Avaliações abertas" };
@@ -56,7 +57,7 @@ export default async function AvaliarPage() {
           vazio={
             <EmptyState
               titulo="Nenhuma avaliação aberta"
-              descricao="Depois que um fut que você jogou for encerrado, ele aparece aqui com prazo de 36 horas."
+              descricao={`Depois que um fut que você jogou for encerrado, ele aparece aqui com prazo de ${PRAZO_AVALIACAO_HORAS} horas.`}
             />
           }
         >

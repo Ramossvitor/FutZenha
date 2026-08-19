@@ -42,6 +42,8 @@ import {
   subirDaEspera,
   travarFut,
 } from "@/lib/presenca";
+import { FIM_DA_JANELA_CORRECAO } from "@/lib/janela-correcao";
+import { TIMES_MAX, TIMES_MIN } from "@/lib/regras";
 import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
@@ -134,12 +136,13 @@ function assertEscalacaoEditavel(matchDay: MatchDay) {
   }
 }
 
-// Placar e gols não mexem em quem avalia quem, então ganham uma janela de 24h
-// depois do encerramento. `finished_at` nulo num fut encerrado conta como
-// fora da janela: sem marco temporal não há o que liberar.
+// Placar e gols não mexem em quem avalia quem, então ganham uma janela depois
+// do encerramento (JANELA_CORRECAO_HORAS, via FIM_DA_JANELA_CORRECAO).
+// `finished_at` nulo num fut encerrado conta como fora da janela: sem marco
+// temporal não há o que liberar.
 const JANELA_CORRECAO = sql`
   ${matchDays.status} <> 'finished'
-  or (${matchDays.finishedAt} is not null and ${matchDays.finishedAt} + interval '24 hours' > now())
+  or (${matchDays.finishedAt} is not null and ${FIM_DA_JANELA_CORRECAO} > now())
 `;
 
 async function assertPlacarEditavel(matchDayId: number) {
@@ -159,7 +162,7 @@ async function assertPlacarEditavel(matchDayId: number) {
 export async function drawTeamsAction(matchDayId: number, formData: FormData) {
   const { session, matchDay } = await requireFutAdmin(matchDayId);
   const teamCount = Number(formData.get("teamCount"));
-  if (!Number.isInteger(teamCount) || teamCount < 2 || teamCount > 6) {
+  if (!Number.isInteger(teamCount) || teamCount < TIMES_MIN || teamCount > TIMES_MAX) {
     redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
   }
 

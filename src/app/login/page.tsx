@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Banner } from "@/components/ui/banner";
 import { CartaoDeEntrada, Divisor } from "@/components/ui/cartao-de-entrada";
@@ -24,7 +25,14 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
     <CartaoDeEntrada
       titulo="Entrar"
       descricao="Não tem cadastro aberto: quem entra aqui foi convidado por quem organiza o fut."
-      rodape="Perdeu o acesso? Quem administra gera um link novo."
+      rodape={
+        <>
+          Perdeu o acesso? Quem administra gera um link novo.{" "}
+          <Link href="/guia" className="text-accent-ink hover:underline">
+            Como o FutZenha funciona
+          </Link>
+        </>
+      }
     >
       <div className="flex flex-col gap-4">
         {erroMensagem && <Banner tom="erro">{erroMensagem}</Banner>}

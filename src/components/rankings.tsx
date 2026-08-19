@@ -9,6 +9,7 @@ import { Nota, NotaVariacao } from "@/components/ui/nota";
 import { Podium } from "@/components/ui/podium";
 import { cx } from "@/lib/cx";
 import { posicoes } from "@/lib/posicao";
+import { MIN_JOGOS_APROVEITAMENTO } from "@/lib/regras";
 import {
   getAttendanceStats,
   getAvailableYears,
@@ -17,9 +18,6 @@ import {
   getSkillRanking,
   getTopScorers,
 } from "@/lib/stats";
-
-/** Mínimo de jogos para entrar no ranking de aproveitamento. */
-const MIN_JOGOS = 3;
 
 export const ABAS = [
   { chave: "notas", label: "Notas" },
@@ -128,7 +126,7 @@ export async function Rankings({
   const [notas, artilheiros, records, presenca, mvps, anos] = await Promise.all([
     aba === "notas" ? getSkillRanking({ groupId }) : Promise.resolve([]),
     aba === "artilharia" ? getTopScorers(escopo) : Promise.resolve([]),
-    aba === "aproveitamento" ? getPlayerRecords(escopo, MIN_JOGOS) : Promise.resolve([]),
+    aba === "aproveitamento" ? getPlayerRecords(escopo, MIN_JOGOS_APROVEITAMENTO) : Promise.resolve([]),
     aba === "presenca"
       ? getAttendanceStats(escopo)
       : Promise.resolve({ totalDays: 0, perPlayer: [] }),
@@ -173,7 +171,10 @@ export async function Rankings({
         <>
           <Banner tom="info">
             A nota é estado atual, não temporada — por isso não tem filtro de ano. Todo mundo começa
-            em 5,0, e a variação mostrada é o do último fut apurado, somando todos os grupos.
+            em 5,0, e a variação mostrada é o do último fut apurado, somando todos os grupos.{" "}
+            <Link href="/guia#a-nota" className="text-accent-ink hover:underline">
+              Como a nota é calculada
+            </Link>
           </Banner>
           <HairlineList
             as="ol"
@@ -242,12 +243,15 @@ export async function Rankings({
       {aba === "aproveitamento" && (
         <>
           <Banner tom="info">
-            Vitória vale 100%, empate 50%. Mínimo de {MIN_JOGOS} jogos para entrar.
+            Vitória vale 100%, empate 50%. Mínimo de {MIN_JOGOS_APROVEITAMENTO} jogos para entrar.{" "}
+            <Link href="/guia#os-rankings" className="text-accent-ink hover:underline">
+              Como os rankings funcionam
+            </Link>
           </Banner>
           {records.length === 0 ? (
             <EmptyState
               titulo="Sem jogos suficientes"
-              descricao={`Ninguém alcançou ${MIN_JOGOS} jogos${ano ? ` em ${ano}` : ""} ainda.`}
+              descricao={`Ninguém alcançou ${MIN_JOGOS_APROVEITAMENTO} jogos${ano ? ` em ${ano}` : ""} ainda.`}
             />
           ) : (
             <Card className="overflow-x-auto">
@@ -355,7 +359,10 @@ export async function Rankings({
         <>
           <Banner tom="info">
             Um voto por pessoa a cada fut, na avaliação pós-jogo. Empate de votos é decidido pela
-            média de estrelas da própria rodada — persistindo, o título é dividido.
+            média de estrelas da própria rodada — persistindo, o título é dividido.{" "}
+            <Link href="/guia#o-mvp" className="text-accent-ink hover:underline">
+              Como o MVP é apurado
+            </Link>
           </Banner>
           {mvps.length >= 3 && (
             <Podium

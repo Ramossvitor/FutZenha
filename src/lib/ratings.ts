@@ -17,16 +17,11 @@ import {
 import { ordenarAnonimo } from "./anonimato";
 import { companheirosPorJogador, gruposElegiveis, type EscalacaoRow } from "./lineup";
 import { apurarMvp, type CandidatoApurado } from "./mvp";
-
-// Prazos do ciclo de avaliação, em horas. São gravados como timestamp absoluto na
-// criação de cada rodada/denúncia — mudar aqui não mexe no que já está em curso.
-export const PRAZO_AVALIACAO_HORAS = 36; // encerrar o fut → avaliar
-export const PRAZO_DENUNCIA_HORAS = 24; // apurar a rodada → reportar nota injusta
-export const PRAZO_ADMIN_HORAS = 48; // reportar → admin responder (silêncio = aceita)
-
-// Denúncia só faz sentido a partir daqui: com uma única avaliação recebida,
-// reportar seria apontar o dedo para uma pessoa óbvia.
-export const MIN_AVALIACOES_PARA_DENUNCIAR = 2;
+// Os prazos moraram aqui até ganharem um módulo puro (src/lib/regras.ts), que a
+// página /guia consegue importar sem arrastar o banco. Sem re-export de volta
+// para cá: quem quer a constante importa de regras.ts direto, e não através
+// deste módulo `server-only`. Aqui fica só o que este arquivo usa.
+import { MIN_AVALIACOES_PARA_DENUNCIAR } from "./regras";
 
 /** `now() + N horas` calculado pelo Postgres, não pelo relógio do app. */
 export function prazoEmHoras(horas: number) {

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
@@ -105,7 +106,10 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
               <p className="mt-0.5 text-[12.5px] leading-[1.5] text-fg-2">
                 A pessoa vê a estrela que recebeu, nunca quem deu. Nem quem organiza, nem quem
                 administra. A apuração sai antes do prazo se todo mundo avaliar — ainda faltam{" "}
-                {faltam.length} de {avaliadores.length}.
+                {faltam.length} de {avaliadores.length}.{" "}
+                <Link href="/guia#a-avaliacao" className="text-accent-ink hover:underline">
+                  Como a avaliação funciona
+                </Link>
               </p>
             </div>
           </div>

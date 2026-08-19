@@ -15,6 +15,15 @@
 // (o callback do Google, não uma action), têm lógica própria de e-mail
 // mascarado, e o mesmo slug quer dizer coisas diferentes nos dois lugares —
 // "convite-invalido" aqui é convite de grupo, lá é convite de conta.
+//
+// Os prazos vêm interpolados das constantes, e não escritos à mão: estas
+// mensagens são a outra metade dos banners de src/app/fut/[id]/gerenciar e do
+// que a página /guia promete ao jogador. Um número cravado aqui mentiria no dia
+// em que o prazo mudasse — e mentiria justamente na tela de quem acabou de
+// esbarrar no prazo.
+
+import { JANELA_CORRECAO_HORAS } from "./regras";
+import { PRAZO_ABERTURA_EXCLUSAO_HORAS } from "./votacao";
 
 export const MENSAGENS: Record<string, string> = {
   // ----- erros -----
@@ -42,13 +51,11 @@ export const MENSAGENS: Record<string, string> = {
   "lista-aberta": "Isso só vale depois de fechar a lista — sorteie os times primeiro.",
   "escalacao-travada":
     "O fut já foi encerrado e a escalação não muda mais. Para corrigir, é preciso excluir o fut — o que exige votação dos jogadores.",
-  "janela-encerrada":
-    "As 24h para corrigir placar e gols já passaram. Para alterar, é preciso excluir o fut — o que exige votação dos jogadores.",
+  "janela-encerrada": `As ${JANELA_CORRECAO_HORAS}h para corrigir placar e gols já passaram. Para alterar, é preciso excluir o fut — o que exige votação dos jogadores.`,
   "precisa-votacao":
     "Fut encerrado não se apaga direto — abra a votação de exclusão para o grupo decidir.",
   "motivo-curto": "Escreva o motivo com pelo menos 10 caracteres.",
-  "exclusao-prazo-encerrado":
-    "O prazo para pedir a exclusão deste fut já passou — ele vale até 24 horas depois do fim do prazo de contestação das notas.",
+  "exclusao-prazo-encerrado": `O prazo para pedir a exclusão deste fut já passou — ele vale até ${PRAZO_ABERTURA_EXCLUSAO_HORAS} horas depois do fim do prazo de contestação das notas.`,
 
   // súmula ao vivo
   "ja-tem-jogo-aberto":
