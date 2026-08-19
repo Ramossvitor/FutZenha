@@ -54,6 +54,14 @@ export default async function NovoFutPage({ searchParams }: PageProps<"/futs/nov
               <Field htmlFor="startTime" label="Horário" className="min-w-[8rem] flex-1">
                 <Input id="startTime" name="startTime" type="time" />
               </Field>
+              <Field
+                htmlFor="endTime"
+                label="Término"
+                ajuda="Vazio = 1h."
+                className="min-w-[8rem] flex-1"
+              >
+                <Input id="endTime" name="endTime" type="time" />
+              </Field>
             </div>
 
             <div className="flex flex-wrap gap-4">

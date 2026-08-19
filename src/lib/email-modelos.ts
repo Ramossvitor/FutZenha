@@ -15,7 +15,7 @@
 
 import { urlGoogleAgenda, type FutParaAgenda } from "./agenda";
 import type { EmailPronto } from "./email-envio";
-import { formatDate, formatTime } from "./format";
+import { formatDate, formatHorarioPorExtenso } from "./format";
 import { siteUrl } from "./site-url";
 
 /**
@@ -214,8 +214,8 @@ export function emailDeEventoDeAgenda(dados: {
   fut: FutParaAgenda;
 }): EmailPronto {
   const urlDoFut = `${siteUrl()}/fut/${dados.fut.id}`;
-  const hora = formatTime(dados.fut.startTime);
-  const quando = `${formatDate(dados.fut.date)}${hora ? ` às ${hora}` : ""}`;
+  const hora = formatHorarioPorExtenso(dados.fut.startTime, dados.fut.endTime);
+  const quando = `${formatDate(dados.fut.date)}${hora ? ` ${hora}` : ""}`;
   const nome = escaparHtml(dados.nome);
   const local = escaparHtml(dados.fut.location);
   const quandoHtml = escaparHtml(quando);

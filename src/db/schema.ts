@@ -250,6 +250,11 @@ export const matchDays = pgTable("match_days", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   startTime: time("start_time"),
+  // Quando o fut acaba. Nulo = quem marcou não disse, e o evento de agenda cai
+  // no DURACAO_PADRAO_MIN de src/lib/agenda.ts. Fim <= início é virada de
+  // meia-noite (22:00 às 00:30), não erro — quem separa um do outro é o
+  // match_days_duracao_check aqui embaixo.
+  endTime: time("end_time"),
   location: text("location").notNull(),
   status: matchDayStatusEnum("status").notNull().default("scheduled"),
   notes: text("notes"),
@@ -280,12 +285,29 @@ export const matchDays = pgTable("match_days", {
   // Quando o admin confirmou a escalação e encerrou. A partir daqui a
   // escalação é imutável, e placar e gols têm 24h de janela para correção.
   finishedAt: timestamp("finished_at"),
+  // Freio do aviso de agenda: quantas atualizações em massa este fut já disparou
+  // na janela que começou em `calendar_pushes_since`. Mudar data/hora/local
+  // reescreve o evento na agenda de TODO mundo que confirmou, e nada impedia
+  // quem administra de salvar o formulário cinquenta vezes seguidas. Ver
+  // src/lib/agenda-freio.ts.
+  calendarPushes: integer("calendar_pushes").notNull().default(0),
+  calendarPushesSince: timestamp("calendar_pushes_since"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 },
 (t) => [
   // Todo recorte de grupo (futs do grupo e as quatro consultas de
   // src/lib/stats.ts) entra por group_id e ordena por data.
   index("match_days_group_idx").on(t.groupId, t.date),
+  // A trava de verdade da duração — o zod de match-day-form.ts dá a mensagem,
+  // este check dá a garantia. Quem administra o fut consegue reescrever o evento
+  // na agenda de quem confirmou; sem teto, "das 8h às 23h de sexta a domingo"
+  // seria um bloqueio válido. Fim <= início soma 24h (virada de meia-noite), e
+  // é esse ramo que torna multi-dia inexprimível: com teto de 6h não existe
+  // combinação de start/end que passe de um dia.
+  check(
+    "match_days_duracao_check",
+    sql`${t.endTime} is null or (${t.startTime} is not null and (case when ${t.endTime} > ${t.startTime} then ${t.endTime} - ${t.startTime} else ${t.endTime} - ${t.startTime} + interval '24 hours' end) between interval '30 minutes' and interval '6 hours')`,
+  ),
 ]);
 
 export const attendances = pgTable(

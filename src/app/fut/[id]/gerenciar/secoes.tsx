@@ -64,6 +64,14 @@ export function SecaoDados({ fut }: { fut: PainelDoFut }) {
                 defaultValue={formatTime(matchDay.startTime) ?? ""}
               />
             </Field>
+            <Field htmlFor="g-end" label="Término" className="sm:w-32" ajuda="Vazio = 1h.">
+              <Input
+                id="g-end"
+                name="endTime"
+                type="time"
+                defaultValue={formatTime(matchDay.endTime) ?? ""}
+              />
+            </Field>
             <Field htmlFor="g-local" label="Local" obrigatorio className="sm:min-w-48 sm:flex-1">
               <Input id="g-local" name="location" required defaultValue={matchDay.location} />
             </Field>

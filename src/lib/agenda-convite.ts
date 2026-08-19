@@ -103,6 +103,7 @@ async function sincronizar(
       id: matchDays.id,
       date: matchDays.date,
       startTime: matchDays.startTime,
+      endTime: matchDays.endTime,
       location: matchDays.location,
       notes: matchDays.notes,
       status: matchDays.status,

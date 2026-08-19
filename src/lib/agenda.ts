@@ -17,12 +17,31 @@ export type FutParaAgenda = {
   date: string;
   /** "HH:MM:SS" (coluna `time`) ou nulo — sem horário o evento é de dia inteiro. */
   startTime: string | null;
+  /** "HH:MM:SS" ou nulo — sem fim declarado o evento usa DURACAO_PADRAO_MIN. */
+  endTime: string | null;
   location: string;
   notes: string | null;
 };
 
-/** O schema não tem duração; o evento assume o tamanho típico de um fut. */
-export const DURACAO_PADRAO_MIN = 120;
+/** Fut sem horário de término declarado: o tamanho típico de um fut. */
+export const DURACAO_PADRAO_MIN = 60;
+
+// Os limites do que alguém pode declarar como fut. Existem porque o evento vai
+// para a agenda de terceiros: quem administra reescreve o bloco de todo mundo
+// que confirmou, e sem teto daria para tomar o dia inteiro de gente que só
+// disse "vou jogar bola". O piso corta o fim digitado errado (fim = início).
+export const DURACAO_MIN_MIN = 30;
+export const DURACAO_MAX_MIN = 360;
+
+/**
+ * Minutos de parede entre início e fim. Fim <= início é virada de meia-noite
+ * (22:00 às 00:30 = 150min), não erro — é o mesmo ramo do
+ * match_days_duracao_check em src/db/schema.ts, e os dois têm que concordar.
+ */
+export function duracaoDoFut(startTime: string, endTime: string): number {
+  const minutos = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  return (minutos(endTime) - minutos(startTime) + 24 * 60) % (24 * 60);
+}
 
 const TZID = "America/Sao_Paulo";
 
@@ -125,6 +144,25 @@ function dobrarLinha(linha: string): string[] {
   return saida;
 }
 
+/**
+ * Onde o evento termina, como parede. Ponto único de decisão dos três canais
+ * (.ics, Google, Outlook) — antes cada um somava DURACAO_PADRAO_MIN por conta
+ * própria, e um fim declarado teria que ser lembrado em três lugares.
+ *
+ * Só faz sentido com `startTime`; sem ele o evento é de dia inteiro e nem passa
+ * por aqui.
+ */
+function fimDoEvento(fut: FutParaAgenda & { startTime: string }): {
+  date: string;
+  time: string;
+} {
+  const minutos =
+    fut.endTime === null
+      ? DURACAO_PADRAO_MIN
+      : duracaoDoFut(fut.startTime, fut.endTime);
+  return somarMinutos(fut.date, fut.startTime, minutos);
+}
+
 function tituloDoEvento(fut: FutParaAgenda): string {
   return `⚽ Fut · ${fut.location}`;
 }
@@ -143,7 +181,7 @@ function linhasDeQuando(fut: FutParaAgenda): string[] {
       `DTEND;VALUE=DATE:${dataCompacta(diaSeguinte(fut.date))}`,
     ];
   }
-  const fim = somarMinutos(fut.date, fut.startTime, DURACAO_PADRAO_MIN);
+  const fim = fimDoEvento({ ...fut, startTime: fut.startTime });
   return [
     `DTSTART;TZID=${TZID}:${dataCompacta(fut.date)}T${horaCompacta(fut.startTime)}`,
     `DTEND;TZID=${TZID}:${dataCompacta(fim.date)}T${horaCompacta(fim.time)}`,
@@ -247,7 +285,7 @@ export function urlGoogleAgenda(fut: FutParaAgenda, urlBase: string): string {
   if (fut.startTime === null) {
     dates = `${dataCompacta(fut.date)}/${dataCompacta(diaSeguinte(fut.date))}`;
   } else {
-    const fim = somarMinutos(fut.date, fut.startTime, DURACAO_PADRAO_MIN);
+    const fim = fimDoEvento({ ...fut, startTime: fut.startTime });
     dates = `${dataCompacta(fut.date)}T${horaCompacta(fut.startTime)}/${dataCompacta(fim.date)}T${horaCompacta(fim.time)}`;
   }
   const params = new URLSearchParams({
@@ -281,7 +319,7 @@ export function urlOutlookAgenda(fut: FutParaAgenda, urlBase: string): string {
     // caixa de quem clica — quem estivesse com o calendário em outro fuso
     // ganharia o fut na hora errada, que é o mesmo risco que o `ctz` cobre lá.
     const inicio = paraUtc(fut.date, fut.startTime);
-    const fimParede = somarMinutos(fut.date, fut.startTime, DURACAO_PADRAO_MIN);
+    const fimParede = fimDoEvento({ ...fut, startTime: fut.startTime });
     const fim = paraUtc(fimParede.date, fimParede.time);
     params.set("startdt", `${inicio.date}T${inicio.time}Z`);
     params.set("enddt", `${fim.date}T${fim.time}Z`);

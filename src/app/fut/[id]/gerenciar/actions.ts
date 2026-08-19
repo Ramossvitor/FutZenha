@@ -25,6 +25,7 @@ import {
   agendarConvitesDeAgenda,
   lerDestinosDeCancelamento,
 } from "@/lib/agenda-convite";
+import { consumirPushDeAgenda } from "@/lib/agenda-freio";
 import { criarJogadorComConvite, parseEmailDeConvite } from "@/lib/convites";
 import { enviarConvitePorEmail } from "@/lib/email-convite";
 import { isUniqueViolation } from "@/lib/db-errors";
@@ -63,11 +64,18 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
   // O form manda "HH:MM" e o banco guarda "HH:MM:SS" — compara nos 5 primeiros.
   const horaAntiga = matchDay.startTime?.slice(0, 5) ?? null;
   const horaNova = parsed.data.startTime?.slice(0, 5) ?? null;
+  const fimAntigo = matchDay.endTime?.slice(0, 5) ?? null;
+  const fimNovo = parsed.data.endTime?.slice(0, 5) ?? null;
+  // O término entra aqui junto com data/hora/local: sem ele, definir o fim de um
+  // fut já marcado gravaria no banco e deixaria todo mundo com o bloco velho na
+  // agenda, sem nunca ser avisado. É esta linha que faz a correção retroativa.
   const eventoMudou =
     parsed.data.date !== matchDay.date ||
     horaNova !== horaAntiga ||
+    fimNovo !== fimAntigo ||
     parsed.data.location !== matchDay.location;
 
+  let podeAvisar = true;
   const promovidos = await db.transaction(async (tx) => {
     await tx.update(matchDays).set(parsed.data).where(eq(matchDays.id, matchDayId));
     // Subir (ou limpar) o limite abre vagas sem ninguém sair. A espera sobe
@@ -79,12 +87,15 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
       sobem.map((p) => avisoDePromocao(matchDay, p)),
     );
     if (eventoMudou) {
-      // Data/hora/local novos versionam o evento de todo mundo: a atualização
-      // sai com SEQUENCE maior e o evento já na agenda se corrige sozinho.
+      // Data/hora/término/local novos versionam o evento de todo mundo: a
+      // atualização sai com SEQUENCE maior e o evento já na agenda se corrige
+      // sozinho. O bump acontece mesmo com o freio acionado — a versão
+      // acompanha a mudança real, e é o e-mail que fica para trás, não o dado.
       await tx
         .update(attendances)
         .set({ calendarSequence: sql`${attendances.calendarSequence} + 1` })
         .where(eq(attendances.matchDayId, matchDayId));
+      podeAvisar = await consumirPushDeAgenda(tx, matchDayId);
     }
     return sobem;
   });
@@ -92,11 +103,16 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
   // Um e-mail por pessoa, e o certo para cada uma: quem já estava na lista
   // recebe "o fut mudou"; quem subiu da espera neste mesmo salvamento nunca teve
   // o evento, então recebe o convite — daí o `exceto`.
-  if (eventoMudou) agendarAtualizacoesDeAgenda(matchDayId, promovidos);
+  if (eventoMudou && podeAvisar) agendarAtualizacoesDeAgenda(matchDayId, promovidos);
   if (promovidos.length > 0) agendarConvitesDeAgenda(matchDayId, promovidos);
   revalidatePath("/");
   revalidatePath(`/fut/${matchDayId}/gerenciar`);
   revalidatePath(`/fut/${matchDayId}`);
+  // Salvou, mas ninguém foi avisado: quem administra precisa saber que a agenda
+  // de quem confirmou continua com o dado velho até a cota virar.
+  if (eventoMudou && !podeAvisar) {
+    redirect(`/fut/${matchDayId}/gerenciar?ok=salvo-sem-avisar`);
+  }
 }
 
 /**

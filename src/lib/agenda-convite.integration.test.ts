@@ -54,6 +54,7 @@ function formDoFut(campos: Partial<Record<string, string>> = {}): FormData {
   const form = new FormData();
   form.set("date", campos.date ?? FUT_COM_HORA.date);
   form.set("startTime", campos.startTime ?? "20:00");
+  form.set("endTime", campos.endTime ?? "");
   form.set("location", campos.location ?? "Quadra de Teste");
   form.set("notes", campos.notes ?? "");
   form.set("maxPlayers", campos.maxPlayers ?? "");
@@ -247,6 +248,31 @@ describe("mudanças no fut", () => {
     expect(payloadDoEnvio(fetchMock).subject).toContain("Fut atualizado:");
     const ics = icsDoEnvio(fetchMock);
     expect(ics).toContain("DTSTART;TZID=America/Sao_Paulo:20260822T210000");
+    expect(ics).toContain("SEQUENCE:1");
+  });
+
+  // O caminho da correção retroativa: todo fut marcado antes deste campo está na
+  // agenda das pessoas com o bloco da duração padrão. Quem administra abre,
+  // declara o fim de verdade e salva — e é este e-mail que reescreve o evento
+  // que já está lá. Sem o término dentro do `eventoMudou`, o banco guardaria a
+  // correção e a agenda de todo mundo ficaria como estava, sem aviso nenhum.
+  it("declarar o término corrige o evento de quem já estava na lista", async () => {
+    const { jogador: admin, conta } = await criarJogadorComConta({}, { email: EMAIL });
+    await logarComo(conta);
+    const fut = await criarFut({ ...FUT_COM_HORA, createdByPlayerId: admin.id });
+    await confirmarPresenca(fut, admin);
+    const fetchMock = stubResend();
+
+    await updateMatchDay(fut.id, formDoFut({ endTime: "22:00" }));
+    await flushAfter();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(payloadDoEnvio(fetchMock).subject).toContain("Fut atualizado:");
+    const ics = icsDoEnvio(fetchMock);
+    expect(ics).toContain("DTSTART;TZID=America/Sao_Paulo:20260822T200000");
+    expect(ics).toContain("DTEND;TZID=America/Sao_Paulo:20260822T220000");
+    // SEQUENCE maior é o que faz o cliente aceitar a correção por cima do
+    // evento que já está na agenda, em vez de criar um segundo.
     expect(ics).toContain("SEQUENCE:1");
   });
 

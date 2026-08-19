@@ -169,6 +169,13 @@
       "when": 1787149554784,
       "tag": "0023_fut_na_agenda",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787173951396,
+      "tag": "0024_horario_de_fim_do_fut",
+      "breakpoints": true
     }
   ]
 }

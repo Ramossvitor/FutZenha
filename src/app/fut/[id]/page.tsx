@@ -28,7 +28,7 @@ import {
   teams,
 } from "@/db/schema";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
-import { formatDate, formatSkill, formatTime } from "@/lib/format";
+import { formatDate, formatHorario, formatSkill } from "@/lib/format";
 import { getMvpDoFut } from "@/lib/ratings";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { repartirLista, vagasLivres } from "@/lib/lista-presenca";
@@ -293,7 +293,9 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
         }
         descricao={
           <>
-            {formatTime(matchDay.startTime) && <>{formatTime(matchDay.startTime)} · </>}
+            {formatHorario(matchDay.startTime, matchDay.endTime) && (
+              <>{formatHorario(matchDay.startTime, matchDay.endTime)} · </>
+            )}
             {matchDay.location}
             {matchDay.notes && (
               <span className="mt-1 block text-fg-4">{matchDay.notes}</span>

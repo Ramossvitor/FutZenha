@@ -10,6 +10,7 @@ function form(campos: Record<string, string>): FormData {
 const valida = {
   date: "2026-08-12",
   startTime: "20:00",
+  endTime: "22:00",
   location: "Quadra do Zé",
   notes: "Levar colete",
   maxPlayers: "14",
@@ -59,11 +60,43 @@ describe("parseMatchDayForm", () => {
   // null, e não "": é o que deixa as colunas opcionais de verdade no banco —
   // string vazia num `time` do Postgres seria erro de insert.
   it("horário e observações vazios viram null, não string vazia", () => {
-    const r = parseMatchDayForm(form({ ...valida, startTime: "", notes: "" }));
+    const r = parseMatchDayForm(form({ ...valida, startTime: "", endTime: "", notes: "" }));
     expect(r.success).toBe(true);
     if (r.success) {
       expect(r.data.startTime).toBeNull();
+      expect(r.data.endTime).toBeNull();
       expect(r.data.notes).toBeNull();
     }
+  });
+
+  // O término vai para a agenda de todo mundo que confirmou, e quem administra o
+  // fut reescreve o bloco dessa gente. O teto é o que impede "das 8h de sexta às
+  // 22h de domingo" — o mesmo limite que o match_days_duracao_check aplica no
+  // banco, aqui só com mensagem.
+  it("aceita duração até 6h, inclusive virando a meia-noite", () => {
+    for (const [startTime, endTime] of [
+      ["20:00", "20:30"], // piso: 30min
+      ["20:00", "02:00"], // teto: 6h, virando o dia
+      ["22:00", "00:30"], // fut de sexta que acaba no sábado
+    ]) {
+      const r = parseMatchDayForm(form({ ...valida, startTime, endTime }));
+      expect(r.success).toBe(true);
+    }
+  });
+
+  it("recusa duração absurda, curta demais ou igual ao início", () => {
+    for (const [startTime, endTime] of [
+      ["08:00", "23:00"], // 15h: tomaria o dia de quem confirmou
+      ["20:00", "20:10"], // 10min: fim digitado errado
+      ["20:00", "20:00"], // igual ao início não é fut de 24h
+      ["20:00", "19:59"], // 23h59 pela virada — o caso que o teto tem que pegar
+    ]) {
+      expect(parseMatchDayForm(form({ ...valida, startTime, endTime })).success).toBe(false);
+    }
+  });
+
+  it("recusa término sem horário de início", () => {
+    const r = parseMatchDayForm(form({ ...valida, startTime: "", endTime: "22:00" }));
+    expect(r.success).toBe(false);
   });
 });

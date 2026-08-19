@@ -24,6 +24,29 @@ test("cria fut com limite de vagas e a vê na listagem e no detalhe", async ({ p
   await expect(page.getByText(local)).toBeVisible();
 });
 
+// O horário de término é o que vira o bloco na agenda de quem confirma — e o
+// campo é opcional, então o smoke cobre os dois caminhos: o preenchido, que tem
+// de aparecer como intervalo na página pública, e o recusado pelo teto de 6h,
+// que não pode chegar ao banco.
+test("horário de término aparece como intervalo e respeita o teto", async ({ page }) => {
+  const local = `Quadra E2E com término ${Date.now()}`;
+  const urlPublica = await criarFut(page, { local, inicio: "20:00", termino: "22:00" });
+
+  await expect(page.getByLabel("Término")).toHaveValue("22:00");
+  await page.goto(urlPublica);
+  await expect(page.getByText("20:00 às 22:00")).toBeVisible();
+
+  // Das 8h às 23h tomaria o dia inteiro de quem confirmou: o formulário recusa
+  // antes de gravar, e o fut fica com o horário anterior.
+  await page.goto(`${urlPublica}/gerenciar`);
+  await page.getByLabel("Horário").fill("08:00");
+  await page.getByLabel("Término").fill("23:00");
+  await page.getByRole("button", { name: "Salvar" }).click();
+  await expect(page.getByText("Dados inválidos")).toBeVisible();
+  await page.goto(urlPublica);
+  await expect(page.getByText("20:00 às 22:00")).toBeVisible();
+});
+
 test("cria fut sem limite (campo de vagas vazio)", async ({ page }) => {
   const local = `Quadra E2E sem limite ${Date.now()}`;
   const urlPublica = await criarFut(page, { local });

@@ -143,6 +143,7 @@ describe("emailDeEventoDeAgenda", () => {
     id: 7,
     date: "2026-08-22",
     startTime: "20:00:00",
+    endTime: "22:00:00",
     location: "Arena D'Oeste & Cia",
     notes: null,
   };
@@ -169,10 +170,22 @@ describe("emailDeEventoDeAgenda", () => {
     expect(evento("convite").texto).toContain("Zé <script>alert(1)</script>");
   });
 
-  it("html e texto levam a data e a hora do fut", () => {
+  it("html e texto levam a data e o intervalo do fut", () => {
     const email = evento("convite");
-    expect(email.html).toContain("às 20:00");
+    expect(email.html).toContain("das 20:00 às 22:00");
+    expect(email.texto).toContain("das 20:00 às 22:00");
+  });
+
+  // Fut anterior ao campo de término: o e-mail fala da hora que existe, sem
+  // inventar um fim nem repetir a preposição ("às 20:00 às 21:00").
+  it("sem término declarado, fala só do começo", () => {
+    const email = emailDeEventoDeAgenda({
+      ...dados,
+      tipo: "convite",
+      fut: { ...FUT, endTime: null },
+    });
     expect(email.texto).toContain("às 20:00");
+    expect(email.texto).not.toContain("das 20:00");
   });
 
   // Cancelamento não oferece caminho de volta: o evento está saindo da agenda, e

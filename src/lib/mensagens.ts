@@ -120,6 +120,11 @@ export const MENSAGENS: Record<string, string> = {
     "Membro removido. O link do grupo foi revogado junto — gere outro para continuar convidando.",
   "link-gerado": "Link novo gerado — o anterior deixou de valer.",
   "link-revogado": "Link revogado.",
+  // Salvou, mas o aviso de agenda ficou retido pelo freio de
+  // src/lib/agenda-freio.ts. Dizer isso é o ponto: quem administra precisa saber
+  // que a agenda de quem confirmou está com o dado anterior.
+  "salvo-sem-avisar":
+    "Salvo. O aviso na agenda de quem confirmou não saiu: o limite de atualizações de hoje foi atingido — a agenda deles fica com o dado anterior até amanhã.",
   excluido: "Fut excluído. As notas de todo mundo foram recalculadas do zero.",
   "excluido-sem-votacao":
     "Fut apagado direto: ninguém com conta jogou, então não havia quem votasse. As notas foram recalculadas.",

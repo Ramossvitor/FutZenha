@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DURACAO_PADRAO_MIN,
+  duracaoDoFut,
   icsDeConvite,
   icsParaBaixar,
   uidDoConvite,
@@ -15,6 +16,7 @@ const FUT: FutParaAgenda = {
   id: 7,
   date: "2026-08-22",
   startTime: "20:00:00",
+  endTime: "22:00:00",
   location: "Society do Zé",
   notes: null,
 };
@@ -69,10 +71,24 @@ describe("icsDeConvite", () => {
 
   // Fut de sexta à noite acaba no sábado — o DTEND tem que virar o dia junto.
   it("atravessa a meia-noite sem perder o dia", () => {
-    const ics = convite({ fut: { startTime: "23:30:00" } });
+    const ics = convite({ fut: { startTime: "23:30:00", endTime: "01:30:00" } });
 
     expect(ics).toContain("DTSTART;TZID=America/Sao_Paulo:20260822T233000");
     expect(ics).toContain("DTEND;TZID=America/Sao_Paulo:20260823T013000");
+  });
+
+  it("respeita o término declarado, não a duração padrão", () => {
+    const ics = convite({ fut: { endTime: "21:30:00" } });
+
+    expect(ics).toContain("DTEND;TZID=America/Sao_Paulo:20260822T213000");
+  });
+
+  // Todo fut anterior a este campo tem end_time nulo, e é este ramo que decide o
+  // bloco que essa gente já tem na agenda.
+  it("sem término declarado o evento dura DURACAO_PADRAO_MIN", () => {
+    const ics = convite({ fut: { endTime: null } });
+
+    expect(ics).toContain("DTEND;TZID=America/Sao_Paulo:20260822T210000");
   });
 
   it("sem horário vira evento de dia inteiro", () => {
@@ -162,6 +178,15 @@ describe("urlGoogleAgenda", () => {
 
     expect(url).toContain("dates=20260822%2F20260823");
   });
+
+  it("segue o término declarado e, sem ele, a duração padrão", () => {
+    expect(urlGoogleAgenda({ ...FUT, endTime: "23:00:00" }, URL_BASE)).toContain(
+      "dates=20260822T200000%2F20260822T230000",
+    );
+    expect(urlGoogleAgenda({ ...FUT, endTime: null }, URL_BASE)).toContain(
+      "dates=20260822T200000%2F20260822T210000",
+    );
+  });
 });
 
 describe("urlOutlookAgenda", () => {
@@ -183,6 +208,29 @@ describe("urlOutlookAgenda", () => {
     expect(url).toContain("startdt=2026-08-22&");
     expect(url).not.toContain("Z&");
   });
+
+  it("segue o término declarado", () => {
+    const url = urlOutlookAgenda({ ...FUT, endTime: "23:00:00" }, URL_BASE);
+
+    expect(url).toContain("enddt=2026-08-23T02%3A00%3A00Z");
+  });
+});
+
+describe("duracaoDoFut", () => {
+  it("mede a parede entre início e fim", () => {
+    expect(duracaoDoFut("20:00:00", "22:00:00")).toBe(120);
+    expect(duracaoDoFut("20:00", "21:30")).toBe(90);
+  });
+
+  // Fim <= início é virada de meia-noite, e é o ramo que o
+  // match_days_duracao_check espelha em SQL: os dois têm que dar o mesmo número,
+  // senão o formulário aceita o que o banco recusa.
+  it("trata fim menor ou igual ao início como virada de meia-noite", () => {
+    expect(duracaoDoFut("22:00:00", "00:30:00")).toBe(150);
+    expect(duracaoDoFut("23:00:00", "01:00:00")).toBe(120);
+    // Fim igual ao início não é fut de 24h: é 0, e o piso de duração o rejeita.
+    expect(duracaoDoFut("20:00:00", "20:00:00")).toBe(0);
+  });
 });
 
 describe("uidDoConvite", () => {
@@ -190,6 +238,6 @@ describe("uidDoConvite", () => {
   // mudar o formato quebra a agenda de quem já recebeu convite.
   it("é estável por par (fut, jogador)", () => {
     expect(uidDoConvite(7, 3)).toBe("fut-7-3@futzenha.com.br");
-    expect(DURACAO_PADRAO_MIN).toBe(120);
+    expect(DURACAO_PADRAO_MIN).toBe(60);
   });
 });

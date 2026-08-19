@@ -22,6 +22,36 @@ export function formatTime(timeStr: string | null): string | null {
   return timeStr.slice(0, 5);
 }
 
+/**
+ * O horário do fut sozinho, para ficar ao lado do local: "20:00 às 22:00", ou
+ * só "20:00" sem término declarado. Nulo quando não há nem início — fut sem hora
+ * marcada não ganha rótulo de hora em lugar nenhum.
+ */
+export function formatHorario(
+  startTime: string | null,
+  endTime: string | null,
+): string | null {
+  const inicio = formatTime(startTime);
+  if (!inicio) return null;
+  const fim = formatTime(endTime);
+  return fim ? `${inicio} às ${fim}` : inicio;
+}
+
+/**
+ * O mesmo horário, mas para colar depois da data — "sexta, 22/08 das 20:00 às
+ * 22:00". Já traz a preposição porque ela muda com o término: quem escrevesse
+ * `às ${formatHorario(...)}` acabaria com "às 20:00 às 22:00".
+ */
+export function formatHorarioPorExtenso(
+  startTime: string | null,
+  endTime: string | null,
+): string | null {
+  const inicio = formatTime(startTime);
+  if (!inicio) return null;
+  const fim = formatTime(endTime);
+  return fim ? `das ${inicio} às ${fim}` : `às ${inicio}`;
+}
+
 // A nota é numeric(3,1) e chega como number — renderizar cru mostraria
 // "34.400000000000006" em somas. Sempre uma casa, com vírgula.
 export function formatSkill(skill: number): string {

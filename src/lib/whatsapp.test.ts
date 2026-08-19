@@ -12,6 +12,7 @@ const fut = {
   id: 12,
   date: "2026-08-13",
   startTime: "20:00:00" as string | null,
+  endTime: null as string | null,
   location: "Quadra do Zé",
   notes: null as string | null,
 };
@@ -29,6 +30,11 @@ describe("textoDeConvocacao", () => {
   it("sem horário, não inventa um 'às'", () => {
     const texto = textoDeConvocacao({ ...fut, startTime: null }, "https://futzenha.app");
     expect(texto).not.toContain("às");
+  });
+
+  it("com término declarado, convoca para o intervalo", () => {
+    const texto = textoDeConvocacao({ ...fut, endTime: "22:00:00" }, "https://futzenha.app");
+    expect(texto).toContain("das 20:00 às 22:00");
   });
 
   // As observações são onde mora o "trazer colete azul" — quando existem,

@@ -67,11 +67,15 @@ export async function loginPelaUI(page: Page, usuario: string, senha = "senha123
  */
 export async function criarFut(
   page: Page,
-  opcoes: { local: string; vagas?: number; dias?: number },
+  opcoes: { local: string; vagas?: number; dias?: number; inicio?: string; termino?: string },
 ): Promise<string> {
   await page.goto("/futs/novo");
   await page.getByLabel("Data").fill(dataFutura(opcoes.dias ?? 30));
   await page.getByLabel("Local").fill(opcoes.local);
+  // Horário e término são opcionais — o fut sem hora marcada continua válido, e
+  // os outros specs criam fut sem tocar nos dois.
+  if (opcoes.inicio !== undefined) await page.getByLabel("Horário").fill(opcoes.inicio);
+  if (opcoes.termino !== undefined) await page.getByLabel("Término").fill(opcoes.termino);
   if (opcoes.vagas !== undefined) {
     await page.getByLabel("Vagas").fill(String(opcoes.vagas));
   }

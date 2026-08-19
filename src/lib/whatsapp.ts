@@ -5,21 +5,22 @@
 // cadastrado. Puro e sem `server-only` de propósito, como email-modelos.ts: o
 // texto da convocação nasce no servidor, mas o botão que o compartilha é um
 // Client Component e o módulo precisa ser importável dos dois lados.
-import { formatDate, formatTime } from "@/lib/format";
+import { formatDate, formatHorarioPorExtenso } from "@/lib/format";
 import { textoDePrazo } from "@/lib/prazo";
 
 export type FutParaConvocar = {
   id: number;
   date: string;
   startTime: string | null;
+  endTime: string | null;
   location: string;
   notes: string | null;
 };
 
 export function textoDeConvocacao(matchDay: FutParaConvocar, urlBase: string): string {
-  const hora = formatTime(matchDay.startTime);
+  const hora = formatHorarioPorExtenso(matchDay.startTime, matchDay.endTime);
   const linhas = [
-    `⚽ Fut ${formatDate(matchDay.date)}${hora ? ` às ${hora}` : ""}`,
+    `⚽ Fut ${formatDate(matchDay.date)}${hora ? ` ${hora}` : ""}`,
     `📍 ${matchDay.location}`,
   ];
   if (matchDay.notes) linhas.push(matchDay.notes);

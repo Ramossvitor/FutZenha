@@ -81,7 +81,13 @@ async function seedPastMatchDay(
 
   const [matchDay] = await db
     .insert(schema.matchDays)
-    .values({ date, startTime: "20:00", location: "Quadra do Zenha", status: "finished" })
+    .values({
+      date,
+      startTime: "20:00",
+      endTime: "22:00",
+      location: "Quadra do Zenha",
+      status: "finished",
+    })
     .returning();
 
   // `confirmedAt` escalonado pelo índice: a ordem da lista é ordem de chegada, e
@@ -248,6 +254,7 @@ async function main() {
     .values({
       date: wednesdayShift(0),
       startTime: "20:00",
+      endTime: "22:00",
       location: "Quadra do Zenha",
       status: "scheduled",
       // Com limite, e com mais gente confirmada do que vaga: é o único jeito de
