@@ -603,6 +603,9 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "pelada_criada",
   "pelada_times_sorteados",
   "pelada_lembrete_vespera",
+  // Eleito melhor em campo na apuração da rodada. Nasce já com o nome novo do
+  // domínio — só os quatro `pelada_*` acima carregam o legado.
+  "mvp_do_fut",
 ]);
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
@@ -647,8 +650,21 @@ export const ratingRoundRaters = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     submittedAt: timestamp("submitted_at"), // null = ainda não enviou
+    // O voto de melhor em campo. A linha do avaliador congelado É o voto: a PK
+    // já garante um por eleitor, e quem não avalia não tem onde votar. null =
+    // não votou — inclui todo envio anterior à feature, que a apuração ignora.
+    // `set null` no FK: apagar o votado evapora o voto sem derrubar a linha do
+    // eleitorado, no espírito de "o resultado é função do que sobrou".
+    mvpPlayerId: integer("mvp_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
   },
-  (t) => [primaryKey({ columns: [t.roundId, t.playerId] })],
+  (t) => [
+    primaryKey({ columns: [t.roundId, t.playerId] }),
+    // O análogo do ratings_no_self_check: NULL <> x é NULL e o check passa,
+    // então pendentes e envios legados continuam válidos.
+    check("rating_round_raters_mvp_no_self_check", sql`${t.mvpPlayerId} <> ${t.playerId}`),
+  ],
 );
 
 // discarded_at null = avaliação válida. É assim que uma denúncia aceita tira a

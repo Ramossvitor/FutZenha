@@ -1,7 +1,18 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { attendances, gamePlayers, games, goals, matchDays, players, users } from "@/db/schema";
+import {
+  attendances,
+  gamePlayers,
+  games,
+  goals,
+  matchDays,
+  players,
+  ratingRounds,
+  users,
+} from "@/db/schema";
+import { apurarMvp, contarTitulos } from "./mvp";
+import { getAgregadosMvpPorRodada } from "./ratings";
 import { escopo, jogouNoGrupo, type EscopoStats } from "./stats-escopo";
 
 // Estatísticas contam apenas futs encerrados (status = finished).
@@ -154,6 +165,53 @@ export async function getSkillRanking(e: EscopoStats = {}): Promise<SkillRanking
       ),
     )
     .orderBy(desc(players.skill), players.name);
+}
+
+export type MvpRankingRow = {
+  playerId: number;
+  name: string;
+  nickname: string | null;
+  titulos: number;
+};
+
+/**
+ * Ranking de MVPs: quantas vezes cada um foi eleito melhor em campo.
+ *
+ * A assinatura EXIGE groupId de propósito — o MVP é a primeira métrica só de
+ * grupo do produto (fut avulso tem MVP na página dele, mas não ranqueia), e o
+ * tipo é o que impede um call site futuro de somar a plataforma inteira sem
+ * perceber. A ressalva de getSkillRanking sobre métrica por grupo não se
+ * aplica: aqui não há escala nova nem média de poucos votos exposta — só a
+ * contagem de títulos, e o voto individual continua secreto (inclusive pelo
+ * piso de MIN_VOTOS_PARA_MVP, aplicado dentro de apurarMvp).
+ *
+ * Derivado na leitura com a MESMA agregação e apuração do fechamento
+ * (getAgregadosMvpPorRodada + apurarMvp): as duas telas nunca discordam, e
+ * denúncia aceita depois da apuração reflete aqui sozinha, como a nota reflete
+ * no replay.
+ */
+export async function getMvpRanking(
+  e: EscopoStats & { groupId: number },
+): Promise<MvpRankingRow[]> {
+  const porRodada = await getAgregadosMvpPorRodada(
+    db,
+    and(escopo(e), eq(ratingRounds.status, "closed")),
+  );
+
+  const titulos = contarTitulos([...porRodada.values()].map(apurarMvp));
+  // Alcançável quando toda rodada do escopo fica abaixo do piso de votos — e
+  // o inArray abaixo não aceita lista vazia.
+  if (titulos.size === 0) return [];
+
+  const nomes = await db
+    .select({ playerId: players.id, name: players.name, nickname: players.nickname })
+    .from(players)
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
+    .where(inArray(players.id, [...titulos.keys()]));
+
+  return nomes
+    .map((n) => ({ ...n, titulos: titulos.get(n.playerId)! }))
+    .sort((a, b) => b.titulos - a.titulos || a.name.localeCompare(b.name));
 }
 
 export type AttendanceStat = {

@@ -5,7 +5,7 @@ import { and, eq, gt, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { ratingRoundRaters, ratingRounds, ratings } from "@/db/schema";
-import { getCompanheiros } from "@/lib/ratings";
+import { getCandidatosMvp, getCompanheiros } from "@/lib/ratings";
 import { fecharSeTodosAvaliaram } from "@/lib/ratings-engine";
 import { requirePlayer } from "@/lib/require-player";
 
@@ -14,6 +14,8 @@ export type AvaliarState = { error?: string; success?: boolean };
 // O form fala meias-estrelas inteiras (1..10): 7 = 3,5★. Nenhum float
 // atravessa o FormData — é o que evita a armadilha "3,5" vs "3.5" de locale.
 const meiasSchema = z.coerce.number().int().min(1).max(10);
+
+const mvpSchema = z.coerce.number().int().positive();
 
 export async function enviarAvaliacoes(
   roundId: number,
@@ -57,6 +59,23 @@ export async function enviarAvaliacoes(
     notas.push({ ratedPlayerId: companheiro.playerId, halfStars: parsed.data });
   }
 
+  // O voto de melhor em campo faz parte do tudo-ou-nada: entre TODOS que
+  // jogaram o fut e têm conta (os dois lados), menos o próprio. A lista é
+  // refeita aqui pelo mesmo motivo das notas — Server Action é endpoint
+  // público, e id estranho no form é gente que não jogou este fut.
+  const candidatos = await getCandidatosMvp(rodada.matchDayId, session.player.id);
+  let voto: number | null = null;
+  if (candidatos.length > 0) {
+    const parsed = mvpSchema.safeParse(formData.get("mvp"));
+    if (!parsed.success) {
+      return { error: "Falta escolher quem foi o melhor em campo." };
+    }
+    if (!candidatos.some((c) => c.playerId === parsed.data)) {
+      return { error: "Esse jogador não jogou este fut." };
+    }
+    voto = parsed.data;
+  }
+
   const fechouNoMeio = await db.transaction(async (tx) => {
     // Reconfere dentro da transação, travando a linha. Entre a checagem lá em
     // cima e este insert a rodada pode ter fechado — o admin clicando em
@@ -94,9 +113,11 @@ export async function enviarAvaliacoes(
         set: { halfStars: sql`excluded.half_stars`, updatedAt: new Date() },
       });
 
+    // O voto vai no mesmo UPDATE da marca de conclusão: submitted_at continua
+    // sendo o único "já enviou", e reenviar troca o voto junto com as notas.
     await tx
       .update(ratingRoundRaters)
-      .set({ submittedAt: sql`now()` })
+      .set({ submittedAt: sql`now()`, mvpPlayerId: voto })
       .where(
         and(
           eq(ratingRoundRaters.roundId, roundId),
