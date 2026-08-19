@@ -15,6 +15,7 @@ import { condicaoElegivel } from "@/lib/elegiveis";
 import { montarChecklist, quemViraFalta } from "@/lib/encerramento";
 import { formatDate } from "@/lib/format";
 import { companheirosPorJogador, gruposElegiveis } from "@/lib/lineup";
+import { JANELA_CORRECAO_HORAS, PRAZO_AVALIACAO_HORAS } from "@/lib/regras";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import { confirmarEncerramento, incluirNoJogo, moverLado, removerDoJogo } from "./actions";
@@ -366,8 +367,8 @@ export default async function EncerrarFutPage({
               {[
                 "A escalação congela pra sempre. Quem jogou de que lado não muda mais.",
                 "Os números entram nos rankings na hora.",
-                "A rodada de avaliação abre e o relógio de 36 horas começa a correr.",
-                "Placar e gols ainda dão pra corrigir por 24h. Depois disso, só apagando o fut — e aí precisa de votação.",
+                `A rodada de avaliação abre e o relógio de ${PRAZO_AVALIACAO_HORAS} horas começa a correr.`,
+                `Placar e gols ainda dão pra corrigir por ${JANELA_CORRECAO_HORAS}h. Depois disso, só apagando o fut — e aí precisa de votação.`,
               ].map((t) => (
                 <li key={t} className="flex items-start gap-2">
                   <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-danger" />

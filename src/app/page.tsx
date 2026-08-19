@@ -360,6 +360,14 @@ export default async function HomePage() {
           </Link>
         </p>
       )}
+
+      <p className="text-center text-[12px] text-fg-4">
+        Primeira vez por aqui?{" "}
+        <Link href="/guia" className="text-accent-ink hover:underline">
+          Leia o guia
+        </Link>
+        .
+      </p>
     </div>
   );
 }

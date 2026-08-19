@@ -165,3 +165,13 @@ export function IconeCarregando(props: Icone) {
     </svg>
   );
 }
+
+/** Um livro aberto — o guia de regras. */
+export function IconeLivro(props: Icone) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 6.5C10.5 5.2 8.6 4.5 6.5 4.5H4v13h2.5c2.1 0 4 .7 5.5 2 1.5-1.3 3.4-2 5.5-2H20v-13h-2.5c-2.1 0-4 .7-5.5 2Z" />
+      <path d="M12 6.5v13" />
+    </svg>
+  );
+}

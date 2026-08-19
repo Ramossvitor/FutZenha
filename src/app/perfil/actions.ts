@@ -15,12 +15,8 @@ import {
   parseMovimento,
 } from "@/lib/movimento";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import {
-  MIN_AVALIACOES_PARA_DENUNCIAR,
-  PRAZO_ADMIN_HORAS,
-  prazoEmHoras,
-  resolverAvaliacaoPorIndice,
-} from "@/lib/ratings";
+import { prazoEmHoras, resolverAvaliacaoPorIndice } from "@/lib/ratings";
+import { MIN_AVALIACOES_PARA_DENUNCIAR, PRAZO_ADMIN_HORAS } from "@/lib/regras";
 import { requirePlayer } from "@/lib/require-player";
 import { setSessionCookie } from "@/lib/session";
 

@@ -17,12 +17,8 @@ import {
 import { emailDeDestino } from "./email-destino";
 import { condicaoLinkVivo } from "./grupos-link";
 import type { Vinculo } from "./grupos-permissions";
+import { VALIDADE_CONVITE_MS } from "./regras";
 import { siteUrl } from "./site-url";
-
-// Mesma validade dos convites de plataforma (src/lib/convites.ts): o link corre
-// num grupo de WhatsApp, e uma semana é o que separa "o pessoal ainda está
-// entrando" de "isso vazou faz tempo".
-const LINK_DURATION_MS = 1000 * 60 * 60 * 24 * 7;
 
 /**
  * O papel do jogador neste grupo. `null` = não é membro.
@@ -305,7 +301,7 @@ export async function gerarLink(
     token,
     createdByPlayerId,
     maxUses,
-    expiresAt: new Date(Date.now() + LINK_DURATION_MS),
+    expiresAt: new Date(Date.now() + VALIDADE_CONVITE_MS),
   });
   return token;
 }

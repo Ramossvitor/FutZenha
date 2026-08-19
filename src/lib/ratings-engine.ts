@@ -13,13 +13,8 @@ import {
 import { formatSkill } from "./format";
 import { apurarMvp } from "./mvp";
 import { notificar } from "./notifications";
-import {
-  getAgregadosMvp,
-  getRatersElegiveis,
-  PRAZO_AVALIACAO_HORAS,
-  PRAZO_DENUNCIA_HORAS,
-  prazoEmHoras,
-} from "./ratings";
+import { getAgregadosMvp, getRatersElegiveis, prazoEmHoras } from "./ratings";
+import { PRAZO_AVALIACAO_HORAS, PRAZO_DENUNCIA_HORAS } from "./regras";
 import { diffNotas, replaySkills, type RatingInput, type SkillChange } from "./skill";
 
 /**

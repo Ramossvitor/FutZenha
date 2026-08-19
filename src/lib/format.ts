@@ -43,6 +43,11 @@ export function rotuloDeEstrelas(meias: number): string {
   return `${formatMeias(meias)} ${meias <= 2 ? "estrela" : "estrelas"}`;
 }
 
+/** Fração para percentual inteiro: 0.85 → "85%". */
+export function formatPercent(fracao: number): string {
+  return fracao.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 0 });
+}
+
 export function todayISO(): string {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;

@@ -17,6 +17,7 @@ import {
 } from "@/db/schema";
 import { getFaltamVotar, getJanelaAberturaExclusao, getVotacaoDoFut } from "@/lib/deletion";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
+import { FIM_DA_JANELA_CORRECAO } from "@/lib/janela-correcao";
 import { repartirLista } from "@/lib/lista-presenca";
 
 // Quem lançou e quem desfez cada gol na súmula ao vivo — duas pontas
@@ -49,7 +50,7 @@ export async function carregarPainel(matchDayId: number) {
         .select({
           ...getTableColumns(matchDays),
           segundosDeJanela: sql<number>`greatest(0, extract(epoch from (
-            ${matchDays.finishedAt} + interval '24 hours' - now()
+            ${FIM_DA_JANELA_CORRECAO} - now()
           ))::int)`,
         })
         .from(matchDays)
@@ -100,7 +101,8 @@ export async function carregarPainel(matchDayId: number) {
 
   const dentroDaJanela = matchDay.finishedAt !== null && matchDay.segundosDeJanela > 0;
   // Placar e gols não mexem em quem avalia quem, então sobrevivem ao
-  // encerramento por 24h. A escalação, não: some do formulário na hora.
+  // encerramento pela janela de correção. A escalação, não: some do formulário
+  // na hora.
   const podeEditarPlacar = matchDay.status !== "finished" || dentroDaJanela;
 
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));

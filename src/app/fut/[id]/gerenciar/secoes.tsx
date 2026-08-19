@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
@@ -10,11 +11,13 @@ import { IconeLuva } from "@/components/ui/icons";
 import { Nota } from "@/components/ui/nota";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
-import { formatSkill, formatTime } from "@/lib/format";
+import { formatPercent, formatSkill, formatTime } from "@/lib/format";
+import { JANELA_CORRECAO_HORAS } from "@/lib/regras";
 import { jogoEmAndamento } from "@/lib/sumula";
 import { listaFechada } from "@/lib/lista-presenca";
 import { emailConfigurado } from "@/lib/email-envio";
 import { siteUrl } from "@/lib/site-url";
+import { PRAZO_ABERTURA_EXCLUSAO_HORAS, PRAZO_VOTACAO_HORAS, QUORUM } from "@/lib/votacao";
 import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import {
   abrirVotacaoExclusao,
@@ -733,8 +736,8 @@ export function SecaoEncerrar({ fut }: { fut: PainelDoFut }) {
           </div>
         ) : (
           <Banner tom="aviso">
-            A janela de 24h para corrigir placar e gols já passou. Só dá para alterar este fut
-            excluindo ela — o que exige votação de quem jogou.
+            A janela de {JANELA_CORRECAO_HORAS}h para corrigir placar e gols já passou. Só dá
+            para alterar este fut excluindo ela — o que exige votação de quem jogou.
           </Banner>
         )}
       </Section>
@@ -822,8 +825,9 @@ export function ZonaDePerigo({ fut }: { fut: PainelDoFut }) {
             </div>
           ) : !janelaExclusao.aberta ? (
             <Banner tom="aviso">
-              O prazo para abrir a votação de exclusão já passou — ele vale até 24 horas depois
-              do fim do prazo de contestação das notas. Este fut fica no histórico.
+              O prazo para abrir a votação de exclusão já passou — ele vale até{" "}
+              {PRAZO_ABERTURA_EXCLUSAO_HORAS} horas depois do fim do prazo de contestação das
+              notas. Este fut fica no histórico.
             </Banner>
           ) : (
             <form
@@ -832,10 +836,14 @@ export function ZonaDePerigo({ fut }: { fut: PainelDoFut }) {
             >
               <p className="text-[13px] leading-[1.5] text-fg-2">
                 O fut já foi encerrado: os gols, o V/E/D e as avaliações dele contam para todo
-                mundo. Apagar exige a aprovação de quem jogou — 85% dos votos em 48h, e quem não
-                votar conta como contra. O pedido também tem hora: dá para abrir até 24 horas
-                depois do fim do prazo de contestação das notas.{" "}
-                <strong className="text-fg">Só existe uma votação por fut.</strong>
+                mundo. Apagar exige a aprovação de quem jogou — {formatPercent(QUORUM)} dos
+                votos em {PRAZO_VOTACAO_HORAS}h, e quem não votar conta como contra. O pedido
+                também tem hora: dá para abrir até {PRAZO_ABERTURA_EXCLUSAO_HORAS} horas depois
+                do fim do prazo de contestação das notas.{" "}
+                <strong className="text-fg">Só existe uma votação por fut.</strong>{" "}
+                <Link href="/guia#apagar-um-fut" className="text-accent-ink hover:underline">
+                  Como a exclusão funciona
+                </Link>
               </p>
               {janelaExclusao.horasRestantes !== null && (
                 <div className="flex flex-wrap items-center gap-2">

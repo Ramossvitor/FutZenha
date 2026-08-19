@@ -6,14 +6,15 @@
 // "em andamento". É a metade que a suíte da súmula não cobre, e um jogo clássico
 // que nascesse com `started_at` travaria o encerramento do fut para sempre.
 
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { db } from "@/db";
-import { gamePlayers, games, goals } from "@/db/schema";
+import { gamePlayers, games, goals, matchDays } from "@/db/schema";
+import { JANELA_CORRECAO_HORAS } from "@/lib/regras";
 import { esperaRedirect } from "@/test/navigation-fake";
 import { golsDoJogo, montarSumula, type Sumula } from "@/test/fixtures-sumula";
 import { confirmarEncerramento } from "./encerrar/actions";
-import { addGoal, createGame, definirAutorDoGol } from "./actions";
+import { addGoal, createGame, definirAutorDoGol, updateGameScore } from "./actions";
 
 function formDeJogo(s: Sumula, scoreA: number, scoreB: number): FormData {
   const form = new FormData();
@@ -27,6 +28,13 @@ function formDeJogo(s: Sumula, scoreA: number, scoreB: number): FormData {
 const formDeAutor = (playerId: number) => {
   const f = new FormData();
   f.set("playerId", String(playerId));
+  return f;
+};
+
+const formDePlacar = (scoreA: number, scoreB: number) => {
+  const f = new FormData();
+  f.set("scoreA", String(scoreA));
+  f.set("scoreB", String(scoreB));
   return f;
 };
 
@@ -118,6 +126,46 @@ describe("addGoal", () => {
 
     expect(url).toBe(`/fut/${deFora.fut.id}/gerenciar?erro=dados-invalidos`);
     expect(await golsDoJogo(jogo.id)).toHaveLength(0);
+  });
+});
+
+// A janela de correção só existia em SQL, sem teste em nenhuma das três
+// camadas: o `assertPlacarEditavel` roda uma expressão de intervalo montada em
+// FIM_DA_JANELA_CORRECAO, e o mesmo fragmento alimenta o `segundosDeJanela` que
+// o painel mostra. Enquanto ninguém exercitava isso, um erro de SQL só
+// apareceria em produção, na hora em que alguém fosse corrigir um placar.
+describe("janela de correção de placar", () => {
+  /**
+   * Fut encerrado e com o `finished_at` recuado pelo relógio do POSTGRES — a
+   * regra da casa: nada de `new Date()` em SQL cru.
+   */
+  async function futEncerradoHa(horas: number) {
+    const s = await montarSumula();
+    await createGame(s.fut.id, formDeJogo(s, 1, 0));
+    await esperaRedirect(confirmarEncerramento(s.fut.id));
+    await db
+      .update(matchDays)
+      .set({ finishedAt: sql`now() - make_interval(hours => ${horas}::int)` })
+      .where(eq(matchDays.id, s.fut.id));
+    const [jogo] = await jogosDoFut(s.fut.id);
+    return { s, jogo };
+  }
+
+  it("aceita a correção dentro da janela", async () => {
+    const { s, jogo } = await futEncerradoHa(JANELA_CORRECAO_HORAS - 1);
+
+    await updateGameScore(s.fut.id, jogo.id, formDePlacar(4, 2));
+
+    expect((await jogosDoFut(s.fut.id))[0]).toMatchObject({ scoreA: 4, scoreB: 2 });
+  });
+
+  it("recusa depois de a janela fechar, sem tocar no placar", async () => {
+    const { s, jogo } = await futEncerradoHa(JANELA_CORRECAO_HORAS + 1);
+
+    const url = await esperaRedirect(updateGameScore(s.fut.id, jogo.id, formDePlacar(4, 2)));
+
+    expect(url).toBe(`/fut/${s.fut.id}/gerenciar?erro=janela-encerrada`);
+    expect((await jogosDoFut(s.fut.id))[0]).toMatchObject({ scoreA: 1, scoreB: 0 });
   });
 });
 

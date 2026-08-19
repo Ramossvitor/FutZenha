@@ -5,6 +5,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { hashPassword } from "../lib/password";
 import { platformAdminsDoAmbiente } from "../lib/platform-admins";
+import { VALIDADE_CONVITE_MS } from "../lib/regras";
 import { siteUrl } from "../lib/site-url";
 
 // Roda antes do `next build` (ver package.json). Migrations viajam junto com o
@@ -65,10 +66,6 @@ async function main() {
     await conn.end();
   }
 }
-
-// Mesmos 7 dias de src/lib/convites.ts. Duplicado de propósito: aquele módulo é
-// `server-only` e este script roda sob tsx, fora do Next.
-const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7;
 
 /**
  * Cria a conta de quem está em `PLATFORM_ADMIN_USERNAMES` e ainda não existe.
@@ -136,7 +133,7 @@ async function provisionarPlatformAdmins(conn: postgres.Sql) {
       // cedo. A string vai sem tipo declarado e é gravada literalmente — que é o
       // que o drizzle escreve no resto do app (mapToDriverValue = toISOString) e o
       // que ele relê como UTC (mapFromDriverValue concatena "+0000").
-      const expiraEm = new Date(Date.now() + INVITE_DURATION_MS).toISOString();
+      const expiraEm = new Date(Date.now() + VALIDADE_CONVITE_MS).toISOString();
       await tx`
         insert into invites (token, player_id, expires_at)
         values (${token}, ${playerId}, ${expiraEm})`;

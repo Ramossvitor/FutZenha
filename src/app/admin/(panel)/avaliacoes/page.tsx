@@ -12,6 +12,7 @@ import { db } from "@/db";
 import { matchDays, ratingRoundRaters, ratingRounds, users } from "@/db/schema";
 import { cx } from "@/lib/cx";
 import { formatDate, formatMeias } from "@/lib/format";
+import { PRAZO_ADMIN_HORAS } from "@/lib/regras";
 import { getContextoDaDenuncia, getDenunciasAbertas } from "@/lib/reports";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import { apurarAgora, julgarDenuncia } from "./actions";
@@ -71,7 +72,7 @@ export default async function AdminAvaliacoesPage() {
         {denuncias.length === 0 ? (
           <EmptyState
             titulo="Nada para julgar"
-            descricao="Quando alguém contestar uma nota, ela aparece aqui com prazo de 48 horas."
+            descricao={`Quando alguém contestar uma nota, ela aparece aqui com prazo de ${PRAZO_ADMIN_HORAS} horas.`}
           />
         ) : (
           denuncias.map((d, i) => {

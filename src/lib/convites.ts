@@ -4,9 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { type Executor } from "@/db";
 import { invites, players } from "@/db/schema";
 import { emailSchema } from "./email-contato";
-
-// Espelhado em src/db/migrate.ts, que roda sob tsx e não carrega `server-only`.
-const INVITE_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
+import { VALIDADE_CONVITE_MS } from "./regras";
 
 // Sem guard de propósito: quem autoriza é a action. São dois caminhos com
 // permissões diferentes chegando aqui — o admin da plataforma, em
@@ -34,7 +32,7 @@ export async function gerarConvite(
     token,
     playerId,
     email,
-    expiresAt: new Date(Date.now() + INVITE_DURATION_MS),
+    expiresAt: new Date(Date.now() + VALIDADE_CONVITE_MS),
   });
   return token;
 }

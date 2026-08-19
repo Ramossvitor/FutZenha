@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { Banner } from "@/components/ui/banner";
 import { SubmitButton } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
+import { PRAZO_ADMIN_HORAS } from "@/lib/regras";
 import { denunciarAvaliacao, type DenunciarState } from "./actions";
 
 const initialState: DenunciarState = {};
@@ -17,7 +18,8 @@ export function DenunciarForm({ roundId, indice }: { roundId: number; indice: nu
   if (state.success) {
     return (
       <p className="text-[12px] font-semibold text-accent-ink">
-        Denúncia enviada. Quem administra a plataforma tem 48 horas para responder.
+        Denúncia enviada. Quem administra a plataforma tem {PRAZO_ADMIN_HORAS} horas para
+        responder.
       </p>
     );
   }

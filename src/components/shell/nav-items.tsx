@@ -4,6 +4,7 @@ import {
   IconeCampo,
   IconeGrafico,
   IconeGrupo,
+  IconeLivro,
   IconePessoa,
   IconeSino,
   IconeCadeado,
@@ -62,5 +63,6 @@ export function itensLaterais({
       itens.push({ href: "/admin", label: "Plataforma", icone: <IconeCadeado /> });
     }
   }
+  itens.push({ href: "/guia", label: "Guia", icone: <IconeLivro /> });
   return itens;
 }

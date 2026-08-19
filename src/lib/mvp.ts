@@ -6,7 +6,7 @@
 // Piso de publicação: com um voto contado só, o resultado É o voto de uma
 // pessoa identificável — quem enviou é público durante a rodada (a lista de
 // "quem já avaliou" e a cobrança no zap). Mesmo racional do
-// MIN_AVALIACOES_PARA_DENUNCIAR (src/lib/ratings.ts): abaixo de dois,
+// MIN_AVALIACOES_PARA_DENUNCIAR (src/lib/regras.ts): abaixo de dois,
 // publicar é apontar o dedo.
 export const MIN_VOTOS_PARA_MVP = 2;
 

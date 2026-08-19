@@ -14,7 +14,8 @@ import {
 } from "@/db/schema";
 import { formatDate } from "./format";
 import { notificar } from "./notifications";
-import { PRAZO_AVALIACAO_HORAS, PRAZO_DENUNCIA_HORAS, prazoEmHoras } from "./ratings";
+import { prazoEmHoras } from "./ratings";
+import { PRAZO_AVALIACAO_HORAS, PRAZO_DENUNCIA_HORAS } from "./regras";
 import { aplicarReplay } from "./ratings-engine";
 import {
   avaliarVotacao,
