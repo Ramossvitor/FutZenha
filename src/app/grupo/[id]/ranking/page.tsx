@@ -43,7 +43,7 @@ export default async function RankingDoGrupoPage({
       />
       <Rankings
         base={`/grupo/${groupId}/ranking`}
-        aba={abaValida(aba)}
+        aba={abaValida(aba, groupId)}
         ano={anoValido(ano)}
         groupId={groupId}
         destaquePlayerId={session.player.id}

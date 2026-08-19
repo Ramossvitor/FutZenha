@@ -12,6 +12,7 @@ import { posicoes } from "@/lib/posicao";
 import {
   getAttendanceStats,
   getAvailableYears,
+  getMvpRanking,
   getPlayerRecords,
   getSkillRanking,
   getTopScorers,
@@ -25,12 +26,24 @@ export const ABAS = [
   { chave: "artilharia", label: "Artilharia" },
   { chave: "aproveitamento", label: "Aproveitamento" },
   { chave: "presenca", label: "Presença" },
+  { chave: "mvp", label: "MVP" },
 ] as const;
 
 export type AbaDeRanking = (typeof ABAS)[number]["chave"];
 
-export function abaValida(v: string | string[] | undefined): AbaDeRanking {
-  return typeof v === "string" && ABAS.some((a) => a.chave === v) ? (v as AbaDeRanking) : "notas";
+/**
+ * O MVP é métrica só de grupo (ver getMvpRanking) — fora de contexto de grupo
+ * a aba nem aparece, e a validação abaixo faz a URL colada no zap cair em
+ * "notas" em vez de renderizar uma aba vazia.
+ */
+export function abasVisiveis(groupId?: number) {
+  return groupId ? ABAS : ABAS.filter((a) => a.chave !== "mvp");
+}
+
+export function abaValida(v: string | string[] | undefined, groupId?: number): AbaDeRanking {
+  return typeof v === "string" && abasVisiveis(groupId).some((a) => a.chave === v)
+    ? (v as AbaDeRanking)
+    : "notas";
 }
 
 export function anoValido(v: string | string[] | undefined): number | undefined {
@@ -112,13 +125,18 @@ export async function Rankings({
 }) {
   const escopo = { year: ano, groupId };
 
-  const [notas, artilheiros, records, presenca, anos] = await Promise.all([
+  const [notas, artilheiros, records, presenca, mvps, anos] = await Promise.all([
     aba === "notas" ? getSkillRanking({ groupId }) : Promise.resolve([]),
     aba === "artilharia" ? getTopScorers(escopo) : Promise.resolve([]),
     aba === "aproveitamento" ? getPlayerRecords(escopo, MIN_JOGOS) : Promise.resolve([]),
     aba === "presenca"
       ? getAttendanceStats(escopo)
       : Promise.resolve({ totalDays: 0, perPlayer: [] }),
+    // O `groupId` extra é para o tsc: abaValida já garante que "mvp" só chega
+    // aqui em contexto de grupo, mas getMvpRanking exige o id no tipo.
+    aba === "mvp" && groupId
+      ? getMvpRanking({ year: ano, groupId })
+      : Promise.resolve([]),
     // getAvailableYears só aceita groupId — passar `year` aqui devolveria só o
     // próprio ano e o filtro deixaria de existir depois do primeiro clique.
     getAvailableYears({ groupId }),
@@ -131,7 +149,7 @@ export async function Rankings({
   return (
     <div className="flex flex-col gap-4">
       <nav aria-label="Rankings" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0">
-        {ABAS.map((a) => (
+        {abasVisiveis(groupId).map((a) => (
           <Pilula key={a.chave} ativo={a.chave === aba} href={href(base, a.chave, ano)}>
             {a.label}
           </Pilula>
@@ -326,6 +344,53 @@ export async function Rankings({
                   <span className="block font-display text-[10px] font-bold text-fg-4">
                     de {presenca.totalDays}
                   </span>
+                </span>
+              </HairlineRow>
+            ))}
+          </HairlineList>
+        </>
+      )}
+
+      {aba === "mvp" && (
+        <>
+          <Banner tom="info">
+            Um voto por pessoa a cada fut, na avaliação pós-jogo. Empate de votos é decidido pela
+            média de estrelas da própria rodada — persistindo, o título é dividido.
+          </Banner>
+          {mvps.length >= 3 && (
+            <Podium
+              itens={mvps.slice(0, 3).map((m, i) => ({
+                posicao: posicoes(mvps, (x) => x.titulos)[i],
+                nome: m.nickname ?? m.name,
+                valor: m.titulos,
+              }))}
+            />
+          )}
+          <HairlineList
+            as="ol"
+            vazio={
+              <EmptyState
+                titulo="Nenhum MVP ainda"
+                descricao={
+                  ano
+                    ? `Nenhum melhor em campo eleito em ${ano} — ou as rodadas ainda não foram apuradas.`
+                    : "O primeiro melhor em campo sai na apuração da próxima avaliação."
+                }
+              />
+            }
+          >
+            {mvps.map((m, i) => (
+              <HairlineRow as="li" key={m.playerId} destaque={m.playerId === destaquePlayerId}>
+                <Posicao n={posicoes(mvps, (x) => x.titulos)[i]} />
+                <NomeDoJogador apelido={m.nickname} nome={m.name} />
+                <span
+                  className="font-display text-[22px] leading-none font-black font-stretch-125% text-fg"
+                  data-num
+                >
+                  {m.titulos}
+                </span>
+                <span className="font-display text-[10px] font-bold tracking-[.1em] text-fg-4 uppercase">
+                  {m.titulos === 1 ? "vez MVP" : "vezes MVP"}
                 </span>
               </HairlineRow>
             ))}

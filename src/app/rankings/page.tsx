@@ -22,7 +22,7 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
       />
       <Rankings
         base="/rankings"
-        aba={abaValida(aba)}
+        aba={abaValida(aba, grupo?.id)}
         ano={anoValido(ano)}
         groupId={grupo?.id}
         destaquePlayerId={session?.player.id}

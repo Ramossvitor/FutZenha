@@ -19,9 +19,7 @@ import {
   ratingRounds,
   ratings,
   skillHistory,
-  teams,
   users,
-  type Game,
   type MatchDay,
   type Player,
 } from "@/db/schema";
@@ -36,58 +34,16 @@ import {
   criarFut,
   logarComo,
 } from "@/test/fixtures";
+import { avaliarTrio, criarJogo, criarTrioComConta } from "@/test/fixtures-avaliacao";
 import { esperaRedirect } from "@/test/navigation-fake";
-
-let sequenciaDeTimes = 0;
-
-async function criarJogo(fut: MatchDay, ladoA: Player[], ladoB: Player[]): Promise<Game> {
-  sequenciaDeTimes += 1;
-  const [timeA] = await db
-    .insert(teams)
-    .values({ matchDayId: fut.id, name: `Time ${sequenciaDeTimes}A`, sortOrder: 0 })
-    .returning();
-  const [timeB] = await db
-    .insert(teams)
-    .values({ matchDayId: fut.id, name: `Time ${sequenciaDeTimes}B`, sortOrder: 1 })
-    .returning();
-  const [jogo] = await db
-    .insert(games)
-    .values({ matchDayId: fut.id, teamAId: timeA.id, teamBId: timeB.id })
-    .returning();
-  await db.insert(gamePlayers).values([
-    ...ladoA.map((p) => ({ gameId: jogo.id, playerId: p.id, side: "A" as const })),
-    ...ladoB.map((p) => ({ gameId: jogo.id, playerId: p.id, side: "B" as const })),
-  ]);
-  return jogo;
-}
-
-/** Três jogadores com conta ativa — o mínimo de um lado que avalia. */
-async function criarTrioComConta() {
-  const primeiro = await criarJogadorComConta();
-  const segundo = await criarJogadorComConta();
-  const terceiro = await criarJogadorComConta();
-  return {
-    jogadores: [primeiro.jogador, segundo.jogador, terceiro.jogador],
-    contas: [primeiro.conta, segundo.conta, terceiro.conta],
-  };
-}
-
-/** Todos do trio dão a mesma nota (em meias-estrelas) aos outros dois, direto no banco. */
-async function avaliarTrio(roundId: number, trio: Player[], halfStars: number): Promise<void> {
-  const notas = [];
-  for (const rater of trio) {
-    for (const rated of trio) {
-      if (rater.id !== rated.id) {
-        notas.push({ roundId, raterPlayerId: rater.id, ratedPlayerId: rated.id, halfStars });
-      }
-    }
-  }
-  await db.insert(ratings).values(notas);
-}
 
 function formularioDeNotas(companheiros: { playerId: number }[], meias: number): FormData {
   const form = new FormData();
   for (const c of companheiros) form.set(`estrelas-${c.playerId}`, String(meias));
+  // O voto de melhor em campo faz parte do tudo-ou-nada do envio; um
+  // companheiro de lado é sempre candidato válido. Os cenários do voto em si
+  // vivem em mvp.integration.test.ts.
+  if (companheiros.length > 0) form.set("mvp", String(companheiros[0].playerId));
   return form;
 }
 

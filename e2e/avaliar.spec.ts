@@ -35,9 +35,13 @@ test("chega na rodada aberta pelos avisos, dá as notas e vê a confirmação", 
   }
   await expect(page.getByText("tudo pronto")).toBeVisible();
 
-  await page
-    .getByRole("button", { name: /Enviar \d+ avaliações|Atualizar avaliação/ })
-    .click();
+  // Etapa 2: o voto de melhor em campo, obrigatório no mesmo envio. O rádio é
+  // sr-only, então o clique vai na linha do candidato (o <label> inteiro).
+  await page.getByRole("button", { name: /Continuar — falta o melhor em campo/ }).click();
+  await expect(page.getByText("Quem foi o melhor em campo?")).toBeVisible();
+  await page.locator('label:has(input[name="mvp"])').first().click();
+
+  await page.getByRole("button", { name: /Enviar avaliação|Atualizar avaliação/ }).click();
   await expect(
     page.getByText("Avaliação enviada. Dá para mudar enquanto o prazo não acabar."),
   ).toBeVisible();

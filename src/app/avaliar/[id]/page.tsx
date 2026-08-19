@@ -14,11 +14,16 @@ import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
 import { db } from "@/db";
 import { matchDays, ratingRoundRaters, ratingRounds } from "@/db/schema";
 import { formatDate } from "@/lib/format";
-import { getAvaliadoresDaRodada, getCompanheiros, getMinhasAvaliacoes } from "@/lib/ratings";
+import {
+  getAvaliadoresDaRodada,
+  getCandidatosMvp,
+  getCompanheiros,
+  getMinhasAvaliacoes,
+} from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { siteUrl } from "@/lib/site-url";
 import { textoDeCobrancaDeAvaliacao } from "@/lib/whatsapp";
-import { RatingForm, type CompanheiroForm } from "./rating-form";
+import { RatingForm, type CandidatoMvpForm, type CompanheiroForm } from "./rating-form";
 
 export const metadata: Metadata = { title: "Avaliar companheiros" };
 
@@ -37,6 +42,7 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
       matchDayDate: matchDays.date,
       location: matchDays.location,
       submittedAt: ratingRoundRaters.submittedAt,
+      mvpPlayerId: ratingRoundRaters.mvpPlayerId,
       venceu: sql<boolean>`${ratingRounds.deadlineAt} <= now()`,
       horasRestantes: sql<number>`greatest(0, ceil(extract(epoch from (
         ${ratingRounds.deadlineAt} - now()
@@ -53,10 +59,11 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
     );
   if (!rodada) notFound();
 
-  const [companheiros, jaDadas, avaliadores] = await Promise.all([
+  const [companheiros, jaDadas, avaliadores, candidatos] = await Promise.all([
     getCompanheiros(rodada.matchDayId, session.player.id),
     getMinhasAvaliacoes(roundId, session.player.id),
     getAvaliadoresDaRodada(roundId),
+    getCandidatosMvp(rodada.matchDayId, session.player.id),
   ]);
 
   const encerrada = rodada.status !== "open" || rodada.venceu;
@@ -149,6 +156,15 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
               estrelasAtuais: jaDadas.get(c.playerId),
             }),
           )}
+          candidatos={candidatos.map(
+            (c): CandidatoMvpForm => ({
+              playerId: c.playerId,
+              rotulo: c.nickname ?? c.name,
+              nome: c.name,
+              isGoalkeeper: c.isGoalkeeper,
+            }),
+          )}
+          mvpAtual={rodada.mvpPlayerId}
         />
       )}
 

@@ -70,8 +70,11 @@ test.describe("celular", () => {
     await expect(page).toHaveURL(/\/avaliar\/\d+$/);
 
     const nav = page.getByRole(NAV.role, { name: NAV.nome });
+    // Na etapa das notas o botão do rodapé é o "Continuar" do wizard; o submit
+    // em si só aparece na etapa do MVP. Para a conta da tab bar tanto faz —
+    // os dois moram no mesmo rodapé sticky.
     const enviar = page.getByRole("button", {
-      name: /Enviar \d+ avaliações|Atualizar avaliação/,
+      name: /Continuar — falta o melhor em campo|Enviar avaliação|Atualizar avaliação/,
     });
 
     for (const posicao of ["topo", "fim"] as const) {

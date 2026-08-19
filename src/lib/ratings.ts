@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { db, type Executor } from "@/db";
 import {
   gamePlayers,
@@ -16,6 +16,7 @@ import {
 } from "@/db/schema";
 import { ordenarAnonimo } from "./anonimato";
 import { companheirosPorJogador, gruposElegiveis, type EscalacaoRow } from "./lineup";
+import { apurarMvp, type CandidatoApurado } from "./mvp";
 
 // Prazos do ciclo de avaliação, em horas. São gravados como timestamp absoluto na
 // criação de cada rodada/denúncia — mudar aqui não mexe no que já está em curso.
@@ -84,6 +85,141 @@ export async function getCompanheiros(
     .from(players)
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
     .where(inArray(players.id, ids))
+    .orderBy(players.name);
+}
+
+export type CandidatoMvp = {
+  playerId: number;
+  name: string;
+  nickname: string | null;
+  isGoalkeeper: boolean;
+};
+
+/**
+ * Em quem se pode votar de melhor em campo: todos que entraram em campo no
+ * fut (os dois lados, direto de game_players) e têm conta ativa — a mesma
+ * regra de "só quem tem conta é avaliado" das notas —, exceto o próprio
+ * votante. O check no banco (rating_round_raters_mvp_no_self_check) repete a
+ * exclusão do próprio, como o ratings_no_self_check faz nas notas.
+ */
+export async function getCandidatosMvp(
+  matchDayId: number,
+  exceptPlayerId: number,
+): Promise<CandidatoMvp[]> {
+  return db
+    .selectDistinct({
+      playerId: players.id,
+      name: players.name,
+      nickname: players.nickname,
+      isGoalkeeper: players.isGoalkeeper,
+    })
+    .from(gamePlayers)
+    .innerJoin(games, eq(gamePlayers.gameId, games.id))
+    .innerJoin(players, eq(gamePlayers.playerId, players.id))
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
+    .where(and(eq(games.matchDayId, matchDayId), ne(players.id, exceptPlayerId)))
+    .orderBy(players.name);
+}
+
+/**
+ * A casa ÚNICA dos agregados que a apuração pura (apurarMvp) consome, rodada a
+ * rodada: votos por votado e a média de meias-estrelas que cada um recebeu na
+ * própria rodada, sem as descartadas. O fechamento (getAgregadosMvp) e o
+ * ranking (getMvpRanking, em stats.ts) derivam DAQUI — mudar a elegibilidade
+ * do voto ou a regra do descarte num lugar só mantém as duas telas de acordo.
+ *
+ * O innerJoin com `users` ativo no VOTADO é o mesmo filtro de todos os
+ * rankings: conta desativada entre o voto e a apuração não pode vencer.
+ * `cond` filtra sobre rating_rounds/match_days: a rodada exata no fechamento,
+ * o escopo de grupo/ano/status no ranking.
+ */
+export async function getAgregadosMvpPorRodada(
+  exec: Executor,
+  cond: SQL | undefined,
+): Promise<Map<number, CandidatoApurado[]>> {
+  const votos = await exec
+    .select({
+      roundId: ratingRoundRaters.roundId,
+      playerId: ratingRoundRaters.mvpPlayerId,
+      votos: sql<number>`count(*)::int`,
+    })
+    .from(ratingRoundRaters)
+    .innerJoin(ratingRounds, eq(ratingRoundRaters.roundId, ratingRounds.id))
+    .innerJoin(matchDays, eq(ratingRounds.matchDayId, matchDays.id))
+    .innerJoin(
+      users,
+      and(eq(users.playerId, ratingRoundRaters.mvpPlayerId), eq(users.active, true)),
+    )
+    .where(and(cond, isNotNull(ratingRoundRaters.mvpPlayerId)))
+    .groupBy(ratingRoundRaters.roundId, ratingRoundRaters.mvpPlayerId);
+
+  if (votos.length === 0) return new Map();
+
+  const medias = await exec
+    .select({
+      roundId: ratings.roundId,
+      ratedPlayerId: ratings.ratedPlayerId,
+      media: sql<number>`avg(${ratings.halfStars})::float8`,
+    })
+    .from(ratings)
+    .innerJoin(ratingRounds, eq(ratings.roundId, ratingRounds.id))
+    .innerJoin(matchDays, eq(ratingRounds.matchDayId, matchDays.id))
+    .where(and(cond, isNull(ratings.discardedAt)))
+    .groupBy(ratings.roundId, ratings.ratedPlayerId);
+  const mediaPorRodadaEJogador = new Map(
+    medias.map((m) => [`${m.roundId}:${m.ratedPlayerId}`, m.media]),
+  );
+
+  const porRodada = new Map<number, CandidatoApurado[]>();
+  for (const v of votos) {
+    const candidato: CandidatoApurado = {
+      // O isNotNull do where garante; o narrowing é só para o tipo.
+      playerId: v.playerId!,
+      votos: v.votos,
+      mediaMeias: mediaPorRodadaEJogador.get(`${v.roundId}:${v.playerId}`) ?? null,
+    };
+    const lista = porRodada.get(v.roundId);
+    if (lista) lista.push(candidato);
+    else porRodada.set(v.roundId, [candidato]);
+  }
+  return porRodada;
+}
+
+/**
+ * Os agregados de UMA rodada — o que o fechamento apura. Recebe o executor
+ * porque roda dentro da transação que fecha a rodada.
+ */
+export async function getAgregadosMvp(
+  exec: Executor,
+  roundId: number,
+): Promise<CandidatoApurado[]> {
+  const porRodada = await getAgregadosMvpPorRodada(exec, eq(ratingRounds.id, roundId));
+  return porRodada.get(roundId) ?? [];
+}
+
+export type MvpDoFut = { playerId: number; name: string; nickname: string | null };
+
+/**
+ * O(s) melhor(es) em campo de um fut já apurado, para exibição. Vazio quando a
+ * rodada ainda corre, não existe, ninguém votou ou os votos contados ficaram
+ * abaixo do piso (MIN_VOTOS_PARA_MVP). Derivado na leitura, nunca
+ * materializado — o título, como a nota, é função das avaliações que sobraram.
+ */
+export async function getMvpDoFut(matchDayId: number): Promise<MvpDoFut[]> {
+  const [rodada] = await db
+    .select({ id: ratingRounds.id })
+    .from(ratingRounds)
+    .where(and(eq(ratingRounds.matchDayId, matchDayId), eq(ratingRounds.status, "closed")));
+  if (!rodada) return [];
+
+  const vencedores = apurarMvp(await getAgregadosMvp(db, rodada.id));
+  if (vencedores.length === 0) return [];
+
+  return db
+    .select({ playerId: players.id, name: players.name, nickname: players.nickname })
+    .from(players)
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
+    .where(inArray(players.id, vencedores))
     .orderBy(players.name);
 }
 

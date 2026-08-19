@@ -27,6 +27,7 @@ import {
 } from "@/db/schema";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
 import { formatDate, formatSkill, formatTime } from "@/lib/format";
+import { getMvpDoFut } from "@/lib/ratings";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { repartirLista, vagasLivres } from "@/lib/lista-presenca";
 import { STATUS_FUT } from "@/lib/match-day-form";
@@ -152,7 +153,7 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
   const livres = vagasLivres(confirmados, matchDay.maxPlayers);
   const listaCheia = livres === 0;
 
-  const [teamMembers, goalRows, escalacao, grupo, minhaDelegacao] = await Promise.all([
+  const [teamMembers, goalRows, escalacao, grupo, minhaDelegacao, mvps] = await Promise.all([
     teamList.length > 0
       ? db
           .select({
@@ -226,6 +227,8 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
     // MESMO helper que o guard usa, senão o link apareceria para quem o painel
     // recusa.
     session ? temSumulaDelegada(id, session.player.id) : false,
+    // Vazio enquanto a rodada de avaliação corre — o título só existe apurado.
+    matchDay.status === "finished" ? getMvpDoFut(id) : [],
   ]);
   const nomeDoTime = new Map(teamList.map((t) => [t.id, t.name]));
   const jogoPorId = new Map(gameList.map((g) => [g.id, g]));
@@ -502,6 +505,40 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
           </div>
         )}
       </Section>
+
+      {mvps.length > 0 && (
+        <Section
+          titulo="Melhor em campo"
+          acao={
+            mvps.length > 1 ? (
+              <span className="font-display text-[10px] font-bold tracking-[.08em] text-fg-4 uppercase">
+                título dividido
+              </span>
+            ) : undefined
+          }
+        >
+          <HairlineList as="ul">
+            {mvps.map((m) => (
+              <HairlineRow as="li" key={m.playerId} destaque={m.playerId === meuPlayerId}>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display text-[14px] font-bold text-fg">
+                    {m.nickname ?? m.name}
+                  </span>
+                  {m.nickname && (
+                    <span className="block truncate text-[11.5px] text-fg-4">{m.name}</span>
+                  )}
+                </span>
+                {m.playerId === meuPlayerId && <Badge tom="accent">você</Badge>}
+                <Badge tom="warn">MVP</Badge>
+              </HairlineRow>
+            ))}
+          </HairlineList>
+          <p className="text-[11.5px] leading-[1.45] text-fg-4">
+            Eleito pela rapaziada na avaliação pós-fut. Empate de votos é decidido pela média de
+            estrelas da rodada.
+          </p>
+        </Section>
+      )}
 
       <Section
         titulo="Presença"

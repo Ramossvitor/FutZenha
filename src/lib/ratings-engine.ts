@@ -11,8 +11,10 @@ import {
   users,
 } from "@/db/schema";
 import { formatSkill } from "./format";
+import { apurarMvp } from "./mvp";
 import { notificar } from "./notifications";
 import {
+  getAgregadosMvp,
   getRatersElegiveis,
   PRAZO_AVALIACAO_HORAS,
   PRAZO_DENUNCIA_HORAS,
@@ -232,11 +234,31 @@ export async function fecharRodada(
       closeReason: motivo,
     })
     .where(and(eq(ratingRounds.id, roundId), eq(ratingRounds.status, "open")))
-    .returning({ id: ratingRounds.id });
+    .returning({ id: ratingRounds.id, matchDayId: ratingRounds.matchDayId });
 
   if (fechadas.length === 0) return false;
 
   await aplicarReplay(exec, { tipo: "rodada", dedupeKey: `nota:rodada:${roundId}` });
+
+  // A apuração do MVP sai no mesmo commit do fechamento, para os três motivos
+  // — no prazo vencido vale o que foi votado, e zero votos é fut sem MVP. O
+  // aviso não se repete: a transição de status acima só acontece uma vez, e o
+  // dedupeKey segura qualquer reprocessamento.
+  const vencedores = apurarMvp(await getAgregadosMvp(exec, roundId));
+  await notificar(
+    exec,
+    vencedores.map((playerId) => ({
+      playerId,
+      type: "mvp_do_fut" as const,
+      title: "Você foi eleito o melhor em campo!",
+      body:
+        vencedores.length > 1
+          ? "Título dividido — empate na votação até na média de estrelas."
+          : "A rapaziada votou em você como o MVP do fut.",
+      href: `/fut/${fechadas[0].matchDayId}`,
+      dedupeKey: `mvp:rodada:${roundId}`,
+    })),
+  );
   return true;
 }
 
