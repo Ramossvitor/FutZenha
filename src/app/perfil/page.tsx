@@ -213,6 +213,14 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
               <IconeSeta className="size-4 text-fg-dim" />
             </HairlineRowLink>
           </li>
+          <li>
+            {/* O outro lado desta página: o que a rapaziada vê quando abre o
+                seu nome num ranking ou na lista do grupo. */}
+            <HairlineRowLink href={`/jogador/${player.id}`}>
+              <span className="flex-1">Meu perfil público</span>
+              <IconeSeta className="size-4 text-fg-dim" />
+            </HairlineRowLink>
+          </li>
           {session.isPlatformAdmin && (
             <li>
               <HairlineRowLink href="/admin">

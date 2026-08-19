@@ -6,8 +6,17 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { groupInvitations, groupMembers, groups, type Player } from "@/db/schema";
 
-export async function criarGrupo(nome = "Grupo de Teste"): Promise<number> {
-  const [grupo] = await db.insert(groups).values({ name: nome }).returning();
+// `visibility` fica opcional e cai no default do schema (private) para não
+// mexer em quem já chamava — quem precisa do público é o perfil, onde o grupo
+// visível e o invisível são o teste inteiro.
+export async function criarGrupo(
+  nome = "Grupo de Teste",
+  opcoes: { visibility?: "private" | "public" } = {},
+): Promise<number> {
+  const [grupo] = await db
+    .insert(groups)
+    .values({ name: nome, visibility: opcoes.visibility })
+    .returning();
   return grupo.id;
 }
 

@@ -5,7 +5,8 @@ import { BannerDaQuery } from "@/components/ui/banner";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { HairlineList, HairlineRow, HairlineRowLink } from "@/components/ui/hairline-list";
+import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
+import { NomeJogador } from "@/components/ui/nome-jogador";
 import { VestChip } from "@/components/ui/vest";
 import { STATUS_FUT } from "@/lib/match-day-form";
 import { db } from "@/db";
@@ -244,18 +245,15 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
       >
         <HairlineList as="ul">
           {membros.map((m) => (
-            <HairlineRow as="li" key={m.playerId}>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-display text-[14px] font-bold text-fg">
-                  {m.nickname ?? m.name}
-                </span>
-                {m.nickname && (
-                  <span className="block truncate text-[11.5px] text-fg-4">{m.name}</span>
-                )}
-              </span>
-              {!m.temConta && <Badge tom="dashed">sem conta</Badge>}
-              {m.papel !== "member" && <Badge tom="accent">{papelLabel[m.papel]}</Badge>}
-            </HairlineRow>
+            <li key={m.playerId}>
+              {/* A linha inteira é o link: aqui ela não carrega mais nada além
+                  da pessoa, e é daqui que se conhece quem joga no grupo. */}
+              <HairlineRowLink href={`/jogador/${m.playerId}`}>
+                <NomeJogador apelido={m.nickname} nome={m.name} />
+                {!m.temConta && <Badge tom="dashed">sem conta</Badge>}
+                {m.papel !== "member" && <Badge tom="accent">{papelLabel[m.papel]}</Badge>}
+              </HairlineRowLink>
+            </li>
           ))}
         </HairlineList>
       </Section>
