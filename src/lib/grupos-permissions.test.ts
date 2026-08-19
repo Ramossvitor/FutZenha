@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  gruposVisiveisNoPerfil,
   podeConvidarParaGrupo,
+  podeFiltrarPerfilPorGrupo,
   podeCriarFutNoGrupo,
   podeEntrarNoGrupo,
   podeGerenciarGrupo,
@@ -178,5 +180,53 @@ describe("podeEntrarNoGrupo", () => {
     expect(podeEntrarNoGrupo(publicoSobPedido, "member")).toBe("ja-membro");
     expect(podeEntrarNoGrupo(privadoAberto, "organizer")).toBe("ja-membro");
     expect(podeEntrarNoGrupo(privadoSobPedido, "admin")).toBe("ja-membro");
+  });
+});
+
+describe("gruposVisiveisNoPerfil", () => {
+  const gPublico = { id: 1, visibility: "public" } as const;
+  const gPrivado = { id: 2, visibility: "private" } as const;
+
+  it("grupo público do alvo aparece para qualquer visitante", () => {
+    expect(gruposVisiveisNoPerfil(deFora, [gPublico], new Set())).toEqual([gPublico]);
+  });
+
+  // O ataque simétrico ao do podeVerGrupo: em vez de varrer ids de grupo, abrir
+  // o perfil de alguém e ler dali a lista dos grupos privados dele.
+  it("grupo privado só aparece para quem também participa dele", () => {
+    expect(gruposVisiveisNoPerfil(deFora, [gPrivado], new Set())).toEqual([]);
+    expect(gruposVisiveisNoPerfil(membro, [gPrivado], new Set([2]))).toEqual([gPrivado]);
+  });
+
+  it("admin da plataforma enxerga tudo", () => {
+    expect(gruposVisiveisNoPerfil(plataforma, [gPublico, gPrivado], new Set())).toEqual([
+      gPublico,
+      gPrivado,
+    ]);
+  });
+
+  it("alvo sem grupo nenhum devolve lista vazia", () => {
+    expect(gruposVisiveisNoPerfil(membro, [], new Set([2]))).toEqual([]);
+  });
+});
+
+describe("podeFiltrarPerfilPorGrupo", () => {
+  // A assimetria com gruposVisiveisNoPerfil é a regra, não um descuido: ver que
+  // o grupo público existe é uma pergunta, ler o ranking dele por dentro do
+  // perfil é outra — e esta segunda é a que /grupo/[id]/ranking já recusa.
+  it("grupo público de que o visitante não participa aparece na lista mas não filtra", () => {
+    const gPublico = { id: 1, visibility: "public" } as const;
+
+    expect(gruposVisiveisNoPerfil(deFora, [gPublico], new Set())).toEqual([gPublico]);
+    expect(podeFiltrarPerfilPorGrupo(deFora, new Set(), 1)).toBe(false);
+  });
+
+  it("membro filtra, e a resposta é a mesma de podeVerRankingDoGrupo", () => {
+    expect(podeFiltrarPerfilPorGrupo(membro, new Set([2]), 2)).toBe(true);
+    expect(podeFiltrarPerfilPorGrupo(membro, new Set([2]), 3)).toBe(false);
+  });
+
+  it("admin da plataforma filtra qualquer grupo, como em todo o resto", () => {
+    expect(podeFiltrarPerfilPorGrupo(plataforma, new Set(), 2)).toBe(true);
   });
 });

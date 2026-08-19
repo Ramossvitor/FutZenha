@@ -12,6 +12,7 @@ import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeCadeado, IconeLuva } from "@/components/ui/icons";
 import { assinarPush, cancelarPush } from "@/app/pwa/actions";
 import { PedidoDePush } from "@/components/push/pedido-de-push";
+import { LinkJogador } from "@/components/ui/nome-jogador";
 import { Nota } from "@/components/ui/nota";
 import { VestChip } from "@/components/ui/vest";
 import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
@@ -96,14 +97,11 @@ function Bloco({
                   }`}
                 />
               )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-display text-[14px] font-bold text-fg">
-                  {jogador.nickname ?? jogador.name}
-                </span>
-                {jogador.nickname && (
-                  <span className="block truncate text-[11.5px] text-fg-4">{jogador.name}</span>
-                )}
-              </span>
+              <LinkJogador
+                playerId={jogador.id}
+                apelido={jogador.nickname}
+                nome={jogador.name}
+              />
 
               {souEu && <Badge tom="accent">você</Badge>}
               {linha.status === "waitlist" && <Badge tom="neutral">espera</Badge>}
@@ -380,14 +378,7 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
                             <span className="sr-only">goleiro</span>
                           </span>
                         )}
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-display text-[14px] font-bold text-fg">
-                            {m.nickname ?? m.name}
-                          </span>
-                          {m.nickname && (
-                            <span className="block truncate text-[11.5px] text-fg-4">{m.name}</span>
-                          )}
-                        </span>
+                        <LinkJogador playerId={m.playerId} apelido={m.nickname} nome={m.name} />
                         {m.playerId === meuPlayerId && <Badge tom="accent">você</Badge>}
                         <Nota valor={m.skill} tamanho="sm" />
                       </li>
@@ -521,14 +512,7 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
           <HairlineList as="ul">
             {mvps.map((m) => (
               <HairlineRow as="li" key={m.playerId} destaque={m.playerId === meuPlayerId}>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-display text-[14px] font-bold text-fg">
-                    {m.nickname ?? m.name}
-                  </span>
-                  {m.nickname && (
-                    <span className="block truncate text-[11.5px] text-fg-4">{m.name}</span>
-                  )}
-                </span>
+                <LinkJogador playerId={m.playerId} apelido={m.nickname} nome={m.name} />
                 {m.playerId === meuPlayerId && <Badge tom="accent">você</Badge>}
                 <Badge tom="warn">MVP</Badge>
               </HairlineRow>

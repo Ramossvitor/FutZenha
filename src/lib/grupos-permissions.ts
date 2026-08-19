@@ -154,3 +154,46 @@ export function podeEntrarNoGrupo(grupo: GrupoEntravel, papel: Vinculo): Resulta
   if (grupo.visibility === "private") return "so-convite";
   return grupo.joinPolicy === "open" ? "entra-direto" : "pede-entrada";
 }
+
+/**
+ * Os grupos do jogador-alvo que aparecem no perfil público dele.
+ *
+ * É `podeVerGrupo` aplicado em lote, com uma diferença que é o ponto todo: o
+ * papel consultado é o do VISITANTE, não o do dono do perfil. Grupo privado de
+ * que o visitante não participa some da lista em vez de virar 404 — a página é
+ * legítima, só não pode contar que aquele grupo existe. Sem isto, abrir o
+ * perfil de qualquer um entregaria a lista dos grupos privados dele, que é
+ * exatamente o que o 404 de src/lib/require-grupo.ts esconde.
+ */
+export function gruposVisiveisNoPerfil<G extends GrupoVisivel & { id: number }>(
+  ator: Ator,
+  gruposDoAlvo: readonly G[],
+  gruposDoAtor: ReadonlySet<number>,
+): G[] {
+  return gruposDoAlvo.filter(
+    (g) => g.visibility === "public" || gruposDoAtor.has(g.id) || ator.isPlatformAdmin,
+  );
+}
+
+/**
+ * Recortar os números do perfil público por este grupo — o que o `?grupo=` faz.
+ *
+ * Delega a `podeVerRankingDoGrupo`, e a diferença para `gruposVisiveisNoPerfil`
+ * é o ponto todo: aparecer na LISTA de grupos do perfil é `podeVerGrupo` (grupo
+ * público é de todo mundo), mas recortar gols, V/E/D, presença e MVP por um
+ * grupo é o RANKING daquele grupo — servido um jogador por vez em vez de em
+ * lista, e nada mais. As duas perguntas têm respostas diferentes para o mesmo
+ * grupo público, e usar a primeira nas duas entregava a quem não é membro
+ * exatamente o que `/grupo/[id]/ranking` responde com 404: bastava percorrer
+ * com `?grupo=` os membros que a página pública do grupo já mostra.
+ *
+ * O papel entra como `"member"` porque só o vínculo importa aqui — o predicado
+ * testa `!== null`, e a lista de grupos do visitante não carrega qual é o papel.
+ */
+export function podeFiltrarPerfilPorGrupo(
+  ator: Ator,
+  gruposDoAtor: ReadonlySet<number>,
+  groupId: number,
+): boolean {
+  return podeVerRankingDoGrupo(ator, gruposDoAtor.has(groupId) ? "member" : null);
+}

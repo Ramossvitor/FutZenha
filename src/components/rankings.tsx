@@ -5,7 +5,9 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { Meter } from "@/components/ui/meter";
+import { LinkJogador } from "@/components/ui/nome-jogador";
 import { Nota, NotaVariacao } from "@/components/ui/nota";
+import { Pilula } from "@/components/ui/pilula";
 import { Podium } from "@/components/ui/podium";
 import { cx } from "@/lib/cx";
 import { posicoes } from "@/lib/posicao";
@@ -57,40 +59,10 @@ function href(base: string, aba: AbaDeRanking, ano?: number) {
   return s ? `${base}?${s}` : base;
 }
 
-function Pilula({ ativo, children, ...rest }: { ativo: boolean } & React.ComponentProps<typeof Link>) {
-  return (
-    <Link
-      {...rest}
-      aria-current={ativo ? "page" : undefined}
-      className={cx(
-        "shrink-0 rounded-ctl border px-3 py-1.5 font-display text-[12px] font-bold font-stretch-112% whitespace-nowrap transition-colors",
-        ativo
-          ? "border-accent-edge bg-accent text-on-accent"
-          : "border-line-strong bg-surface text-fg-2 hover:border-line-hover hover:text-fg",
-      )}
-    >
-      {children}
-    </Link>
-  );
-}
-
 function Posicao({ n }: { n: number }) {
   return (
     <span className="w-6 shrink-0 font-display text-[12px] font-extrabold text-fg-4" data-num>
       {n}º
-    </span>
-  );
-}
-
-function NomeDoJogador({ apelido, nome }: { apelido: string | null; nome: string }) {
-  // Apelido manda: é como o grupo chama a pessoa. O nome vai embaixo, miúdo,
-  // para quem só conhece de um jeito conseguir achar.
-  return (
-    <span className="min-w-0 flex-1">
-      <span className="block truncate font-display text-[14.5px] leading-[1.2] font-bold text-fg">
-        {apelido ?? nome}
-      </span>
-      {apelido && <span className="block truncate text-[11.5px] text-fg-4">{nome}</span>}
     </span>
   );
 }
@@ -188,7 +160,7 @@ export async function Rankings({
             {notas.map((n, i) => (
               <HairlineRow as="li" key={n.playerId} destaque={n.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(notas, (x) => x.skill)[i]} />
-                <NomeDoJogador apelido={n.nickname} nome={n.name} />
+                <LinkJogador playerId={n.playerId} apelido={n.nickname} nome={n.name} />
                 <NotaVariacao valor={n.variacao} />
                 <Nota valor={n.skill} tamanho="lg" className="min-w-[3.5rem] text-right" />
               </HairlineRow>
@@ -224,7 +196,7 @@ export async function Rankings({
             {artilheiros.map((a, i) => (
               <HairlineRow as="li" key={a.playerId} destaque={a.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(artilheiros, (x) => x.total)[i]} />
-                <NomeDoJogador apelido={a.nickname} nome={a.name} />
+                <LinkJogador playerId={a.playerId} apelido={a.nickname} nome={a.name} />
                 <span
                   className="font-display text-[22px] leading-none font-black font-stretch-125% text-fg"
                   data-num
@@ -289,8 +261,14 @@ export async function Rankings({
                       <td className="text-left font-display font-extrabold text-fg-4">
                         {posicoes(records, (x) => x.winRate)[i]}º
                       </td>
+                      {/* Sem o NomeJogador: numa célula de tabela o nome de
+                          batismo embaixo desalinharia a linha inteira. O que
+                          não pode faltar é o destino — era a única aba em que
+                          o nome não levava a lugar nenhum. */}
                       <td className="text-left font-display font-bold text-fg">
-                        {r.nickname ?? r.name}
+                        <Link href={`/jogador/${r.playerId}`} className="hover:underline">
+                          {r.nickname ?? r.name}
+                        </Link>
                       </td>
                       <td className="text-fg-2">{r.gamesPlayed}</td>
                       <td className="text-accent-ink">{r.wins}</td>
@@ -328,9 +306,19 @@ export async function Rankings({
               <HairlineRow as="li" key={p.playerId} destaque={p.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(presenca.perPlayer, (x) => x.attended)[i]} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-display text-[14.5px] font-bold text-fg">
+                  {/* Só o nome é âncora: a barra abaixo é informação, não
+                      destino, e engoli-la no link roubaria o alvo de toque. O
+                      LinkJogador faz o mesmo recorte, mas não cabe aqui — ele é
+                      o próprio flex-1 da linha, e esta coluna ainda tem o Meter
+                      embaixo. Daí a repetição das classes, que por isso mesmo
+                      precisam ser as DELE: divergir aqui é como o nome já
+                      chegou em cinco tamanhos diferentes uma vez. */}
+                  <Link
+                    href={`/jogador/${p.playerId}`}
+                    className="block truncate font-display text-[14px] leading-[1.2] font-bold text-fg hover:underline"
+                  >
                     {p.nickname ?? p.name}
-                  </span>
+                  </Link>
                   <Meter
                     valor={p.attended}
                     total={presenca.totalDays}
@@ -389,7 +377,7 @@ export async function Rankings({
             {mvps.map((m, i) => (
               <HairlineRow as="li" key={m.playerId} destaque={m.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(mvps, (x) => x.titulos)[i]} />
-                <NomeDoJogador apelido={m.nickname} nome={m.name} />
+                <LinkJogador playerId={m.playerId} apelido={m.nickname} nome={m.name} />
                 <span
                   className="font-display text-[22px] leading-none font-black font-stretch-125% text-fg"
                   data-num

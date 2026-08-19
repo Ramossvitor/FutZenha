@@ -21,6 +21,10 @@ export default async function proxy(request: NextRequest) {
   const prefixos = [
     "/admin",
     "/perfil",
+    // O perfil público é link de compartilhar: sai no zap e é aberto por gente
+    // que não está logada. Sem o prefixo, o ?next= não é montado e a pessoa cai
+    // na home depois do login, longe de quem ela foi ver.
+    "/jogador",
     "/avaliar",
     "/notificacoes",
     "/votacao",
@@ -61,6 +65,7 @@ export const config = {
   matcher: [
     "/admin/:path*",
     "/perfil/:path*",
+    "/jogador/:path*",
     "/avaliar/:path*",
     "/notificacoes/:path*",
     // /votacao entra aqui e não só no requirePlayer() da página porque é só o
