@@ -11,6 +11,7 @@ import {
   lerDestinosDeCancelamento,
 } from "@/lib/agenda-convite";
 import { apagarFut, motivoExclusaoSchema } from "@/lib/deletion";
+import { esquecerStats } from "@/lib/stats";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 
 /**
@@ -54,6 +55,10 @@ export async function excluirFutAbusivo(matchDayId: number, formData: FormData) 
   revalidatePath("/");
   revalidatePath("/futs");
   revalidatePath("/rankings");
+  // O memo de src/lib/stats.ts guarda os agregados por até MEMO_TTL_MS; sem
+  // isto, o ranking e o perfil público ficariam com o número velho por esse
+  // tempo depois de uma mudança que os afeta.
+  esquecerStats();
   revalidatePath("/artilharia");
   redirect("/admin/futs?ok=excluido");
 }

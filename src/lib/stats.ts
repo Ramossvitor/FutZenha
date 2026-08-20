@@ -28,6 +28,71 @@ import { escopo, jogouNoGrupo, type EscopoStats } from "./stats-escopo";
 // comentário de lá: são os dois predicados que falham em silêncio.
 export type { EscopoStats };
 
+// ---------------------------------------------------------------------------
+// Memo com prazo
+//
+// Estas consultas são agregados sobre a plataforma INTEIRA — gols, escalações e
+// presenças de todo fut encerrado — e nenhuma página do app é estática: o root
+// layout lê a sessão, então todo request renderiza de novo. O perfil público
+// (/jogador/[id]) roda TRÊS delas para mostrar seis números de uma pessoa, e é
+// enumerável por id: varrer /jogador/1..N com uma sessão válida era um
+// amplificador de carga barato contra um Neon de plano gratuito.
+//
+// É um memo em escopo de módulo, o mesmo idioma de `ultimaExecucao`
+// (src/lib/pendencias.ts) e `ultimoDespacho` (src/lib/push-envio.ts) — e com o
+// mesmo contrato: **otimização, não garantia**. Instâncias serverless não
+// dividem memória, então uma instância fria paga tudo de novo. O que ele
+// resolve é justamente o que o ataque faz: colapsar uma RAJADA de leituras
+// numa instância em um round-trip.
+//
+// Por que não `unstable_cache` (a escolha mais óbvia): a invalidação dele é por
+// tag, e no Next 16 `revalidateTag` mudou de assinatura e a interoperação de
+// tags com `unstable_cache` não é a mesma de `use cache`. Pior: o harness de
+// integração mocka `next/cache` inteiro (ver src/test/setup-integration.ts),
+// então a invalidação NÃO seria coberta por teste nenhum — e cache cuja
+// invalidação ninguém testa é como o ranking passa a mentir em silêncio. Este
+// memo é invalidado por uma função comum, que o teste chama e observa.
+//
+// O que NÃO entra aqui é permissão: `carregarPerfil` (src/app/jogador/[id]/dados.ts)
+// resolve visibilidade de grupo ANTES de escolher o escopo, e o escopo é parte
+// da chave. Guardar o agregado é guardar um fato público (quem fez quantos
+// gols), nunca uma decisão sobre quem pode vê-lo.
+const MEMO_TTL_MS = 60_000;
+
+type Entrada = { valor: unknown; expiraEm: number };
+const memo = new Map<string, Entrada>();
+
+/**
+ * Esquece tudo. Chamada pelas actions que mudam o que os agregados contam —
+ * encerrar fut, apagar fut, apurar rodada, julgar denúncia, votar exclusão.
+ *
+ * Grosseira de propósito: invalidar por escopo exigiria saber qual grupo e qual
+ * ano cada mutação alcança, e errar isso é o ranking mentir. O conjunto é
+ * pequeno (um punhado de escopos) e o custo de reconstruir é uma consulta.
+ */
+export function esquecerStats(): void {
+  memo.clear();
+}
+
+/** Só para teste: o memo não pode vazar estado entre casos. */
+export const reiniciarMemoDeStats = esquecerStats;
+
+async function comMemo<T>(chave: string, consulta: () => Promise<T>): Promise<T> {
+  const agora = Date.now();
+  const guardado = memo.get(chave);
+  if (guardado && guardado.expiraEm > agora) return guardado.valor as T;
+
+  const valor = await consulta();
+  memo.set(chave, { valor, expiraEm: agora + MEMO_TTL_MS });
+  return valor;
+}
+
+/** Chave estável do escopo — dois objetos com as mesmas chaves em ordem
+ *  diferente têm de cair na mesma entrada. */
+function chaveDoEscopo(e: EscopoStats): string {
+  return `${e.year ?? "todos"}:${e.groupId ?? "geral"}`;
+}
+
 export async function getAvailableYears(e: EscopoStats = {}): Promise<number[]> {
   const rows = await db
     .selectDistinct({ year: sql<number>`extract(year from ${matchDays.date})::int` })
@@ -36,7 +101,7 @@ export async function getAvailableYears(e: EscopoStats = {}): Promise<number[]> 
   return rows.map((r) => r.year).sort((a, b) => b - a);
 }
 
-export async function getTopScorers(e: EscopoStats = {}) {
+async function getTopScorersCru(e: EscopoStats = {}) {
   return db
     .select({
       playerId: players.id,
@@ -69,7 +134,7 @@ export type PlayerRecord = {
   winRate: number;
 };
 
-export async function getPlayerRecords(
+async function getPlayerRecordsCru(
   e: EscopoStats = {},
   minGames = 1,
 ): Promise<PlayerRecord[]> {
@@ -221,7 +286,7 @@ export type AttendanceStat = {
   attended: number;
 };
 
-export async function getAttendanceStats(e: EscopoStats = {}): Promise<{
+async function getAttendanceStatsCru(e: EscopoStats = {}): Promise<{
   totalDays: number;
   perPlayer: AttendanceStat[];
 }> {
@@ -258,4 +323,22 @@ export async function getAttendanceStats(e: EscopoStats = {}): Promise<{
     .orderBy(desc(sql`count(*)`), players.name);
 
   return { totalDays, perPlayer };
+}
+
+// ---------------------------------------------------------------------------
+// As versões com memo — o que o app importa. As `*Cru` acima são as consultas.
+// ---------------------------------------------------------------------------
+
+export function getTopScorers(e: EscopoStats = {}) {
+  return comMemo(`artilharia:${chaveDoEscopo(e)}`, () => getTopScorersCru(e));
+}
+
+export function getPlayerRecords(e: EscopoStats = {}, minGames = 1) {
+  return comMemo(`retrospecto:${chaveDoEscopo(e)}:${minGames}`, () =>
+    getPlayerRecordsCru(e, minGames),
+  );
+}
+
+export function getAttendanceStats(e: EscopoStats = {}) {
+  return comMemo(`presenca:${chaveDoEscopo(e)}`, () => getAttendanceStatsCru(e));
 }

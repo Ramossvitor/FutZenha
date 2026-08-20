@@ -53,6 +53,7 @@ import {
 import { FIM_DA_JANELA_CORRECAO } from "@/lib/janela-correcao";
 import { TIMES_MAX, TIMES_MIN } from "@/lib/regras";
 import { agendarDespachoDePush } from "@/lib/push-envio";
+import { esquecerStats } from "@/lib/stats";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { defaultTeamNames } from "@/lib/team-colors";
 
@@ -172,6 +173,10 @@ export async function abrirVotacaoExclusao(matchDayId: number, formData: FormDat
     revalidatePath("/");
     revalidatePath("/futs");
     revalidatePath("/rankings");
+    // O memo de src/lib/stats.ts guarda os agregados por até MEMO_TTL_MS; sem
+    // isto, o ranking e o perfil público ficariam com o número velho por esse
+    // tempo depois de uma mudança que os afeta.
+    esquecerStats();
     redirect("/futs?ok=excluido-sem-votacao");
   }
 

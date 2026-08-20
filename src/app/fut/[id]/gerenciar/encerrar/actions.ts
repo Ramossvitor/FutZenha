@@ -10,6 +10,7 @@ import { revalidateMatchDay } from "../../revalidate";
 import { notificar } from "@/lib/notifications";
 import { avaliarMarcacao, entrarNaLista, mereceAviso, travarFut } from "@/lib/presenca";
 import { abrirRodada } from "@/lib/ratings-engine";
+import { esquecerStats } from "@/lib/stats";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 
 // A escalação só é editável enquanto o fut não foi encerrado. Depois da
@@ -226,6 +227,10 @@ export async function confirmarEncerramento(matchDayId: number) {
   revalidatePath("/futs");
   revalidatePath("/artilharia");
   revalidatePath("/rankings");
+  // O memo de src/lib/stats.ts guarda os agregados por até MEMO_TTL_MS; sem
+  // isto, o ranking e o perfil público ficariam com o número velho por esse
+  // tempo depois de uma mudança que os afeta.
+  esquecerStats();
   revalidar(matchDayId);
   redirect(`/fut/${matchDayId}/gerenciar`);
 }
