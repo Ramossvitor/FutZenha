@@ -374,6 +374,19 @@ export const attendances = pgTable(
     // Envio de FATO, não intenção: uma falha silenciosa não pode custar 10
     // minutos de bloqueio. Best-effort na escrita, como o email_sent_at.
     agendaEmailSentAt: timestamp("agenda_email_sent_at"),
+    // QUANTOS e-mails de agenda saíram para este par dentro da janela que
+    // termina no carimbo acima. O carimbo sozinho não servia de ledger: ele é
+    // sobrescrito, então dez envios e um envio deixam a linha idêntica. Como os
+    // tetos somavam LINHAS carimbadas, alternar "Vou"/"Fora" no mesmo fut —
+    // cujo cancelamento é isento da janela por par, de propósito — mandava um
+    // e-mail por ciclo para sempre com os dois contadores presos em 1. É o
+    // vetor que ./freios-de-envio descreve no topo, e ele sobrevivia ao próprio
+    // freio.
+    //
+    // Zerado (e não incrementado) quando o carimbo anterior já saiu da janela
+    // de 24h — ver `carimbarEnvio`. Assim a coluna não precisa de GC: ela se
+    // recicla no próximo envio, e fora da janela ninguém a lê.
+    agendaEmailsSent: integer("agenda_emails_sent").notNull().default(0),
   },
   (t) => [
     unique().on(t.matchDayId, t.playerId),
@@ -384,6 +397,12 @@ export const attendances = pgTable(
     index("attendances_agenda_envio_idx")
       .on(t.playerId, t.agendaEmailSentAt)
       .where(sql`agenda_email_sent_at is not null`),
+    // O vínculo do fut avulso ("já dividiu um fut com") pergunta por player_id
+    // sozinho — `condicaoJaJogouCom` e `jaJogaramJuntos`, em src/lib/elegiveis.ts
+    // e src/lib/fut-entrada-db.ts. A unique acima começa por match_day_id e não
+    // atende essa forma, e estas consultas rodam em toda renderização de
+    // /fut/[id], em todo setMyAttendance("in") e na varredura de véspera.
+    index("attendances_jogador_idx").on(t.playerId),
   ],
 );
 

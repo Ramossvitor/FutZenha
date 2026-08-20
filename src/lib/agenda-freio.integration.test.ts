@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { matchDays } from "@/db/schema";
+import { attendances, matchDays } from "@/db/schema";
 import { updateMatchDay } from "@/app/fut/[id]/gerenciar/actions";
 import { LIMITE_PUSHES_AGENDA_DIA } from "@/lib/agenda-freio";
 import {
@@ -127,20 +127,51 @@ describe("match_days_duracao_check", () => {
   });
 });
 
+/** Envelhece o carimbo de envio do par, para sair da janela por (fut, jogador). */
+async function envelhecerCarimboDeAgenda(matchDayId: number, minutos: number): Promise<void> {
+  await db
+    .update(attendances)
+    .set({
+      agendaEmailSentAt: sql`now() - interval '${sql.raw(String(Math.trunc(minutos)))} minutes'`,
+    })
+    .where(eq(attendances.matchDayId, matchDayId));
+}
+
 describe("freio do aviso de agenda", () => {
-  it("segura o aviso depois do limite, sem impedir a mudança", async () => {
+  // São DUAS travas empilhadas, e esta é a de fora: a janela por par
+  // (fut, jogador) de ./freios-de-envio. Ela é mais estreita que a cota do fut,
+  // então numa enxurrada é ela que responde — cinco salvamentos seguidos viram
+  // UM e-mail, não cinco. Antes dela, a cota do fut deixava passar os cinco.
+  it("a janela por par transforma a enxurrada num e-mail só", async () => {
     const fut = await futComConfirmado();
     const fetchMock = stubResend();
 
-    // Uma mudança de horário por salvamento — cada uma reescreveria o evento na
-    // agenda de quem confirmou.
     for (let i = 0; i < LIMITE_PUSHES_AGENDA_DIA; i++) {
       await updateMatchDay(fut.id, formDoFut({ startTime: `${10 + i}:00` }));
     }
     await flushAfter();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // O banco nunca mente sobre o fut: o que ficou para trás é o e-mail.
+    const [depois] = await db.select().from(matchDays).where(eq(matchDays.id, fut.id));
+    expect(depois.startTime).toBe("14:00:00");
+  });
+
+  // E esta é a de dentro: mesmo com a janela por par sempre vencida — o caso de
+  // quem espaça os salvamentos de propósito —, o fut só dispara LIMITE lotes.
+  it("a cota do fut segura mesmo com a janela por par vencida", async () => {
+    const fut = await futComConfirmado();
+    const fetchMock = stubResend();
+
+    for (let i = 0; i < LIMITE_PUSHES_AGENDA_DIA; i++) {
+      await envelhecerCarimboDeAgenda(fut.id, 11);
+      await updateMatchDay(fut.id, formDoFut({ startTime: `${10 + i}:00` }));
+      await flushAfter();
+    }
     expect(fetchMock).toHaveBeenCalledTimes(LIMITE_PUSHES_AGENDA_DIA);
 
     // A seguinte estoura a cota: salva, avisa quem administra e não manda nada.
+    await envelhecerCarimboDeAgenda(fut.id, 11);
     const destino = await esperaRedirect(() =>
       updateMatchDay(fut.id, formDoFut({ startTime: "19:00" })),
     );
@@ -148,16 +179,69 @@ describe("freio do aviso de agenda", () => {
 
     expect(destino).toBe(`/fut/${fut.id}/gerenciar?ok=salvo-sem-avisar`);
     expect(fetchMock).toHaveBeenCalledTimes(LIMITE_PUSHES_AGENDA_DIA);
-    // O banco nunca mente sobre o fut: o que ficou para trás é o e-mail.
-    const [depois] = await db
-      .select()
-      .from(matchDays)
-      .where(eq(matchDays.id, fut.id));
+    const [depois] = await db.select().from(matchDays).where(eq(matchDays.id, fut.id));
     expect(depois.startTime).toBe("19:00:00");
   });
 
-  // O freio pega só o broadcast. Convite e cancelamento vão para uma pessoa só,
-  // por causa de um clique dela mesma — não são vetor de enxurrada.
+  // A cota volta aos poucos (token bucket), não de uma vez na virada de uma
+  // janela. É o que impede o dobro do teto em dois minutos: cinco no fim de uma
+  // janela fixa e cinco no começo da seguinte.
+  it("a cota volta de uma em uma, não em bloco", async () => {
+    const fut = await futComConfirmado();
+    const fetchMock = stubResend();
+
+    // Exatamente o teto: a cota fica zerada, e nenhum destes redireciona.
+    for (let i = 0; i < LIMITE_PUSHES_AGENDA_DIA; i++) {
+      await envelhecerCarimboDeAgenda(fut.id, 11);
+      await updateMatchDay(fut.id, formDoFut({ startTime: `${10 + i}:00` }));
+      await flushAfter();
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(LIMITE_PUSHES_AGENDA_DIA);
+
+    // 5h depois: uma cota repôs (o intervalo é 24h/5 = 4h48), e só uma.
+    await db
+      .update(matchDays)
+      .set({ calendarPushesSince: sql`now() - interval '5 hours'` })
+      .where(eq(matchDays.id, fut.id));
+
+    await envelhecerCarimboDeAgenda(fut.id, 11);
+    await updateMatchDay(fut.id, formDoFut({ startTime: "07:00" }));
+    await flushAfter();
+    expect(fetchMock).toHaveBeenCalledTimes(LIMITE_PUSHES_AGENDA_DIA + 1);
+
+    // A seguinte já não tem saldo: a reposição é de uma, não do teto inteiro.
+    await envelhecerCarimboDeAgenda(fut.id, 11);
+    await esperaRedirect(() => updateMatchDay(fut.id, formDoFut({ startTime: "06:00" })));
+    await flushAfter();
+    expect(fetchMock).toHaveBeenCalledTimes(LIMITE_PUSHES_AGENDA_DIA + 1);
+  });
+
+  // Cota gasta num fut sem ninguém confirmado é cota que falta na mudança que
+  // importa — e o organizador não teria como saber por que acabou.
+  it("não consome cota quando não há ninguém para avisar", async () => {
+    const { jogador: admin, conta } = await criarJogadorComConta({}, { email: EMAIL });
+    await logarComo(conta);
+    const fut = await criarFut({
+      date: "2026-08-22",
+      startTime: "20:00:00",
+      createdByPlayerId: admin.id,
+    });
+    const fetchMock = stubResend();
+
+    // Dez salvamentos sem ninguém na lista: nenhum e-mail, nenhuma cota.
+    for (let i = 0; i < 10; i++) {
+      await updateMatchDay(fut.id, formDoFut({ startTime: `${10 + i}:00` }));
+    }
+    await flushAfter();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const [linha] = await db.select().from(matchDays).where(eq(matchDays.id, fut.id));
+    expect(linha.calendarPushes).toBe(0);
+  });
+
+  // O freio pega só o broadcast — o alvo dele é "quantas vezes um fut dispara um
+  // lote". Quem limita convite e cancelamento é a janela por par de
+  // ./freios-de-envio, testada em agenda-convite.integration.test.ts.
   it("não conta salvamento que não mexe no evento", async () => {
     const fut = await futComConfirmado();
     const fetchMock = stubResend();
