@@ -1,14 +1,19 @@
 import { desc, asc, inArray, eq } from "drizzle-orm";
+import {
+  pedirParaEntrarNoFut,
+  responderConviteDeFut,
+} from "@/app/fut/[id]/entrada-actions";
 import { Badge } from "@/components/ui/badge";
 import { BannerDaQuery } from "@/components/ui/banner";
-import { LinkButton } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/card";
+import { LinkButton, SubmitButton } from "@/components/ui/button";
+import { Card, PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
 import { VestChip } from "@/components/ui/vest";
 import { db } from "@/db";
 import { games, groups, matchDays, teams } from "@/db/schema";
-import { formatDate, formatDateShort, formatTime } from "@/lib/format";
+import { convitesDeFutPendentes, futsParaExplorar } from "@/lib/fut-entrada-db";
+import { formatDate, formatDateShort, formatHorario, formatTime } from "@/lib/format";
 import { getGrupoAtual } from "@/lib/grupo-atual";
 import { listarMeusGrupos } from "@/lib/grupos";
 import { STATUS_FUT } from "@/lib/match-day-form";
@@ -19,7 +24,7 @@ export const metadata = { title: "Futs" };
 export const dynamic = "force-dynamic";
 
 export default async function FutsPage({ searchParams }: PageProps<"/futs">) {
-  const { ok } = await searchParams;
+  const { ok, erro } = await searchParams;
   const session = await getSession();
   const grupo = await getGrupoAtual();
   const ator = session
@@ -63,6 +68,16 @@ export default async function FutsPage({ searchParams }: PageProps<"/futs">) {
         .from(groups)
         .where(inArray(groups.id, groupIds))
     : [];
+  // As duas listas da entrada por consentimento (ver src/lib/fut-entrada.ts).
+  // Só para quem está logado: convite é pessoal, e explorar exige saber quem
+  // pergunta (a lista traz "já estou" e "já pedi" por jogador).
+  const [convitesDeFut, paraExplorar] = session
+    ? await Promise.all([
+        convitesDeFutPendentes(session.player.id),
+        futsParaExplorar(session.player.id),
+      ])
+    : [[], []];
+
   const nomeDoGrupo = new Map(
     groupRows
       .filter(
@@ -85,7 +100,83 @@ export default async function FutsPage({ searchParams }: PageProps<"/futs">) {
         }
       />
 
-      <BannerDaQuery ok={ok} />
+      <BannerDaQuery ok={ok} erro={erro} />
+
+      {/* Quem chamou você. Convite NÃO é presença: a lista só muda quando você
+          responde — é o ponto do desenho em src/lib/fut-entrada.ts. */}
+      {convitesDeFut.length > 0 && (
+        <Section titulo="Chamaram você">
+          <div className="flex flex-col gap-2">
+            {convitesDeFut.map((c) => (
+              <Card key={c.id} className="border-warn-line bg-warn-tint p-4">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-[16px] font-extrabold font-stretch-112% text-fg">
+                      {formatDate(c.date)} · {c.location}
+                    </p>
+                    <p className="text-[13px] leading-[1.45] text-fg-2">
+                      {c.convidadoPor ? `Convite de ${c.convidadoPor}` : "Você foi chamado"}
+                      {formatHorario(c.startTime, c.endTime)
+                        ? ` · ${formatHorario(c.startTime, c.endTime)}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <form action={responderConviteDeFut.bind(null, c.matchDayId, c.id, true)}>
+                      <SubmitButton tamanho="sm">Vou</SubmitButton>
+                    </form>
+                    <form action={responderConviteDeFut.bind(null, c.matchDayId, c.id, false)}>
+                      <SubmitButton variante="secondary" tamanho="sm">
+                        Não vou
+                      </SubmitButton>
+                    </form>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Explorar: só fut AVULSO e só `scheduled` — fut de grupo é do grupo, e
+          listá-lo aqui entregaria data, local e organizador de fut de grupo
+          privado a quem não é membro. A trava está na consulta
+          (futsParaExplorar), não nesta tela. */}
+      {paraExplorar.length > 0 && (
+        <Section
+          titulo="Explorar"
+          acao={<span className="eyebrow">futs avulsos abertos</span>}
+        >
+          <div className="flex flex-col gap-2">
+            {paraExplorar.map((f) => (
+              <Card key={f.id} className="p-4">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-[16px] font-extrabold font-stretch-112% text-fg">
+                      {formatDateShort(f.date)} · {f.location}
+                    </p>
+                    <p className="text-[13px] leading-[1.45] text-fg-2">
+                      {f.organizador ? `Marcado por ${f.organizador}` : "Sem organizador"}
+                      {" · "}
+                      {f.confirmados}
+                      {f.maxPlayers !== null ? `/${f.maxPlayers}` : ""} na lista
+                    </p>
+                  </div>
+                  {f.jaPedi ? (
+                    <Badge tom="dashed">pedido enviado</Badge>
+                  ) : (
+                    <form action={pedirParaEntrarNoFut.bind(null, f.id)}>
+                      <SubmitButton variante="secondary" tamanho="sm">
+                        Pedir para entrar
+                      </SubmitButton>
+                    </form>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </Section>
+      )}
 
       <HairlineList
         as="ul"

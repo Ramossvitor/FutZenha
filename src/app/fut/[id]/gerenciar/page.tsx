@@ -11,6 +11,7 @@ import { carregarPainel } from "./dados";
 import {
   SecaoDados,
   SecaoEncerrar,
+  SecaoEntrada,
   SecaoJogos,
   SecaoPresenca,
   SecaoTimes,
@@ -36,9 +37,9 @@ export default async function GerenciarFutPage({
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
   // 404 para quem não administra este fut — inclusive para id inexistente.
-  await requireFutAdmin(id);
+  const { session } = await requireFutAdmin(id);
 
-  const fut = await carregarPainel(id);
+  const fut = await carregarPainel(id, session.player.id);
 
   return (
     <div className="flex flex-col gap-7">
@@ -67,6 +68,7 @@ export default async function GerenciarFutPage({
 
       <SecaoDados fut={fut} />
       <SecaoPresenca fut={fut} />
+      <SecaoEntrada fut={fut} />
       <SecaoTimes fut={fut} />
       <SecaoJogos fut={fut} />
       <SecaoEncerrar fut={fut} />

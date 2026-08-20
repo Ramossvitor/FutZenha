@@ -75,7 +75,7 @@ describe("podeGerenciarFut em fut de grupo", () => {
 });
 
 describe("podeDefinirPresencaPor com a lista aberta", () => {
-  const ABERTA = false;
+  const ABERTA = { listaFechada: false, ehDeGrupo: true };
   const semConta = { temContaAtiva: false, jaEstaNoFut: false, elegivel: true };
   const comContaDeFora = { temContaAtiva: true, jaEstaNoFut: false, elegivel: true };
   const comContaJaNoFut = { temContaAtiva: true, jaEstaNoFut: true, elegivel: true };
@@ -121,8 +121,8 @@ describe("podeDefinirPresencaPor com a lista aberta", () => {
 
 // Fechar a lista é sortear os times: daí em diante o organizador registra quem
 // apareceu na quadra, e não monta mais lista.
-describe("podeDefinirPresencaPor com a lista fechada", () => {
-  const FECHADA = true;
+describe("podeDefinirPresencaPor com a lista fechada, em fut de GRUPO", () => {
+  const FECHADA = { listaFechada: true, ehDeGrupo: true };
 
   it("o organizador inclui quem tem conta, não confirmou, mas é elegível", () => {
     expect(
@@ -179,6 +179,58 @@ describe("podeDefinirPresencaPor com a lista fechada", () => {
         criador,
         { temContaAtiva: false, jaEstaNoFut: false, elegivel: false },
         FECHADA,
+      ),
+    ).toBe(true);
+  });
+});
+
+// O buraco que `ehDeGrupo` fechou. Em fut avulso, `condicaoElegivel` não filtra
+// nada (devolve `undefined`, que o `and()` do drizzle descarta), então
+// `elegivel: true` ali quer dizer "qualquer jogador ativo da plataforma". Com a
+// lista fechada, isso deixava quem criasse um fut avulso marcar presença de
+// estranhos — e cada marcação dispara notificação, push e um e-mail de
+// calendário com texto livre para a caixa da vítima.
+describe("podeDefinirPresencaPor com a lista fechada, em fut AVULSO", () => {
+  const FECHADA_AVULSA = { listaFechada: true, ehDeGrupo: false };
+
+  it("NÃO inclui estranho com conta ativa, mesmo 'elegível'", () => {
+    expect(
+      podeDefinirPresencaPor(
+        criador,
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true },
+        FECHADA_AVULSA,
+      ),
+    ).toBe(false);
+  });
+
+  // O caso legítimo continua de pé: o convidado que chegou na hora não tem
+  // conta, não tem como se marcar, e é para ele que a exceção existe.
+  it("quem não tem conta continua livre", () => {
+    expect(
+      podeDefinirPresencaPor(
+        criador,
+        { temContaAtiva: false, jaEstaNoFut: false, elegivel: false },
+        FECHADA_AVULSA,
+      ),
+    ).toBe(true);
+  });
+
+  it("quem já está no fut continua sob o organizador", () => {
+    expect(
+      podeDefinirPresencaPor(
+        criador,
+        { temContaAtiva: true, jaEstaNoFut: true, elegivel: false },
+        FECHADA_AVULSA,
+      ),
+    ).toBe(true);
+  });
+
+  it("admin da plataforma segue sendo o fallback de fut órfão", () => {
+    expect(
+      podeDefinirPresencaPor(
+        plataforma,
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true },
+        FECHADA_AVULSA,
       ),
     ).toBe(true);
   });

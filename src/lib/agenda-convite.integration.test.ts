@@ -3,7 +3,7 @@
 // Resend — é o que o cliente de e-mail veria, e é onde a regressão apareceria.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, matchDays, type MatchDay, type Player } from "@/db/schema";
 import { setMyAttendance } from "@/app/fut/[id]/actions";
@@ -23,9 +23,15 @@ import {
   criarJogadorComConta,
   logarComo,
 } from "@/test/fixtures";
+import { criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
 import { esperaRedirect } from "@/test/navigation-fake";
 import { flushAfter } from "@/test/after-flush";
 import { payloadDoEnvio, stubResend } from "@/test/resend-fake";
+import {
+  TETO_AGENDA_DIA,
+  TETO_AGENDA_POR_JOGADOR_DIA,
+  TETO_DIARIO,
+} from "@/lib/freios-de-envio";
 
 const EMAIL = "jogador@example.com";
 const FUT_COM_HORA = { date: "2026-08-22", startTime: "20:00:00" };
@@ -37,10 +43,38 @@ function icsDoEnvio(fetchMock: ReturnType<typeof vi.fn>, indice = 0): string {
   return Buffer.from(anexos[0].content, "base64").toString("utf-8");
 }
 
+/**
+ * Envelhece o carimbo de envio do par, para sair da janela por (fut, jogador).
+ *
+ * Testes que são sobre OUTRA coisa (SEQUENCE, destinatário, conteúdo do .ics)
+ * chamam isto entre os passos: sem ele, o freio de ./freios-de-envio suprime o
+ * segundo convite e o teste passa a medir o freio em vez do que ele diz medir.
+ * Quem testa o freio é o bloco no fim deste arquivo.
+ */
+async function envelhecerCarimbo(fut: MatchDay, minutos = 11): Promise<void> {
+  await db
+    .update(attendances)
+    .set({ agendaEmailSentAt: sql`now() - interval '${sql.raw(String(minutos))} minutes'` })
+    .where(eq(attendances.matchDayId, fut.id));
+}
+
 /** Jogador com conta e e-mail — o caso que recebe convite. */
 async function jogadorComEmail(email = EMAIL): Promise<Player> {
   const { jogador } = await criarJogadorComConta({}, { email });
   return jogador;
+}
+
+/**
+ * Um fut em que o jogador logado consegue se auto-confirmar.
+ *
+ * É fut DE GRUPO com ele dentro, e não avulso, porque em fut avulso quem nunca
+ * esteve na lista entra por pedido/convite/link (ver src/lib/fut-entrada.ts) —
+ * e estes testes são sobre o e-mail de agenda, não sobre a regra de entrada.
+ */
+async function futQueAceitaEntrada(jogador: Player, extra: Record<string, unknown> = {}) {
+  const groupId = await criarGrupo();
+  await entrarNoGrupo(groupId, jogador);
+  return criarFut({ ...FUT_COM_HORA, groupId, ...extra });
 }
 
 /** Jogador com conta, e-mail e sessão aberta — quem clica em "Vou". */
@@ -171,7 +205,7 @@ describe("ciclo pela action de presença", () => {
   // transição, o REQUEST de volta seria ignorado por quem já viu o CANCEL.
   it("confirmar, sair e voltar versiona o mesmo evento", async () => {
     const jogador = await jogadorLogado();
-    const fut = await criarFut(FUT_COM_HORA);
+    const fut = await futQueAceitaEntrada(jogador);
     const fetchMock = stubResend();
 
     const uid = `UID:fut-${fut.id}-${jogador.id}@futzenha.com.br`;
@@ -181,12 +215,17 @@ describe("ciclo pela action de presença", () => {
     expect(icsDoEnvio(fetchMock, 0)).toContain("METHOD:REQUEST");
     expect(icsDoEnvio(fetchMock, 0)).toContain("SEQUENCE:0");
 
+    // Sem envelhecer: o cancelamento é isento da janela por par, de propósito —
+    // suprimi-lo deixaria na agenda um fut em que a pessoa não está.
     await setMyAttendance(fut.id, "out");
     await flushAfter();
     expect(payloadDoEnvio(fetchMock, 1).subject).toContain("Fora da lista:");
     expect(icsDoEnvio(fetchMock, 1)).toContain("METHOD:CANCEL");
     expect(icsDoEnvio(fetchMock, 1)).toContain("SEQUENCE:1");
 
+    // Este passo é sobre SEQUENCE, não sobre o freio: sem envelhecer o carimbo,
+    // a volta cairia na janela de 10 min e o teste mediria outra coisa.
+    await envelhecerCarimbo(fut);
     await setMyAttendance(fut.id, "in");
     await flushAfter();
     expect(icsDoEnvio(fetchMock, 2)).toContain("METHOD:REQUEST");
@@ -199,9 +238,9 @@ describe("ciclo pela action de presença", () => {
 
   it("quem cai na espera não ganha evento nenhum", async () => {
     const cheios = await Promise.all([jogadorComEmail("a@example.com"), jogadorComEmail("b@example.com")]);
-    const fut = await criarFut({ ...FUT_COM_HORA, maxPlayers: 2 });
-    for (const jogador of cheios) await confirmarPresenca(fut, jogador);
     const atrasado = await jogadorLogado("c@example.com");
+    const fut = await futQueAceitaEntrada(atrasado, { maxPlayers: 2 });
+    for (const jogador of cheios) await confirmarPresenca(fut, jogador);
     const fetchMock = stubResend();
 
     await setMyAttendance(fut.id, "in");
@@ -359,5 +398,121 @@ describe("mudanças no fut", () => {
     expect(ics).toContain("SEQUENCE:1");
     const sobrou = await db.select().from(matchDays).where(eq(matchDays.id, fut.id));
     expect(sobrou).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Os freios de ./freios-de-envio, no caminho que eles existem para fechar.
+//
+// O e-mail de agenda passava por fora de TODOS os freios de ./email-convite, e
+// o gatilho mais barato dele é o mais desprotegido: `setMyAttendance`, que
+// qualquer jogador elegível dispara sozinho. Alternar "Vou"/"Fora" mandava dois
+// e-mails por ciclo, ilimitado, contra a mesma cota de 100/dia do Resend que
+// serve ao link de redefinição de acesso.
+// ---------------------------------------------------------------------------
+describe("freio do e-mail de agenda", () => {
+  it("alternar presença não vira enxurrada de convite", async () => {
+    const jogador = await jogadorLogado();
+    const fut = await futQueAceitaEntrada(jogador);
+    const fetchMock = stubResend();
+
+    for (let volta = 0; volta < 5; volta++) {
+      await setMyAttendance(fut.id, "in");
+      await setMyAttendance(fut.id, "out");
+    }
+    await flushAfter();
+
+    // Um convite (o primeiro) e, no máximo, um cancelamento por volta. O convite
+    // é suprimido pela janela por par; o cancelamento é isento dela, porque
+    // calendário que mente é pior que calendário atrasado — e quem limita ELE é
+    // o teto diário por caixa de entrada, exercitado no teste seguinte.
+    const assuntos = fetchMock.mock.calls.map((_, i) => payloadDoEnvio(fetchMock, i).subject);
+    expect(assuntos.filter((a) => a.includes("Na agenda:"))).toHaveLength(1);
+    expect(assuntos.length).toBeLessThanOrEqual(6);
+  });
+
+  // A regressão que o contador de `attendances.agenda_emails_sent` existe para
+  // travar, e a razão de ele existir. Enquanto o ledger era só o carimbo —
+  // sobrescrito a cada envio —, os dois tetos somavam LINHAS carimbadas: este
+  // par (fut, jogador) valia 1 para sempre, o cancelamento é isento da janela, e
+  // alternar presença mandava um e-mail por ciclo INDEFINIDAMENTE. Cem ciclos
+  // zeravam a cota do Resend e derrubavam junto o link de redefinição de acesso,
+  // que é o que o sub-teto veio proteger.
+  //
+  // `flushAfter` dentro do laço: sem ele os despachos correm concorrentes e
+  // vários leem a contagem antes de o carimbo do anterior cair, o que torna o
+  // total não determinístico. Serializado, a borda é exata.
+  it("o teto por caixa de entrada fecha o loop de alternar presença", async () => {
+    const jogador = await jogadorLogado();
+    const fut = await futQueAceitaEntrada(jogador);
+    const fetchMock = stubResend();
+
+    const VOLTAS = TETO_AGENDA_POR_JOGADOR_DIA * 2;
+    for (let volta = 0; volta < VOLTAS; volta++) {
+      await setMyAttendance(fut.id, "in");
+      await flushAfter();
+      await setMyAttendance(fut.id, "out");
+      await flushAfter();
+    }
+
+    // Para no teto, e não em `VOLTAS + 1`: o número de e-mails deixou de
+    // depender do número de ciclos, que é o ponto.
+    expect(fetchMock).toHaveBeenCalledTimes(TETO_AGENDA_POR_JOGADOR_DIA);
+    const [linha] = await db
+      .select()
+      .from(attendances)
+      .where(and(eq(attendances.matchDayId, fut.id), eq(attendances.playerId, jogador.id)));
+    expect(linha.agendaEmailsSent).toBe(TETO_AGENDA_POR_JOGADOR_DIA);
+  });
+
+  it("o teto por caixa de entrada segura até o cancelamento", async () => {
+    const jogador = await jogadorLogado();
+    const fut = await criarFut(FUT_COM_HORA);
+    await confirmarPresenca(fut, jogador);
+
+    // Já recebeu o teto do dia em OUTROS futs — é assim que "criar 50 futs e
+    // confirmar em cada um" é barrado, e a linha deste fut fica intocada.
+    // `agendaEmailsSent: 1` porque é o que um envio de verdade grava: o teto
+    // soma envios, e um carimbo sem contador seria uma linha que não gastou nada.
+    for (let i = 0; i < TETO_AGENDA_POR_JOGADOR_DIA; i++) {
+      const outro = await criarFut({ ...FUT_COM_HORA, location: `Quadra ${i}` });
+      await confirmarPresenca(outro, jogador);
+      await db
+        .update(attendances)
+        .set({ agendaEmailSentAt: sql`now() - interval '1 hour'`, agendaEmailsSent: 1 })
+        .where(and(eq(attendances.matchDayId, outro.id), eq(attendances.playerId, jogador.id)));
+    }
+
+    const fetchMock = stubResend();
+    await setMyAttendance(fut.id, "out");
+    await flushAfter();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("o sub-teto da instalação não deixa a agenda comer a cota do convite", async () => {
+    const jogador = await jogadorLogado();
+    const fut = await futQueAceitaEntrada(jogador);
+
+    // TETO_AGENDA_DIA envios de agenda já carimbados, espalhados por outros
+    // jogadores — a instalação gastou a fatia dela.
+    for (let i = 0; i < TETO_AGENDA_DIA; i++) {
+      const outro = await criarJogador();
+      const outroFut = await criarFut({ ...FUT_COM_HORA, location: `Quadra ${i}` });
+      await confirmarPresenca(outroFut, outro);
+      await db
+        .update(attendances)
+        .set({ agendaEmailSentAt: sql`now() - interval '1 hour'`, agendaEmailsSent: 1 })
+        .where(eq(attendances.matchDayId, outroFut.id));
+    }
+
+    const fetchMock = stubResend();
+    await setMyAttendance(fut.id, "in");
+    await flushAfter();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    // E a fatia que sobrou é justamente a que o convite/redefinição usa: o teto
+    // da agenda é menor que o da instalação, então ainda há margem lá.
+    expect(TETO_AGENDA_DIA).toBeLessThan(TETO_DIARIO);
   });
 });

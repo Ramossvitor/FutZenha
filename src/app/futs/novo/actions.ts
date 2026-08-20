@@ -6,13 +6,14 @@ import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { matchDays, players, users } from "@/db/schema";
 import { avisoDeFutCriado } from "@/lib/avisos-fut";
-import { condicaoElegivel } from "@/lib/elegiveis";
+import { condicaoDeAviso } from "@/lib/elegiveis";
 import { podeCriarFutNoGrupo } from "@/lib/grupos-permissions";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { parseMatchDayForm } from "@/lib/match-day-form";
 import { notificar } from "@/lib/notifications";
 import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requirePlayer } from "@/lib/require-player";
+import { podeCriarMaisFut } from "@/lib/tetos-de-criacao";
 
 /**
  * Qualquer jogador logado marca um fut — e vira o admin dele.
@@ -29,6 +30,12 @@ import { requirePlayer } from "@/lib/require-player";
  */
 export async function createMatchDay(formData: FormData) {
   const session = await requirePlayer();
+  const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
+  // Antes do parse: o teto não depende do formulário, e recusar cedo evita
+  // trabalho à toa. Cada fut é um fan-out de aviso e uma cota de e-mail de
+  // agenda própria — ver src/lib/tetos-de-criacao.ts.
+  if (!(await podeCriarMaisFut(ator))) redirect("/futs/novo?erro=muitos-futs");
+
   const parsed = parseMatchDayForm(formData);
   if (!parsed.success) redirect("/futs/novo?erro=dados-invalidos");
 
@@ -45,7 +52,6 @@ export async function createMatchDay(formData: FormData) {
     // em vez do ?erro= que o resto da action usa.
     if (!(await getGrupo(groupId))) redirect("/futs/novo?erro=dados-invalidos");
 
-    const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
     const papel = await papelNoGrupo(groupId, session.player.id);
     if (!podeCriarFutNoGrupo(ator, papel)) {
       redirect("/futs/novo?erro=sem-permissao-no-grupo");
@@ -71,7 +77,12 @@ export async function createMatchDay(formData: FormData) {
         and(
           eq(players.active, true),
           ne(players.id, session.player.id),
-          condicaoElegivel({ id: fut.id, groupId }),
+          // `condicaoDeAviso`, e não `condicaoElegivel`: aquela devolve
+          // `undefined` em fut avulso, e o `and()` do drizzle descarta o termo
+          // em silêncio — o aviso ia para a plataforma inteira, com push junto,
+          // a cada fut avulso criado por qualquer pessoa. Em fut avulso o
+          // alcance agora é quem já dividiu um fut com quem marcou.
+          condicaoDeAviso({ id: fut.id, groupId }, session.player.id),
         ),
       );
     await notificar(

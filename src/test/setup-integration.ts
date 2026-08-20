@@ -101,3 +101,12 @@ afterAll(async () => {
   const { db } = await import("@/db");
   await db.$client.end({ timeout: 5 });
 });
+
+// O memo de src/lib/stats.ts é estado de módulo, e módulo é reusado entre
+// testes do mesmo arquivo: sem isto, um caso veria o agregado que o anterior
+// guardou — depois de o limparBanco() já ter apagado as linhas que o
+// produziram. É a mesma razão do reiniciarThrottleDePush.
+beforeEach(async () => {
+  const { esquecerStats } = await import("@/lib/stats");
+  esquecerStats();
+});

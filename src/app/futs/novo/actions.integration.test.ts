@@ -8,7 +8,13 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matchDays, notifications, type Player } from "@/db/schema";
 import { createMatchDay } from "@/app/futs/novo/actions";
-import { criarJogador, criarJogadorComConta, logarComo } from "@/test/fixtures";
+import {
+  confirmarPresenca,
+  criarFut,
+  criarJogador,
+  criarJogadorComConta,
+  logarComo,
+} from "@/test/fixtures";
 import { criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
 import { esperaRedirect } from "@/test/navigation-fake";
 
@@ -33,13 +39,29 @@ async function futCriado(url: string) {
 }
 
 describe("createMatchDay — aviso de fut marcado", () => {
-  it("fut avulso avisa todo jogador ativo com conta, menos quem marcou", async () => {
+  // O alcance do fut avulso é quem JÁ JOGOU com quem marca — não a plataforma.
+  //
+  // Antes, `condicaoElegivel` devolvia `undefined` para fut sem grupo e o
+  // `and()` do drizzle descartava o termo em silêncio: todo jogador ativo com
+  // conta recebia notificação e push a cada fut avulso criado por qualquer
+  // pessoa, sem teto de criação nenhum. Era um megafone de graça.
+  it("fut avulso avisa quem já jogou com quem marcou — e mais ninguém", async () => {
     const { jogador: criador, conta } = await criarJogadorComConta();
     const { jogador: colega } = await criarJogadorComConta();
+    const { jogador: estranho } = await criarJogadorComConta();
     const semConta = await criarJogador();
     const { jogador: desativado } = await criarJogadorComConta({ active: false });
-    await logarComo(conta);
 
+    // O histórico que cria a relação: os dois dividiram um fut anterior.
+    const anterior = await criarFut({ date: "2026-01-10" });
+    await confirmarPresenca(anterior, criador);
+    await confirmarPresenca(anterior, colega);
+    // `desativado` também jogou junto — o filtro de conta ativa é outro, e tem
+    // de continuar valendo por cima deste.
+    await confirmarPresenca(anterior, desativado);
+    await confirmarPresenca(anterior, semConta);
+
+    await logarComo(conta);
     const url = await esperaRedirect(createMatchDay(formDeFut()));
     const fut = await futCriado(url);
 
@@ -50,9 +72,24 @@ describe("createMatchDay — aviso de fut marcado", () => {
       dedupeKey: `pelada:${fut.id}:criada`,
       href: `/fut/${fut.id}`,
     });
+    // O estranho nunca dividiu fut com quem marcou: não é avisado.
+    expect(await notificacoesDe(estranho)).toHaveLength(0);
     expect(await notificacoesDe(criador)).toHaveLength(0);
     expect(await notificacoesDe(semConta)).toHaveLength(0);
     expect(await notificacoesDe(desativado)).toHaveLength(0);
+  });
+
+  // Conta nova, sem histórico nenhum: o primeiro fut avulso dela não interrompe
+  // ninguém. É o caso que fechava o megafone — criar conta e marcar fut era o
+  // caminho mais barato para alcançar a plataforma inteira.
+  it("quem nunca jogou com ninguém não avisa ninguém", async () => {
+    const { conta } = await criarJogadorComConta();
+    const { jogador: outro } = await criarJogadorComConta();
+    await logarComo(conta);
+
+    await esperaRedirect(createMatchDay(formDeFut()));
+
+    expect(await notificacoesDe(outro)).toHaveLength(0);
   });
 
   it("fut de grupo avisa só os membros — sem vazar para a plataforma", async () => {

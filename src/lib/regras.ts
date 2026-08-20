@@ -58,3 +58,23 @@ export const MIN_JOGOS_APROVEITAMENTO = 3;
 /** Times que o sorteio aceita montar. */
 export const TIMES_MIN = 2;
 export const TIMES_MAX = 6;
+
+/**
+ * O piso da senha, e o teto.
+ *
+ * Dez, e não os seis de antes. O login não tem tranca durável — o freio de
+ * src/lib/freio-de-login.ts é por instância e assumidamente uma otimização —,
+ * então o comprimento é a única barreira que não depende de onde a requisição
+ * caiu. Seis caracteres são adivinháveis por dicionário; dez tiram a força
+ * bruta da mesa sem exigir símbolo nem maiúscula, que é o tipo de regra que
+ * empurra gente para o post-it. O teto não é de segurança, é de custo: o scrypt
+ * processa o que receber.
+ *
+ * Moram AQUI, e não junto do `senhaSchema` em src/lib/password.ts, por um
+ * motivo mecânico: os dois formulários de senha são Client Components, e
+ * `password.ts` importa `node:crypto`. Um `minLength={MIN_SENHA}` que viesse de
+ * lá arrastaria o módulo inteiro para o bundle do cliente. O schema fica lá, o
+ * número fica aqui, e as quatro cópias de "6" nos formulários deixam de existir.
+ */
+export const MIN_SENHA = 10;
+export const MAX_SENHA = 100;

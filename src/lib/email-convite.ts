@@ -3,9 +3,16 @@ import { after } from "next/server";
 import { and, count, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { groupInvitations, groups, invites, players, users } from "@/db/schema";
+import { enviadosPelaAgendaNoDia } from "./agenda-convite";
 import { mesmoEmail } from "./email";
 import { emailDeDestino } from "./email-destino";
 import { emailConfigurado, enviarEmail } from "./email-envio";
+import {
+  JANELA_DIARIA_HORAS,
+  JANELA_POR_DESTINATARIO_MIN,
+  TETO_DIARIO,
+  TETO_POR_CONVIDANTE_DIA,
+} from "./freios-de-envio";
 import {
   emailDeAvisoDeGrupo,
   emailDeConvitePlataforma,
@@ -56,18 +63,21 @@ export type ResultadoEnvioDeConvite =
 // convite de plataforma e aviso de grupo — e saem de `email_sent_at` (invites e
 // group_invitations), sem tabela nova. O teto fica abaixo dos 100/dia do free
 // tier para sobrar margem (a cota do Resend conta recebidos também).
-const JANELA_POR_DESTINATARIO_MIN = 10;
-const JANELA_DIARIA_HORAS = 24;
-const TETO_DIARIO = 90;
-// Teto de quem dispara, só para o aviso de grupo: `invites` não guarda quem
-// convidou. Acima de dois elencos inteiros no mesmo dia (o seed tem 18 jogadores)
-// para não atrapalhar quem está montando grupo de verdade, e ainda bem abaixo do
-// teto da instalação — o que ele barra é a conta que cria grupo atrás de grupo.
-const TETO_POR_CONVIDANTE_DIA = 40;
+// Os números moram em ./freios-de-envio, com o porquê de cada um — inclusive o
+// do sub-teto que separa conveniência (agenda) de recuperação de conta (este
+// arquivo). Aqui ficou só o uso.
 
-/** O teto diário vale para a instalação inteira, somando os dois fluxos. */
+/**
+ * O teto diário vale para a instalação inteira, somando os TRÊS fluxos.
+ *
+ * A agenda entrou nesta soma junto com o freio dela. Enquanto ela ficava de
+ * fora, este teto media meia realidade: os e-mails de calendário gastavam a
+ * mesma cota do Resend e não apareciam em contagem nenhuma, então o convite
+ * podia ser recusado por uma cota que ele achava livre — ou, pior, passar e
+ * estourar de verdade no Resend.
+ */
 async function tetoDiarioAtingido(): Promise<boolean> {
-  const [[plataforma], [grupo]] = await Promise.all([
+  const [[plataforma], [grupo], agenda] = await Promise.all([
     db
       .select({ total: count() })
       .from(invites)
@@ -81,8 +91,9 @@ async function tetoDiarioAtingido(): Promise<boolean> {
           sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`,
         ),
       ),
+    enviadosPelaAgendaNoDia(),
   ]);
-  return plataforma.total + grupo.total >= TETO_DIARIO;
+  return plataforma.total + grupo.total + agenda >= TETO_DIARIO;
 }
 
 /**

@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { attendances, matchDays, players, ratingRounds, users } from "@/db/schema";
 import { avisoDeVespera } from "./avisos-fut";
 import { resolverVotacoesVencidas } from "./deletion";
-import { condicaoElegivel } from "./elegiveis";
+import { condicaoDeAviso } from "./elegiveis";
 import { notificar } from "./notifications";
 import { fecharRodada, LOCK_NOTA } from "./ratings-engine";
 import { resolverDenunciasVencidas } from "./reports";
@@ -96,7 +96,7 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
         .where(
           and(
             eq(players.active, true),
-            condicaoElegivel(fut),
+            condicaoDeAviso(fut, fut.createdByPlayerId),
             notExists(
               db
                 .select({ um: sql`1` })

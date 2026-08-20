@@ -143,8 +143,11 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      # Versão pinada, e não `@latest`: este job carrega o VERCEL_TOKEN, então
+      # instalar a versão do dia é confiar em quem publicar o pacote entre um
+      # deploy e o seguinte. Subir a versão passa a ser decisão, com diff.
       - name: Instalar a CLI da Vercel
-        run: npm i -g vercel@latest
+        run: npm i -g vercel@59.1.4
 
       # SEM --prebuilt de propósito: o build (e portanto
       # `tsx src/db/migrate.ts && next build`) roda na infra da Vercel, com as

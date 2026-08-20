@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { codeChallengeDe, gerarCodeVerifier, parseIdToken } from "./google-oauth";
 
 function b64url(texto: string): string {
@@ -13,12 +13,22 @@ function idToken(claims: unknown): string {
   return `${b64url('{"alg":"RS256"}')}.${b64url(JSON.stringify(claims))}.assinatura-qualquer`;
 }
 
+const CLIENT_ID = "123-abc.apps.googleusercontent.com";
+
 const CLAIMS = {
   sub: "104233123456789012345",
   email: "Vitor.Ramos@Gmail.com",
   email_verified: true,
   name: "Vitor Ramos",
+  // `iss` e `aud` fazem parte do token real e agora são conferidos — ver o
+  // comentário em parseIdToken sobre por que, mesmo dispensando a assinatura.
+  iss: "https://accounts.google.com",
+  aud: CLIENT_ID,
 };
+
+beforeEach(() => {
+  vi.stubEnv("GOOGLE_CLIENT_ID", CLIENT_ID);
+});
 
 /** As mesmas claims, menos uma — o Google omite o que não tem. */
 function sem(chave: keyof typeof CLAIMS): Record<string, unknown> {
@@ -56,6 +66,21 @@ describe("parseIdToken", () => {
   it("email_verified falso ou ausente devolve emailVerified: false", () => {
     expect(parseIdToken(idToken({ ...CLAIMS, email_verified: false }))!.emailVerified).toBe(false);
     expect(parseIdToken(idToken(sem("email_verified")))!.emailVerified).toBe(false);
+  });
+
+  // Um token legítimo, emitido pelo Google para OUTRO projeto. Sem esta
+  // checagem ele passaria — e a dispensa de assinatura se apoia justamente em
+  // premissas que só valem para o token emitido para NÓS.
+  it("recusa token de outro client_id", () => {
+    expect(parseIdToken(idToken({ ...CLAIMS, aud: "outro-app.apps.googleusercontent.com" }))).toBeNull();
+    expect(parseIdToken(idToken(sem("aud")))).toBeNull();
+  });
+
+  it("recusa emissor que não é o Google, nas duas formas aceitas", () => {
+    expect(parseIdToken(idToken({ ...CLAIMS, iss: "https://evil.example" }))).toBeNull();
+    expect(parseIdToken(idToken(sem("iss")))).toBeNull();
+    // O Google emite as duas, e as duas valem.
+    expect(parseIdToken(idToken({ ...CLAIMS, iss: "accounts.google.com" }))).not.toBeNull();
   });
 
   it("nome ausente ou vazio vira null", () => {

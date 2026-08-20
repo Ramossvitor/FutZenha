@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { Banner } from "@/components/ui/banner";
 import { SubmitButton } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
+import { MIN_SENHA } from "@/lib/regras";
 import { changePassword, type ChangePasswordState } from "./actions";
 
 const initialState: ChangePasswordState = {};
@@ -26,14 +27,19 @@ export function ChangePasswordForm() {
             required
           />
         </Field>
-        <Field htmlFor="newPassword" label="Nova senha" obrigatorio ajuda="Pelo menos 6 caracteres.">
+        <Field
+          htmlFor="newPassword"
+          label="Nova senha"
+          obrigatorio
+          ajuda={`Pelo menos ${MIN_SENHA} caracteres.`}
+        >
           <Input
             id="newPassword"
             name="newPassword"
             type="password"
             autoComplete="new-password"
             required
-            minLength={6}
+            minLength={MIN_SENHA}
           />
         </Field>
         <Field htmlFor="confirm" label="Confirmar nova senha" obrigatorio>
@@ -43,7 +49,7 @@ export function ChangePasswordForm() {
             type="password"
             autoComplete="new-password"
             required
-            minLength={6}
+            minLength={MIN_SENHA}
           />
         </Field>
         {state.error && <Banner tom="erro">{state.error}</Banner>}

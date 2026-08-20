@@ -26,7 +26,10 @@ const notificacoesDe = (jogador: Player) =>
 
 describe("processarPendencias — lembrete de véspera", () => {
   it("lembra quem tem conta e não respondeu; ignora quem respondeu, quem não tem conta e fut de outro dia", async () => {
-    const fut = await criarFut({ date: AMANHA_SP });
+    // O fut avulso precisa de criador: o alcance do lembrete é o círculo de
+    // quem marcou (ver condicaoDeAviso), não a plataforma inteira.
+    const { jogador: criador } = await criarJogadorComConta();
+    const fut = await criarFut({ date: AMANHA_SP, createdByPlayerId: criador.id });
     const { jogador: semResposta } = await criarJogadorComConta();
     const { jogador: jaConfirmou } = await criarJogadorComConta();
     const { jogador: jaRecusou } = await criarJogadorComConta();
@@ -35,6 +38,13 @@ describe("processarPendencias — lembrete de véspera", () => {
     // sem o eq(users.active, true) ela receberia lembrete de um fut em que
     // não consegue nem entrar.
     const { jogador: contaDesativada } = await criarJogadorComConta({}, { active: false });
+
+    // O histórico que põe todos no círculo de quem marcou — sem ele, ninguém
+    // seria lembrado e o teste mediria o filtro errado.
+    const anterior = await criarFut({ date: "2026-01-10" });
+    for (const p of [criador, semResposta, jaConfirmou, jaRecusou, semConta, contaDesativada]) {
+      await confirmarPresenca(anterior, p);
+    }
     await confirmarPresenca(fut, jaConfirmou, { minutosAtras: 10 });
     await confirmarPresenca(fut, jaRecusou, { status: "out" });
     // Fut de depois de amanhã não entra na véspera de hoje.
@@ -45,7 +55,12 @@ describe("processarPendencias — lembrete de véspera", () => {
 
     const resultado = await processarPendencias();
 
-    expect(resultado.lembretesDeVespera).toBe(1);
+    // Dois: `semResposta` e o próprio `criador`, que também não confirmou. O
+    // lembrete de véspera não exclui quem marcou — ao contrário do aviso de
+    // "fut marcado" —, e é o certo: quem organiza também esquece de entrar na
+    // própria lista.
+    expect(resultado.lembretesDeVespera).toBe(2);
+    expect(await notificacoesDe(criador)).toHaveLength(1);
     const avisos = await notificacoesDe(semResposta);
     expect(avisos).toHaveLength(1);
     expect(avisos[0]).toMatchObject({
@@ -75,13 +90,45 @@ describe("processarPendencias — lembrete de véspera", () => {
   });
 
   it("rodar de novo não duplica o lembrete — o dedupe segura o piggyback de cada minuto", async () => {
-    await criarFut({ date: AMANHA_SP });
+    const { jogador: criador } = await criarJogadorComConta();
     const { jogador } = await criarJogadorComConta();
+    const anterior = await criarFut({ date: "2026-01-10" });
+    await confirmarPresenca(anterior, criador);
+    await confirmarPresenca(anterior, jogador);
+    await criarFut({ date: AMANHA_SP, createdByPlayerId: criador.id });
 
     await processarPendencias();
     await processarPendencias();
 
     expect(await notificacoesDe(jogador)).toHaveLength(1);
+  });
+
+  // A mesma regressão do createMatchDay, no outro caminho que emitia o aviso:
+  // o lembrete de véspera também lia `condicaoElegivel`, que devolve
+  // `undefined` em fut avulso — e o `and()` do drizzle o descartava, mandando
+  // "amanhã tem fut" para toda a plataforma.
+  it("fut avulso não lembra quem nunca jogou com quem marcou", async () => {
+    const { jogador: criador } = await criarJogadorComConta();
+    const { jogador: estranho } = await criarJogadorComConta();
+    await criarFut({ date: AMANHA_SP, createdByPlayerId: criador.id });
+
+    const resultado = await processarPendencias();
+
+    expect(resultado.lembretesDeVespera).toBe(0);
+    expect(await notificacoesDe(estranho)).toHaveLength(0);
+  });
+
+  // Fut órfão (criador apagado — a FK é `set null`) não tem círculo a quem
+  // avisar. `condicaoDeAviso` devolve `false` explícito nesse caso, e é a
+  // diferença entre "ninguém" e "todo mundo".
+  it("fut avulso órfão não lembra ninguém", async () => {
+    const { jogador } = await criarJogadorComConta();
+    await criarFut({ date: AMANHA_SP, createdByPlayerId: null });
+
+    const resultado = await processarPendencias();
+
+    expect(resultado.lembretesDeVespera).toBe(0);
+    expect(await notificacoesDe(jogador)).toHaveLength(0);
   });
 
   it("fut de grupo lembra só os membros do grupo", async () => {

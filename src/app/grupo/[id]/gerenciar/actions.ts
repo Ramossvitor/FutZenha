@@ -19,6 +19,7 @@ import { parseGrupoForm } from "@/lib/grupos-form";
 import { podePromover, podeRemoverMembro } from "@/lib/grupos-permissions";
 import { gerarLink, papelNoGrupo } from "@/lib/grupos";
 import { notificar } from "@/lib/notifications";
+import { esquecerStats } from "@/lib/stats";
 import { requireGrupoAdmin, requireGrupoOrganizador } from "@/lib/require-grupo";
 import { revalidateGrupo } from "../revalidate";
 
@@ -88,6 +89,10 @@ export async function excluirGrupo(groupId: number, formData: FormData) {
   revalidatePath("/grupos");
   revalidatePath("/futs");
   revalidatePath("/rankings");
+  // O memo de src/lib/stats.ts guarda os agregados por até MEMO_TTL_MS; sem
+  // isto, o ranking e o perfil público ficariam com o número velho por esse
+  // tempo depois de uma mudança que os afeta.
+  esquecerStats();
   redirect("/grupos?ok=grupo-excluido");
 }
 

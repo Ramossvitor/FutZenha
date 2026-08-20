@@ -31,6 +31,10 @@ const playerSchema = z.object({
   isGoalkeeper: z.coerce.boolean(),
 });
 
+// Todo id deste arquivo vem do `.bind`, ou seja, do corpo do POST. Fica no topo
+// porque agora não há mais action aqui que dispense o parse.
+const idSchema = z.number().int().positive();
+
 function parsePlayerForm(formData: FormData) {
   return playerSchema.safeParse({
     name: formData.get("name") ?? "",
@@ -43,7 +47,7 @@ function parsePlayerForm(formData: FormData) {
 // envia; o botão de gerar convite segue existindo para reenviar quando o prazo
 // vencer.
 export async function createPlayer(formData: FormData) {
-  await requirePlatformAdmin();
+  const session = await requirePlatformAdmin();
   const parsed = parsePlayerForm(formData);
   if (!parsed.success) redirect("/admin/jogadores?erro=dados-invalidos");
   const email = parseEmailDeConvite(formData.get("email"));
@@ -52,7 +56,13 @@ export async function createPlayer(formData: FormData) {
   let criado: { token: string };
   try {
     criado = await db.transaction((tx) =>
-      criarJogadorComConvite(tx, { ...parsed.data, email: email.data }),
+      // O criador entra aqui também: a coluna é auditoria de quem tomou o nome,
+      // e o admin da plataforma não é exceção a isso — só ao teto.
+      criarJogadorComConvite(tx, {
+        ...parsed.data,
+        email: email.data,
+        createdByPlayerId: session.player.id,
+      }),
     );
   } catch (error) {
     if (isUniqueViolation(error)) redirect("/admin/jogadores?erro=nome-duplicado");
@@ -69,11 +79,15 @@ export async function createPlayer(formData: FormData) {
 
 export async function updatePlayer(playerId: number, formData: FormData) {
   await requirePlatformAdmin();
+  // O `idSchema` que os vizinhos deste arquivo já usam. Faltava só aqui e no
+  // setPlayerActive, e a diferença aparece quando o id não é inteiro: erro cru
+  // do driver em vez do redirect que o resto da tela produz.
+  const id = idSchema.parse(playerId);
   const parsed = parsePlayerForm(formData);
   if (!parsed.success) redirect("/admin/jogadores?erro=dados-invalidos");
 
   try {
-    await db.update(players).set(parsed.data).where(eq(players.id, playerId));
+    await db.update(players).set(parsed.data).where(eq(players.id, id));
   } catch (error) {
     if (isUniqueViolation(error)) redirect("/admin/jogadores?erro=nome-duplicado");
     throw error;
@@ -84,11 +98,14 @@ export async function updatePlayer(playerId: number, formData: FormData) {
 
 export async function setPlayerActive(playerId: number, active: boolean) {
   await requirePlatformAdmin();
-  await db.update(players).set({ active }).where(eq(players.id, playerId));
+  // `active` passa pelo mesmo `z.boolean().parse` do setUserActive: os dois
+  // recebem o valor do corpo do POST, e um "false" string viraria `true`.
+  await db
+    .update(players)
+    .set({ active: z.boolean().parse(active) })
+    .where(eq(players.id, idSchema.parse(playerId)));
   revalidatePath("/admin/jogadores");
 }
-
-const idSchema = z.number().int().positive();
 
 // Convite para quem já tem conta é reset de senha — por isso esta action é
 // exclusiva da plataforma. É o único caminho que chega em `gerarConvite` com um

@@ -17,6 +17,11 @@ import {
 } from "@/db/schema";
 import { getFaltamVotar, getJanelaAberturaExclusao, getVotacaoDoFut } from "@/lib/deletion";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
+import {
+  convitesDeFutEnviados,
+  linkAtivoDoFut,
+  pedidosDeEntradaPendentes,
+} from "@/lib/fut-entrada-db";
 import { FIM_DA_JANELA_CORRECAO } from "@/lib/janela-correcao";
 import { repartirLista } from "@/lib/lista-presenca";
 
@@ -32,7 +37,7 @@ const desfazedor = alias(players, "desfazedor");
  * seções serem componentes burros — recebem dados e desenham — e torna óbvio
  * o que cada consulta serve.
  */
-export async function carregarPainel(matchDayId: number) {
+export async function carregarPainel(matchDayId: number, atorId: number) {
   // Uma onda só para tudo o que depende apenas do id — o painel fazia 6 níveis
   // de await em série e era a rota mais pesada do app.
   const [
@@ -99,6 +104,12 @@ export async function carregarPainel(matchDayId: number) {
   // Sem isto, `matchDay.finishedAt` virava TypeError em vez de 404.
   if (!matchDay) notFound();
 
+  const [pedidosDeEntrada, convitesDeFut, linkDoFut] = await Promise.all([
+    pedidosDeEntradaPendentes(matchDayId),
+    convitesDeFutEnviados(matchDayId),
+    linkAtivoDoFut(matchDayId),
+  ]);
+
   const dentroDaJanela = matchDay.finishedAt !== null && matchDay.segundosDeJanela > 0;
   // Placar e gols não mexem em quem avalia quem, então sobrevivem ao
   // encerramento pela janela de correção. A escalação, não: some do formulário
@@ -110,8 +121,10 @@ export async function carregarPainel(matchDayId: number) {
 
   const [activePlayers, teamMembers, goalRows, lineupRows] = await Promise.all([
     // Depende do `groupId`, então só dá para pedir depois de o fut chegar —
-    // por isso está na segunda onda e não na primeira.
-    jogadoresElegiveis(matchDay),
+    // por isso está na segunda onda e não na primeira. O `atorId` entra porque
+    // em fut avulso a lista é o espelho de podeDefinirPresencaPor, e quem
+    // administra tem de continuar podendo marcar a si mesmo.
+    jogadoresElegiveis(matchDay, atorId),
     teamList.length > 0
       ? db
           .select({
@@ -207,6 +220,11 @@ export async function carregarPainel(matchDayId: number) {
     faltamVotar,
     janelaExclusao,
     convitesParaEntregar,
+    // A entrada por consentimento (ver src/lib/fut-entrada.ts): a fila que
+    // espera decisão de quem organiza, os convites que já saíram e o link.
+    pedidosDeEntrada,
+    convitesDeFut,
+    linkDoFut,
   };
 }
 

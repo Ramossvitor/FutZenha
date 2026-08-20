@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
 import { SubmitButton } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
+import { MIN_SENHA } from "@/lib/regras";
 import { claimInvite, type ClaimState } from "./actions";
 
 const initialState: ClaimState = {};
@@ -71,13 +72,18 @@ export function ClaimForm({
         </Field>
       )}
 
-      <Field htmlFor="password" label={ehReset ? "Nova senha" : "Senha"} obrigatorio>
+      <Field
+        htmlFor="password"
+        label={ehReset ? "Nova senha" : "Senha"}
+        obrigatorio
+        ajuda={`Pelo menos ${MIN_SENHA} caracteres.`}
+      >
         <Input
           id="password"
           name="password"
           type="password"
           required
-          minLength={6}
+          minLength={MIN_SENHA}
           // O foco vai para o primeiro campo da vez: username no cadastro,
           // e-mail no reset de quem ainda precisa informá-lo, e só sobra para a
           // senha no reset de quem já tem endereço.
@@ -92,7 +98,7 @@ export function ClaimForm({
           name="confirm"
           type="password"
           required
-          minLength={6}
+          minLength={MIN_SENHA}
           autoComplete="new-password"
         />
       </Field>

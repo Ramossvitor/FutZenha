@@ -98,17 +98,33 @@ export function podeGerenciarFut(
  * não é consentimento para ser escalado num fut que ainda vai acontecer.
  * `elegivel` aqui é um piso, nunca uma autorização por si só.
  *
+ * **`ehDeGrupo` é a quarta condição, e ela não estava aqui.** A frase acima —
+ * "o alcance de um fut de grupo é o grupo" — descrevia metade da verdade: em
+ * fut AVULSO, `condicaoElegivel` não filtra nada (src/lib/elegiveis.ts devolve
+ * `undefined`, que o `and()` do drizzle descarta em silêncio), então "elegível"
+ * ali quer dizer *todo jogador ativo da plataforma*. O degrau que segurava o
+ * afrouxamento não segurava nada no caminho mais fácil de alcançar: qualquer
+ * pessoa logada cria um fut avulso, sorteia com dois convidados de mentira e
+ * passa a poder marcar presença de quem quiser — o que dispara notificação,
+ * push e um e-mail de calendário com texto livre dela para a caixa da vítima.
+ *
+ * Num fut de grupo o degrau continua valendo, porque ali "elegível" significa
+ * mesmo alguma coisa: entrar no grupo FOI o consentimento. Num fut avulso não
+ * há consentimento nenhum a invocar, e por isso a exceção some — quem tem conta
+ * se marca sozinho, e quem não tem continua sendo marcado pelo organizador
+ * (esse é o ramo de cima, e é o caso que a exceção existe para servir).
+ *
  * O admin da plataforma passa por cima — ele é o fallback de todo fut, e é
  * quem conserta fut órfão e fut abandonado.
  */
 export function podeDefinirPresencaPor(
   ator: Ator,
   alvo: { temContaAtiva: boolean; jaEstaNoFut: boolean; elegivel: boolean },
-  listaFechada: boolean,
+  fut: { listaFechada: boolean; ehDeGrupo: boolean },
 ): boolean {
   if (ator.isPlatformAdmin) return true;
   if (!alvo.temContaAtiva || alvo.jaEstaNoFut) return true;
-  return listaFechada && alvo.elegivel;
+  return fut.ehDeGrupo && fut.listaFechada && alvo.elegivel;
 }
 
 /**

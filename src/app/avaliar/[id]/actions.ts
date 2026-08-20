@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { ratingRoundRaters, ratingRounds, ratings } from "@/db/schema";
 import { getCandidatosMvp, getCompanheiros } from "@/lib/ratings";
 import { fecharSeTodosAvaliaram } from "@/lib/ratings-engine";
+import { esquecerStats } from "@/lib/stats";
 import { requirePlayer } from "@/lib/require-player";
 
 export type AvaliarState = { error?: string; success?: boolean };
@@ -162,5 +163,9 @@ export async function enviarAvaliacoes(
   revalidatePath(`/avaliar/${roundId}`);
   revalidatePath("/perfil");
   revalidatePath("/rankings");
+  // O memo de src/lib/stats.ts guarda os agregados por até MEMO_TTL_MS; sem
+  // isto, o ranking e o perfil público ficariam com o número velho por esse
+  // tempo depois de uma mudança que os afeta.
+  esquecerStats();
   return { success: true };
 }

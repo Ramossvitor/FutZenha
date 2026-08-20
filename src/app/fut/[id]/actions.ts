@@ -1,12 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { matchDays } from "@/db/schema";
 import { agendarCancelamentosDeAgenda, agendarConvitesDeAgenda } from "@/lib/agenda-convite";
 import { ehElegivel } from "@/lib/elegiveis";
+import { comoEntraNoFut } from "@/lib/fut-entrada";
+import { estaNaLista, estaNoCirculoDoFut } from "@/lib/fut-entrada-db";
 import { listaFechada } from "@/lib/lista-presenca";
 import { notificar } from "@/lib/notifications";
 import { avisoDePromocao, entrarNaLista, sairDaLista, travarFut } from "@/lib/presenca";
@@ -36,6 +39,26 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
   // elegível, mas Server Action é endpoint público e não passa pelo proxy
   // (node_modules/next/dist/docs/01-app/02-guides/data-security.md).
   if (!(await ehElegivel(matchDay, session.player.id))) return;
+
+  // ...e em fut AVULSO a elegibilidade não basta, porque ali ela não filtra
+  // nada: `condicaoElegivel` devolve `undefined` para fut sem grupo. Quem
+  // nunca esteve nesta lista entra pelo caminho do consentimento — pedido,
+  // convite ou link (ver src/lib/fut-entrada.ts) —, e não se auto-confirmando
+  // no fut de um desconhecido.
+  //
+  // Quem JÁ tem linha na lista não passa por aqui: `comoEntraNoFut` devolve
+  // "ja-esta" para ele, inclusive para quem marcou "Fora" e mudou de ideia. É
+  // essa distinção que mantém o vaivém de presença funcionando como sempre.
+  if (parsedStatus === "in") {
+    const entrada = comoEntraNoFut(matchDay, {
+      jaEstaNaLista: await estaNaLista(parsedId, session.player.id),
+      elegivel: true,
+      noCirculo: await estaNoCirculoDoFut(matchDay, session.player.id),
+    });
+    if (entrada === "pede-entrada") {
+      redirect(`/fut/${parsedId}?erro=precisa-pedir-entrada`);
+    }
+  }
 
   let houvePromocao = false;
   let confirmei = false;

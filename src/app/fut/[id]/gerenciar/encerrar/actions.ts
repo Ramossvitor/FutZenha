@@ -10,6 +10,7 @@ import { revalidateMatchDay } from "../../revalidate";
 import { notificar } from "@/lib/notifications";
 import { avaliarMarcacao, entrarNaLista, mereceAviso, travarFut } from "@/lib/presenca";
 import { abrirRodada } from "@/lib/ratings-engine";
+import { esquecerStats } from "@/lib/stats";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 
 // A escalação só é editável enquanto o fut não foi encerrado. Depois da
@@ -35,8 +36,20 @@ function revalidar(matchDayId: number) {
   revalidateMatchDay(matchDayId);
 }
 
+// Os ids chegam pelo `.bind` — corpo do POST. A guarda é a mesma do
+// `incluirNoJogo` aqui embaixo, e a razão de existir nas três é a mesma: sem
+// ela um id não-inteiro atravessa até o driver e vira 500 cru no lugar do
+// banner que estas telas sabem mostrar. Não é escopo (o `assertEditavel` já
+// amarra o jogo a este fut), é a diferença entre erro tratado e tela branca.
+function exigirIdsInteiros(matchDayId: number, ...ids: number[]): void {
+  if (!ids.every(Number.isInteger)) {
+    redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=dados-invalidos`);
+  }
+}
+
 export async function moverLado(matchDayId: number, gameId: number, playerId: number) {
   await requireFutAdmin(matchDayId);
+  exigirIdsInteiros(matchDayId, gameId, playerId);
   await assertEditavel(matchDayId, gameId);
 
   await db
@@ -50,6 +63,7 @@ export async function moverLado(matchDayId: number, gameId: number, playerId: nu
 // aquela partida.
 export async function removerDoJogo(matchDayId: number, gameId: number, playerId: number) {
   await requireFutAdmin(matchDayId);
+  exigirIdsInteiros(matchDayId, gameId, playerId);
   await assertEditavel(matchDayId, gameId);
 
   await db
@@ -69,7 +83,8 @@ export async function incluirNoJogo(
   const { session, matchDay } = await requireFutAdmin(matchDayId);
   // A mesma guarda das actions irmãs: id não-inteiro (ou lado inventado) morre
   // aqui com o banner, e não como erro cru do banco no meio da transação.
-  if (!Number.isInteger(gameId) || !Number.isInteger(playerId) || (side !== "A" && side !== "B")) {
+  exigirIdsInteiros(matchDayId, gameId, playerId);
+  if (side !== "A" && side !== "B") {
     redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=dados-invalidos`);
   }
   await assertEditavel(matchDayId, gameId);
@@ -226,6 +241,10 @@ export async function confirmarEncerramento(matchDayId: number) {
   revalidatePath("/futs");
   revalidatePath("/artilharia");
   revalidatePath("/rankings");
+  // O memo de src/lib/stats.ts guarda os agregados por até MEMO_TTL_MS; sem
+  // isto, o ranking e o perfil público ficariam com o número velho por esse
+  // tempo depois de uma mudança que os afeta.
+  esquecerStats();
   revalidar(matchDayId);
   redirect(`/fut/${matchDayId}/gerenciar`);
 }

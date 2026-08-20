@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   date,
@@ -44,17 +45,38 @@ export const attendanceStatusEnum = pgEnum("attendance_status", [
 
 export const gameSideEnum = pgEnum("game_side", ["A", "B"]);
 
-export const players = pgTable("players", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  nickname: text("nickname"),
-  // A nota é calculada pelas avaliações dos companheiros (ver src/lib/skill.ts)
-  // — o admin não digita mais. Todo jogador começa em 5,0.
-  skill: numeric("skill", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
-  isGoalkeeper: boolean("is_goalkeeper").notNull().default(false),
-  active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const players = pgTable(
+  "players",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull().unique(),
+    nickname: text("nickname"),
+    // A nota é calculada pelas avaliações dos companheiros (ver src/lib/skill.ts)
+    // — o admin não digita mais. Todo jogador começa em 5,0.
+    skill: numeric("skill", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
+    isGoalkeeper: boolean("is_goalkeeper").notNull().default(false),
+    active: boolean("active").notNull().default(true),
+    // Quem cadastrou este jogador. Espelho do `groups.created_by_player_id`, e
+    // `set null` pelo mesmo motivo: apagar quem convidou não pode apagar quem
+    // foi convidado.
+    //
+    // Serve a duas coisas que não são cosméticas. A primeira é o teto diário de
+    // src/lib/tetos-de-criacao.ts: `convidarParaFut` cria linha em `players` com
+    // nome à escolha e sem limite, e sem esta coluna não há por quem contar. A
+    // segunda é auditoria — `players.name` é UNIQUE, então cadastrar nome é
+    // tomar nome, e quando um nome vira alvo de disputa (ver a trava de squat em
+    // src/db/platform-admins-bootstrap.ts) esta coluna é a única testemunha de
+    // quem chegou primeiro. Nulo no que veio antes dela e no que o seed cria.
+    createdByPlayerId: integer("created_by_player_id").references((): AnyPgColumn => players.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // O teto diário pergunta "quantos este jogador criou nas últimas 24h".
+    index("players_criador_idx").on(t.createdByPlayerId, t.createdAt),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // Grupos
@@ -110,7 +132,11 @@ export const groups = pgTable(
     }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
-  (t) => [index("groups_descoberta_idx").on(t.visibility, t.name)],
+  (t) => [
+    index("groups_descoberta_idx").on(t.visibility, t.name),
+    // O teto diário de criação de grupo — ver src/lib/tetos-de-criacao.ts.
+    index("groups_criador_idx").on(t.createdByPlayerId, t.createdAt),
+  ],
 );
 
 export const groupMembers = pgTable(
@@ -298,6 +324,8 @@ export const matchDays = pgTable("match_days", {
   // Todo recorte de grupo (futs do grupo e as quatro consultas de
   // src/lib/stats.ts) entra por group_id e ordena por data.
   index("match_days_group_idx").on(t.groupId, t.date),
+  // O teto diário de criação de fut — ver src/lib/tetos-de-criacao.ts.
+  index("match_days_criador_idx").on(t.createdByPlayerId, t.createdAt),
   // A trava de verdade da duração — o zod de match-day-form.ts dá a mensagem,
   // este check dá a garantia. Quem administra o fut consegue reescrever o evento
   // na agenda de quem confirmou; sem teto, "das 8h às 23h de sexta a domingo"
@@ -336,8 +364,160 @@ export const attendances = pgTable(
     // UID — cliente estrito ignora REQUEST com SEQUENCE ≤ o do último CANCEL,
     // e é isso que faz "desmarquei e remarquei" reativar o evento.
     calendarSequence: integer("calendar_sequence").notNull().default(0),
+    // Quando saiu o último e-mail de agenda deste par (fut, jogador). É o
+    // ledger do freio de src/lib/freios-de-envio.ts, e é uma coluna de domínio
+    // pelo mesmo motivo que `invites.email_sent_at` é: o projeto já resolveu
+    // "quantas vezes mandei para esta caixa" lendo a linha que registra o envio,
+    // sem tabela de contador — que traria GC próprio, uma segunda noção de
+    // "quando" e uma chave opaca que nenhum `\d` explica.
+    //
+    // Envio de FATO, não intenção: uma falha silenciosa não pode custar 10
+    // minutos de bloqueio. Best-effort na escrita, como o email_sent_at.
+    agendaEmailSentAt: timestamp("agenda_email_sent_at"),
+    // QUANTOS e-mails de agenda saíram para este par dentro da janela que
+    // termina no carimbo acima. O carimbo sozinho não servia de ledger: ele é
+    // sobrescrito, então dez envios e um envio deixam a linha idêntica. Como os
+    // tetos somavam LINHAS carimbadas, alternar "Vou"/"Fora" no mesmo fut —
+    // cujo cancelamento é isento da janela por par, de propósito — mandava um
+    // e-mail por ciclo para sempre com os dois contadores presos em 1. É o
+    // vetor que ./freios-de-envio descreve no topo, e ele sobrevivia ao próprio
+    // freio.
+    //
+    // Zerado (e não incrementado) quando o carimbo anterior já saiu da janela
+    // de 24h — ver `carimbarEnvio`. Assim a coluna não precisa de GC: ela se
+    // recicla no próximo envio, e fora da janela ninguém a lê.
+    agendaEmailsSent: integer("agenda_emails_sent").notNull().default(0),
   },
-  (t) => [unique().on(t.matchDayId, t.playerId)],
+  (t) => [
+    unique().on(t.matchDayId, t.playerId),
+    // O teto por caixa de entrada pergunta "quantos este jogador recebeu nas
+    // últimas 24h". Parcial porque só linha carimbada interessa, e a esmagadora
+    // maioria das presenças nunca gerou e-mail — mesmo molde do
+    // notifications_push_pendentes_idx.
+    index("attendances_agenda_envio_idx")
+      .on(t.playerId, t.agendaEmailSentAt)
+      .where(sql`agenda_email_sent_at is not null`),
+    // O vínculo do fut avulso ("já dividiu um fut com") pergunta por player_id
+    // sozinho — `condicaoJaJogouCom` e `jaJogaramJuntos`, em src/lib/elegiveis.ts
+    // e src/lib/fut-entrada-db.ts. A unique acima começa por match_day_id e não
+    // atende essa forma, e estas consultas rodam em toda renderização de
+    // /fut/[id], em todo setMyAttendance("in") e na varredura de véspera.
+    index("attendances_jogador_idx").on(t.playerId),
+  ],
+);
+
+export const matchDayInvitationStatusEnum = pgEnum("match_day_invitation_status", [
+  "pending",
+  "accepted",
+  "declined",
+  "revoked",
+]);
+
+export const matchDayJoinRequestStatusEnum = pgEnum("match_day_join_request_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+
+// ---------------------------------------------------------------------------
+// Entrar num fut sem ser posto nele
+//
+// As três tabelas abaixo são o espelho literal do que os grupos já têm
+// (group_invitations, group_join_requests, group_invite_links), e existem pelo
+// mesmo motivo que aquelas: **ninguém entra numa lista por decisão de outra
+// pessoa**.
+//
+// O que elas substituem era uma exceção em `podeDefinirPresencaPor` que, em fut
+// avulso, deixava quem criasse o fut marcar presença de qualquer jogador ativo
+// da plataforma — e cada marcação dispara notificação, push e um e-mail de
+// calendário com texto livre do organizador para a caixa da pessoa. A exceção
+// continua existindo para quem NÃO tem conta (o convidado que chegou na hora e
+// não consegue se marcar), que é o caso para o qual ela foi escrita.
+//
+// Os três caminhos de entrada, do enunciado do produto:
+//
+// - **convite** — quem já jogou com você chama; quem decide é você;
+// - **pedido** — você encontra o fut na aba de explorar e pede; quem decide é
+//   quem organiza;
+// - **link** — quem organiza manda o link; quem abre entra.
+//
+// Convite e pedido são a mesma forma com decisores OPOSTOS, e por isso são duas
+// tabelas e não uma com discriminador — a mesma decisão (e o mesmo comentário)
+// de group_invitations. Um `where` que esquecesse o discriminador viraria
+// escalada: aprovar o próprio pedido pela rota de "aceitar convite".
+
+export const matchDayInvitations = pgTable(
+  "match_day_invitations",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    invitedByPlayerId: integer("invited_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    status: matchDayInvitationStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    respondedAt: timestamp("responded_at"),
+  },
+  (t) => [
+    // Um pendente por pessoa por fut. Parcial, como o de grupo: quem recusou
+    // pode ser chamado de novo no fut seguinte, e a recusa fica no histórico.
+    uniqueIndex("match_day_invitations_pendente_idx")
+      .on(t.matchDayId, t.playerId)
+      .where(sql`status = 'pending'`),
+    index("match_day_invitations_convidado_idx").on(t.playerId, t.status),
+  ],
+);
+
+export const matchDayJoinRequests = pgTable(
+  "match_day_join_requests",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    status: matchDayJoinRequestStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    decidedAt: timestamp("decided_at"),
+    decidedByPlayerId: integer("decided_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    uniqueIndex("match_day_join_requests_pendente_idx")
+      .on(t.matchDayId, t.playerId)
+      .where(sql`status = 'pending'`),
+    index("match_day_join_requests_fila_idx").on(t.matchDayId, t.status),
+  ],
+);
+
+export const matchDayInviteLinks = pgTable(
+  "match_day_invite_links",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(), // 32 bytes aleatórios em base64url
+    createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    // Multi-uso pelo mesmo motivo do link de grupo: link que morre no primeiro
+    // clique é inútil num grupo de WhatsApp. Nulo = sem teto.
+    maxUses: integer("max_uses"),
+    usesCount: integer("uses_count").notNull().default(0),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("match_day_invite_links_fut_idx").on(t.matchDayId, t.revokedAt)],
 );
 
 export const teams = pgTable("teams", {
@@ -635,6 +815,13 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // Eleito melhor em campo na apuração da rodada. Nasce já com o nome novo do
   // domínio — só os quatro `pelada_*` acima carregam o legado.
   "mvp_do_fut",
+  // A entrada no fut, no mesmo molde dos três de grupo acima e pelo mesmo
+  // motivo: a caixa de entrada precisa distinguir "te chamaram para um fut"
+  // (que espera resposta sua) de "pediram para entrar no seu fut" (que espera
+  // decisão sua).
+  "fut_convite",
+  "fut_pedido",
+  "fut_pedido_resolvido",
 ]);
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
@@ -911,6 +1098,9 @@ export type GroupRole = (typeof groupRoleEnum.enumValues)[number];
 export type GroupVisibility = (typeof groupVisibilityEnum.enumValues)[number];
 export type GroupJoinPolicy = (typeof groupJoinPolicyEnum.enumValues)[number];
 export type MatchDay = typeof matchDays.$inferSelect;
+export type MatchDayInvitation = typeof matchDayInvitations.$inferSelect;
+export type MatchDayJoinRequest = typeof matchDayJoinRequests.$inferSelect;
+export type MatchDayInviteLink = typeof matchDayInviteLinks.$inferSelect;
 export type Attendance = typeof attendances.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Game = typeof games.$inferSelect;

@@ -14,7 +14,7 @@ import {
   MOVIMENTO_COOKIE_OPTIONS,
   parseMovimento,
 } from "@/lib/movimento";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import { hashPassword, senhaSchema, verifyPassword } from "@/lib/password";
 import { prazoEmHoras, resolverAvaliacaoPorIndice } from "@/lib/ratings";
 import { MIN_AVALIACOES_PARA_DENUNCIAR, PRAZO_ADMIN_HORAS } from "@/lib/regras";
 import { requirePlayer } from "@/lib/require-player";
@@ -140,11 +140,11 @@ export async function salvarEmailDeContato(
 export type ChangePasswordState = { error?: string; success?: boolean };
 
 const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, "Informe a senha atual."),
-  newPassword: z
-    .string()
-    .min(6, "A nova senha precisa de pelo menos 6 caracteres.")
-    .max(100, "Senha longa demais."),
+  // Teto na senha ATUAL também, e não só um `min(1)`: ela vai para o
+  // verifyPassword, que é a operação cara desta action — o mesmo raciocínio do
+  // schema de login. O piso e o teto da senha nova saem do senhaSchema.
+  currentPassword: z.string().min(1, "Informe a senha atual.").max(200),
+  newPassword: senhaSchema,
   confirm: z.string(),
 });
 

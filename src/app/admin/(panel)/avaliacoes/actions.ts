@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { podeJulgarDenuncia } from "@/lib/permissions";
 import { fecharRodada } from "@/lib/ratings-engine";
 import { julgadorImpedido, resolverDenuncia } from "@/lib/reports";
+import { esquecerStats } from "@/lib/stats";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import type { Session } from "@/lib/session";
 
@@ -14,6 +15,10 @@ function revalidarTudo() {
   revalidatePath("/admin");
   revalidatePath("/perfil");
   revalidatePath("/rankings");
+  // O memo de src/lib/stats.ts guarda os agregados por até MEMO_TTL_MS; sem
+  // isto, o ranking e o perfil público ficariam com o número velho por esse
+  // tempo depois de uma mudança que os afeta.
+  esquecerStats();
 }
 
 /**

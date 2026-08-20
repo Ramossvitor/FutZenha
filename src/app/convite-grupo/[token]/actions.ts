@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "@/db";
 import { groupInviteLinks, groupMembers } from "@/db/schema";
 import { condicaoLinkVivo } from "@/lib/grupos-link";
@@ -25,11 +26,18 @@ import { requirePlayer } from "@/lib/require-player";
 export async function resgatarLinkDoGrupo(token: string) {
   const session = await requirePlayer();
 
+  // O token chega pelo `.bind`, ou seja, do corpo do POST — Server Action é
+  // endpoint público. O teto é o mesmo `.max(100)` que o claimInvite já aplica:
+  // o valor real tem 43 caracteres (32 bytes em base64url), e nada legítimo
+  // chega perto. Sem ele, um corpo de megabytes ia inteiro para o índice.
+  const parsed = z.string().min(1).max(100).safeParse(token);
+  if (!parsed.success) redirect("/grupos?erro=link-invalido");
+
   const resultado = await db.transaction(async (tx) => {
     const [link] = await tx
       .select()
       .from(groupInviteLinks)
-      .where(and(eq(groupInviteLinks.token, token), condicaoLinkVivo(sql`now()`)))
+      .where(and(eq(groupInviteLinks.token, parsed.data), condicaoLinkVivo(sql`now()`)))
       .for("update");
     if (!link) return { estado: "invalido" as const };
 
