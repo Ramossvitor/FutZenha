@@ -86,6 +86,21 @@ export function parseIdToken(idToken: string): GoogleIdentity | null {
   if (typeof c.sub !== "string" || c.sub === "") return null;
   if (typeof c.email !== "string" || c.email === "") return null;
 
+  // `iss` e `aud`, mesmo com a dispensa de assinatura acima.
+  //
+  // Não é redundância pelo mesmo motivo que a dispensa é válida: aquela se
+  // apoia em o token ter vindo por TLS do endpoint do Google, autenticado com
+  // o client_secret. Estas duas claims defendem o cenário em que ESSA premissa
+  // cai — client_secret vazado e usado contra outro projeto, ou um dia em que
+  // um id_token chegue por outro caminho. São quatro linhas e uma comparação de
+  // string; a alternativa é confiar numa premissa sem nada por baixo.
+  //
+  // O Google emite `iss` nas duas formas, com e sem esquema, e as duas são
+  // legítimas (OpenID Connect Core §2 e a descoberta do Google).
+  if (c.iss !== "accounts.google.com" && c.iss !== "https://accounts.google.com") return null;
+  // `aud` é o nosso client_id: um token emitido para outro app não vale aqui.
+  if (c.aud !== clientId()) return null;
+
   return {
     sub: c.sub,
     email: c.email.trim().toLowerCase(),
