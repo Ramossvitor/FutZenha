@@ -8,6 +8,7 @@
 import "server-only";
 import { after } from "next/server";
 import { and, eq, gt, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db, type Executor } from "@/db";
 import { attendances, matchDays, players, users } from "@/db/schema";
 import { icsDeConvite, type FutParaAgenda } from "./agenda";
@@ -27,7 +28,20 @@ export type DestinoDeAgenda = {
   nome: string;
   email: string;
   sequence: number;
+  /**
+   * Quem pôs esta pessoa na lista, quando não foi ela mesma. É o que faz o
+   * convite mudar de texto: "presença confirmada" vira "Fulano confirmou você",
+   * com o caminho para retirar o nome.
+   *
+   * Undefined nos fluxos que não perguntam (cancelamento pós-exclusão) e nulo em
+   * quem entrou sozinha — que é a esmagadora maioria e o histórico inteiro.
+   */
+  confirmadoPor?: string | null;
 };
+
+// `players` entra duas vezes na consulta de destinos: quem recebe e quem
+// confirmou. O alias é o que deixa as duas conviverem no mesmo join.
+const confirmador = alias(players, "confirmador");
 
 type TipoDeSincronizacao = "convite" | "atualizacao" | "saida";
 
@@ -45,6 +59,8 @@ type LinhaDeDestino = {
   nomeCompleto: string;
   email: string | null;
   contactEmail: string | null;
+  confirmadoPorApelido?: string | null;
+  confirmadoPorNome?: string | null;
 };
 
 /** A linha do `sincronizar`, com os fatos que `motivoDeBloqueioDeAgenda` lê. */
@@ -58,6 +74,9 @@ function paraDestino(linha: LinhaDeDestino): DestinoDeAgenda | null {
     nome: linha.apelido ?? linha.nomeCompleto,
     email,
     sequence: linha.sequence,
+    // Apelido na frente do nome completo, como no destinatário: o e-mail fala do
+    // fut, e no fut as pessoas se chamam pelo apelido.
+    confirmadoPor: linha.confirmadoPorApelido ?? linha.confirmadoPorNome ?? null,
   };
 }
 
@@ -124,7 +143,16 @@ async function enviarParaDestinos(
     });
     const resultado = await enviarEmail({
       para: destino.email,
-      ...emailDeEventoDeAgenda({ tipo, nome: destino.nome, fut }),
+      ...emailDeEventoDeAgenda({
+        tipo,
+        nome: destino.nome,
+        fut,
+        // Só o CONVITE muda de texto por causa disto. Uma atualização de
+        // data/local fala de um evento que a pessoa já tem, e repetir ali "que
+        // Fulano te confirmou" seria remoer uma inclusão já avisada; e no
+        // cancelamento o assunto é a saída, não a entrada.
+        confirmadoPor: tipo === "convite" ? destino.confirmadoPor : null,
+      }),
       anexos: [
         {
           nomeDoArquivo: `fut-${fut.id}.ics`,
@@ -197,6 +225,12 @@ async function sincronizar(
       nomeCompleto: players.name,
       email: users.email,
       contactEmail: users.contactEmail,
+      // Quem pôs esta pessoa na lista, se não foi ela. Sai do `leftJoin` abaixo,
+      // e não de uma segunda consulta, porque é a mesma linha que já estamos
+      // lendo — e porque o despacho roda fora da request, onde cada round-trip
+      // extra é tempo de função serverless viva à toa.
+      confirmadoPorApelido: confirmador.nickname,
+      confirmadoPorNome: confirmador.name,
       // A janela por par (fut, jogador) — o freio que mata o loop de alternar
       // "Vou"/"Fora". Nulo (nunca recebeu) é `false`.
       recebeuHaPouco: sql<boolean>`(
@@ -213,6 +247,10 @@ async function sincronizar(
     .from(attendances)
     .innerJoin(players, eq(players.id, attendances.playerId))
     .innerJoin(users, and(eq(users.playerId, attendances.playerId), eq(users.active, true)))
+    // `left`, e não `inner`: a coluna é nula em quem entrou sozinha (o caso
+    // comum e todo o histórico), e a FK é `set null`, então quem confirmou pode
+    // ter sido apagado desde então. Um inner join sumiria com o destino.
+    .leftJoin(confirmador, eq(confirmador.id, attendances.confirmedByPlayerId))
     .where(and(...condicoes));
 
   const destinos = linhas

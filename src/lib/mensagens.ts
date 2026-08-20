@@ -48,6 +48,15 @@ export const MENSAGENS: Record<string, string> = {
     "Só quem entrou nesse jogo pode marcar gol nele. Ajuste a escalação primeiro.",
   "precisa-confirmar":
     "Enquanto a lista está aberta, quem tem conta ativa marca a própria presença. Depois do sorteio você pode incluir quem for do grupo.",
+  // As duas faces da recusa. `recusou` é a tela de gestão tentando marcar
+  // presença; `alvo-recusou` é a tentativa de chamar a pessoa de novo. Os dois
+  // textos dizem a mesma coisa de propósito — e dizem o conserto, porque ele
+  // existe e não é óbvio: quem recusou continua podendo voltar sozinha, e o
+  // botão "Vou" reaparece para ela mesmo depois do sorteio.
+  recusou:
+    "Essa pessoa retirou o nome da lista deste fut (ou recusou o convite). Só ela pode voltar a entrar — pela página do fut, no celular dela.",
+  "alvo-recusou":
+    "Essa pessoa já disse que não vai a este fut. Não dá para chamá-la de novo — se ela mudar de ideia, entra sozinha pela página do fut.",
   "lista-aberta": "Isso só vale depois de fechar a lista — sorteie os times primeiro.",
   "escalacao-travada":
     "O fut já foi encerrado e a escalação não muda mais. Para corrigir, é preciso excluir o fut — o que exige votação dos jogadores.",

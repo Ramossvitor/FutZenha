@@ -212,6 +212,13 @@ export function emailDeEventoDeAgenda(dados: {
   tipo: TipoDeEventoDeAgenda;
   nome: string;
   fut: FutParaAgenda;
+  /**
+   * Quem pôs a pessoa na lista, quando não foi ela mesma. Muda o convite de
+   * "presença confirmada" para "Fulano confirmou você" — e é o que justifica o
+   * link de retirar o nome: sem saber quem foi, o e-mail estaria oferecendo uma
+   * saída de algo que a pessoa acha que ela mesma escolheu.
+   */
+  confirmadoPor?: string | null;
 }): EmailPronto {
   const urlDoFut = `${siteUrl()}/fut/${dados.fut.id}`;
   const hora = formatHorarioPorExtenso(dados.fut.startTime, dados.fut.endTime);
@@ -219,6 +226,9 @@ export function emailDeEventoDeAgenda(dados: {
   const nome = escaparHtml(dados.nome);
   const local = escaparHtml(dados.fut.location);
   const quandoHtml = escaparHtml(quando);
+  // Só vale no convite: os outros três tipos falam de um evento que a pessoa já
+  // tem, e a inclusão já foi avisada quando aconteceu.
+  const porOutro = dados.tipo === "convite" ? (dados.confirmadoPor ?? null) : null;
 
   // `corpo` e `corpoTexto` dizem a mesma coisa em duas linguagens. O texto sai
   // dos valores CRUS, como em todos os templates daqui: derivá-lo do HTML
@@ -228,12 +238,19 @@ export function emailDeEventoDeAgenda(dados: {
     TipoDeEventoDeAgenda,
     { assunto: string; titulo: string; corpo: string; corpoTexto: string }
   > = {
-    convite: {
-      assunto: `Na agenda: fut de ${quando}`,
-      titulo: "Fut na agenda",
-      corpo: `Olá, <strong>${nome}</strong>! Presença confirmada no fut de <strong>${quandoHtml}</strong>, em <strong>${local}</strong>. O convite de calendário vai anexo — na maioria dos clientes ele entra na agenda sozinho, ou com um toque em &quot;Sim&quot;.`,
-      corpoTexto: `Olá, ${dados.nome}! Presença confirmada no fut de ${quando}, em ${dados.fut.location}. O convite de calendário vai anexo — na maioria dos clientes ele entra na agenda sozinho, ou com um toque em "Sim".`,
-    },
+    convite: porOutro
+      ? {
+          assunto: `${porOutro} confirmou você no fut de ${quando}`,
+          titulo: "Confirmaram sua presença",
+          corpo: `Olá, <strong>${nome}</strong>! <strong>${escaparHtml(porOutro)}</strong> confirmou sua presença no fut de <strong>${quandoHtml}</strong>, em <strong>${local}</strong>. <strong>Se estiver tudo certo, não precisa fazer nada</strong> — o convite de calendário vai anexo e entra na sua agenda sozinho.`,
+          corpoTexto: `Olá, ${dados.nome}! ${porOutro} confirmou sua presença no fut de ${quando}, em ${dados.fut.location}. Se estiver tudo certo, não precisa fazer nada — o convite de calendário vai anexo e entra na sua agenda sozinho.`,
+        }
+      : {
+          assunto: `Na agenda: fut de ${quando}`,
+          titulo: "Fut na agenda",
+          corpo: `Olá, <strong>${nome}</strong>! Presença confirmada no fut de <strong>${quandoHtml}</strong>, em <strong>${local}</strong>. O convite de calendário vai anexo — na maioria dos clientes ele entra na agenda sozinho, ou com um toque em &quot;Sim&quot;.`,
+          corpoTexto: `Olá, ${dados.nome}! Presença confirmada no fut de ${quando}, em ${dados.fut.location}. O convite de calendário vai anexo — na maioria dos clientes ele entra na agenda sozinho, ou com um toque em "Sim".`,
+        },
     atualizacao: {
       assunto: `Fut atualizado: ${quando}`,
       titulo: "O fut mudou",
@@ -263,12 +280,25 @@ export function emailDeEventoDeAgenda(dados: {
       comBotao
         ? `<p style="margin:20px 0;">${botao(urlGoogleAgenda(dados.fut, siteUrl()), "Adicionar ao Google Agenda")}</p>`
         : "",
+      // A saída de quem foi confirmado por outro. É link e não botão de propósito:
+      // o botão é a ação que o e-mail está propondo (pôr na agenda), e esta é a
+      // porta de quem NÃO quer — dar a ela o mesmo peso visual empurraria para
+      // fora quem só abriu para confirmar que está tudo certo.
+      //
+      // Leva à página do fut, e não a uma rota que já retira o nome: nenhuma rota
+      // deste projeto executa ação no GET, porque prefetcher de cliente de e-mail
+      // e antivírus corporativo abrem link sozinhos — um "cancelar presença" por
+      // GET tiraria da lista quem nunca clicou.
+      porOutro
+        ? `<p style="margin:16px 0 0 0;">Não vai? <a href="${urlDoFut}" style="color:${ACCENT_INK};font-weight:bold;">Retire seu nome da lista</a>.</p>`
+        : "",
       comBotao ? urlDeApoio(urlDoFut) : "",
     ].join(""),
   );
 
   const texto = [
     corpoTexto,
+    ...(porOutro ? ["", `Não vai? Retire seu nome da lista: ${urlDoFut}`] : []),
     ...(comBotao ? ["", `Página do fut: ${urlDoFut}`] : []),
   ].join("\n");
 

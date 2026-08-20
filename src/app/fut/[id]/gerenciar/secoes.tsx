@@ -106,8 +106,16 @@ export function SecaoDados({ fut }: { fut: PainelDoFut }) {
 }
 
 export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
-  const { matchDay, activePlayers, jogadorPorId, lista, statusByPlayer, confirmed, convitesParaEntregar } =
-    fut;
+  const {
+    matchDay,
+    activePlayers,
+    jogadorPorId,
+    lista,
+    statusByPlayer,
+    recusaram,
+    confirmed,
+    convitesParaEntregar,
+  } = fut;
   const fechada = listaFechada(matchDay.status);
   const encerrada = matchDay.status === "finished";
 
@@ -213,6 +221,11 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
       <BuscaJogador
         itens={activePlayers.map((player): ItemJogador => {
           const status = statusByPlayer.get(player.id);
+          // Disse não para este fut — tirando o nome ou recusando o convite. O
+          // selo é diferente do "fora" porque a situação é: "fora" o organizador
+          // desfaz, esta ele não desfaz. E o botão "Vai" some, porque
+          // `definirPresenca` recusaria com `?erro=recusou`.
+          const recusou = recusaram.has(player.id);
           return {
             id: player.id,
             nome: player.name,
@@ -222,17 +235,22 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
                 {status === "in" && <Badge tom="accent">vai</Badge>}
                 {status === "waitlist" && <Badge tom="neutral">espera</Badge>}
                 {status === "no_show" && <Badge tom="neutral">não veio</Badge>}
-                {status === "out" && <Badge tom="neutral">fora</Badge>}
+                {status === "out" && !recusou && <Badge tom="neutral">fora</Badge>}
+                {recusou && <Badge tom="neutral">disse que não vai</Badge>}
               </>
             ),
             acoes: (
               <>
-                {status !== "in" && (
+                {status !== "in" && !recusou && (
                   <form action={definirPresenca.bind(null, matchDay.id, player.id, "in")}>
                     <SubmitButton tamanho="sm">Vai</SubmitButton>
                   </form>
                 )}
-                {status !== "out" && (
+                {/* "Fora" some pelo mesmo motivo que o "Vai": `avaliarMarcacao`
+                    barra quem recusou nos DOIS sentidos, então o clique só
+                    produziria `?erro=recusou` — cuja mensagem fala de voltar a
+                    entrar, que não é o que quem organiza estava tentando. */}
+                {status !== "out" && !recusou && (
                   <form action={definirPresenca.bind(null, matchDay.id, player.id, "out")}>
                     <SubmitButton variante="secondary" tamanho="sm">
                       Fora

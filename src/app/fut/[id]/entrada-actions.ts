@@ -31,7 +31,7 @@ import {
 import { ehElegivel } from "@/lib/elegiveis";
 import { formatDate } from "@/lib/format";
 import { notificar } from "@/lib/notifications";
-import { entrarNaLista } from "@/lib/presenca";
+import { entrarNaLista, recusouEsteFut } from "@/lib/presenca";
 import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { requirePlayer } from "@/lib/require-player";
@@ -65,7 +65,15 @@ export async function convidarParaOFut(matchDayId: number, playerId: number) {
 
   const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
   const jaJogouComOAlvo = await jaJogaramJuntos(session.player.id, playerId);
-  if (!podeConvidarParaFut(ator, fut, { ehOrganizador, jaJogouComOAlvo })) {
+  // Quem já disse não para este fut não é chamado de novo. Sem isto o bloqueio
+  // de `podeDefinirPresencaPor` teria porta dos fundos: barrado no botão "Vai",
+  // quem organiza mandaria convite atrás de convite, cada um com push.
+  const alvoRecusou = await recusouEsteFut(matchDayId, playerId);
+  if (!podeConvidarParaFut(ator, fut, { ehOrganizador, jaJogouComOAlvo, alvoRecusou })) {
+    // Causas diferentes, consertos diferentes: falta de vínculo se resolve com o
+    // link do fut, recusa não se resolve — é da pessoa voltar, se ela quiser.
+    // Literais pela varredura de slugs (ver src/lib/mensagens.test.ts).
+    if (alvoRecusou) redirect(`/fut/${matchDayId}?erro=alvo-recusou`);
     redirect(`/fut/${matchDayId}?erro=sem-vinculo-para-convidar`);
   }
 
@@ -143,8 +151,11 @@ export async function responderConviteDeFut(
 
     if (aceitar) {
       // Pela lista, e não por insert cru: é `entrarNaLista` que conhece o
-      // limite de vagas e manda para a espera quando o fut está cheio.
-      const entrada = await entrarNaLista(tx, matchDayId, session.player.id);
+      // limite de vagas e manda para a espera quando o fut está cheio. O autor
+      // é ela mesma — aceitar um convite é decisão de quem foi convidado, e é o
+      // que faz o e-mail de agenda sair com o texto normal, e não com o de
+      // "alguém confirmou você".
+      const entrada = await entrarNaLista(tx, matchDayId, session.player.id, session.player.id);
       entrou = entrada.para === "in" && entrada.de !== "in";
       await fecharPedidoDeFut(tx, matchDayId, session.player.id);
     }
@@ -236,6 +247,29 @@ export async function decidirPedidoDeFut(
     redirect(`/fut/${matchDayId}/gerenciar?erro=fut-entrada-fechada`);
   }
 
+  // Pedido velho de quem, depois de pedir, disse não. A última palavra dela é a
+  // que vale, e aprovar entraria justamente pela porta do consentimento: o autor
+  // gravado seria ela mesma, então a aprovação limparia a recusa que ela acabou
+  // de registrar — coisa que nem o admin da plataforma pode fazer.
+  //
+  // A checagem é antes da transação, e não dentro dela, para que o pedido não
+  // fique gravado como `approved` numa aprovação que não aconteceu.
+  if (aprovar) {
+    const [pendente] = await db
+      .select({ playerId: matchDayJoinRequests.playerId })
+      .from(matchDayJoinRequests)
+      .where(
+        and(
+          eq(matchDayJoinRequests.id, requestId),
+          eq(matchDayJoinRequests.matchDayId, matchDayId),
+          eq(matchDayJoinRequests.status, "pending"),
+        ),
+      );
+    if (pendente && (await recusouEsteFut(matchDayId, pendente.playerId))) {
+      redirect(`/fut/${matchDayId}/gerenciar?erro=alvo-recusou`);
+    }
+  }
+
   let entrou: number | null = null;
   await db.transaction(async (tx) => {
     const [pedido] = await tx
@@ -258,7 +292,11 @@ export async function decidirPedidoDeFut(
     if (!pedido) return;
 
     if (aprovar) {
-      const entrada = await entrarNaLista(tx, matchDayId, pedido.playerId);
+      // O autor é QUEM PEDIU, não quem aprovou: o consentimento é dela, e a
+      // aprovação é só o destravamento. Gravar o organizador aqui faria o e-mail
+      // de agenda dizer "Fulano confirmou você" para quem se convidou sozinha —
+      // e quem aprovou já está registrado em `decided_by_player_id`.
+      const entrada = await entrarNaLista(tx, matchDayId, pedido.playerId, pedido.playerId);
       if (entrada.para === "in" && entrada.de !== "in") entrou = pedido.playerId;
       await fecharConvitePendente(tx, matchDayId, pedido.playerId);
     }
@@ -356,7 +394,13 @@ export async function resgatarLinkDoFut(token: string) {
       return { estado: "fechado" as const, matchDayId: link.matchDayId };
     }
 
-    const entrada = await entrarNaLista(tx, link.matchDayId, session.player.id);
+    // Abrir o link é a decisão de quem abriu — autor é ela mesma.
+    const entrada = await entrarNaLista(
+      tx,
+      link.matchDayId,
+      session.player.id,
+      session.player.id,
+    );
     const novo = entrada.de === null;
     // O uso só é consumido quando alguém de fato entrou pela primeira vez.
     // Reabrir o próprio link — o que todo mundo faz ao rolar a conversa — não

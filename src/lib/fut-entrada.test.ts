@@ -21,11 +21,11 @@ describe("futAceitaEntrada", () => {
 });
 
 describe("podeConvidarParaFut", () => {
-  const semVinculo = { ehOrganizador: false, jaJogouComOAlvo: false };
-  const comVinculo = { ehOrganizador: false, jaJogouComOAlvo: true };
+  const semVinculo = { ehOrganizador: false, jaJogouComOAlvo: false, alvoRecusou: false };
+  const comVinculo = { ehOrganizador: false, jaJogouComOAlvo: true, alvoRecusou: false };
 
   it("em fut de grupo, quem organiza chama — o alcance ali já é o grupo", () => {
-    const organizador = { ehOrganizador: true, jaJogouComOAlvo: false };
+    const organizador = { ehOrganizador: true, jaJogouComOAlvo: false, alvoRecusou: false };
     expect(podeConvidarParaFut(alguem, DE_GRUPO, organizador)).toBe(true);
   });
 
@@ -34,7 +34,7 @@ describe("podeConvidarParaFut", () => {
   // alcançar TODO jogador com conta — um convite, com notificação e push, por
   // pessoa. É o mesmo megafone que podeDefinirPresencaPor acabou de fechar.
   it("em fut avulso, organizar não basta: sem vínculo, não chama", () => {
-    const organizador = { ehOrganizador: true, jaJogouComOAlvo: false };
+    const organizador = { ehOrganizador: true, jaJogouComOAlvo: false, alvoRecusou: false };
     expect(podeConvidarParaFut(alguem, AVULSO, organizador)).toBe(false);
   });
 
@@ -43,7 +43,11 @@ describe("podeConvidarParaFut", () => {
   it("em fut avulso, quem já jogou com a pessoa chama", () => {
     expect(podeConvidarParaFut(alguem, AVULSO, comVinculo)).toBe(true);
     expect(
-      podeConvidarParaFut(alguem, AVULSO, { ehOrganizador: true, jaJogouComOAlvo: true }),
+      podeConvidarParaFut(alguem, AVULSO, {
+        ehOrganizador: true,
+        jaJogouComOAlvo: true,
+        alvoRecusou: false,
+      }),
     ).toBe(true);
   });
 
@@ -60,7 +64,7 @@ describe("podeConvidarParaFut", () => {
   });
 
   it("fut sorteado ou encerrado não aceita convite de ninguém", () => {
-    const organizador = { ehOrganizador: true, jaJogouComOAlvo: true };
+    const organizador = { ehOrganizador: true, jaJogouComOAlvo: true, alvoRecusou: false };
     expect(podeConvidarParaFut(alguem, { ...AVULSO, status: "teams_drawn" }, organizador)).toBe(
       false,
     );
@@ -72,6 +76,30 @@ describe("podeConvidarParaFut", () => {
   it("admin da plataforma chama em fut aberto", () => {
     expect(podeConvidarParaFut(plataforma, AVULSO, semVinculo)).toBe(true);
     expect(podeConvidarParaFut(plataforma, DE_GRUPO, semVinculo)).toBe(true);
+  });
+
+  // A porta dos fundos do bloqueio de presença. Barrado no botão "Vai", quem
+  // organiza mandaria convite atrás de convite — e o índice único de
+  // match_day_invitations é parcial em `pending`, então uma recusa não estorva a
+  // próxima linha. Nada além desta regra limita quantos convites saem.
+  it("quem recusou não é chamado de novo — nem por quem tem vínculo", () => {
+    expect(podeConvidarParaFut(alguem, AVULSO, { ...comVinculo, alvoRecusou: true })).toBe(false);
+    expect(
+      podeConvidarParaFut(alguem, DE_GRUPO, {
+        ehOrganizador: true,
+        jaJogouComOAlvo: true,
+        alvoRecusou: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("nem pelo admin da plataforma", () => {
+    expect(podeConvidarParaFut(plataforma, AVULSO, { ...semVinculo, alvoRecusou: true })).toBe(
+      false,
+    );
+    expect(podeConvidarParaFut(plataforma, DE_GRUPO, { ...semVinculo, alvoRecusou: true })).toBe(
+      false,
+    );
   });
 });
 

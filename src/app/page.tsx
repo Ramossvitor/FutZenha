@@ -20,6 +20,7 @@ import { getVotacoesAbertasDoJogador } from "@/lib/deletion";
 import { ehElegivel } from "@/lib/elegiveis";
 import { formatDateShort, formatTime, todayISO } from "@/lib/format";
 import { getGrupoAtual } from "@/lib/grupo-atual";
+import { podeMexerNoProprioNome } from "@/lib/lista-presenca";
 import { STATUS_FUT } from "@/lib/match-day-form";
 import { posicoes } from "@/lib/posicao";
 import { getRodadasAbertasDoJogador } from "@/lib/ratings";
@@ -84,6 +85,14 @@ export default async function HomePage() {
   const minhaPresenca = session
     ? presencas.find((p) => p.playerId === session.player.id)?.status
     : undefined;
+  // `recusou: false` fixo, e não uma consulta: o desfazer de quem já disse não
+  // é caso raro e mora na página do fut, que é para onde o e-mail e o push
+  // apontam. Perguntar aqui custaria um round-trip a mais na home para todo
+  // mundo, e o preço de não perguntar é um botão a menos num cartão de resumo.
+  // `nextMatch` nunca é encerrado, então `sair` é sempre verdadeiro.
+  const podeMexer = nextMatch
+    ? podeMexerNoProprioNome(nextMatch.status, { recusou: false })
+    : { entrar: false, sair: false };
 
   const recentDays = await db
     .select()
@@ -222,47 +231,63 @@ export default async function HomePage() {
               </div>
             </Link>
 
-            {/* Presença própria só existe antes do sorteio — depois dele, quem
-                mexe é quem organiza. É a mesma regra da página do fut. */}
-            {session && souElegivel && nextMatch.status === "scheduled" && (
+            {/* ENTRAR só existe antes do sorteio; SAIR vale até o fut ser
+                encerrado, e `nextMatch` nunca é encerrado. A assimetria é a
+                mesma da página do fut: é depois do sorteio que quem organiza
+                inclui quem quiser, e é aí que retirar o nome precisa existir.
+
+                Depois do sorteio o rodapé só aparece para quem TEM presença.
+                Sem isto, um cartão de fut avulso já sorteado mostrava "Retirar
+                meu nome" em largura cheia para toda conta ativa — `ehElegivel`
+                não filtra ninguém em fut avulso —, oferecendo a saída de uma
+                lista em que a pessoa nunca esteve. */}
+            {session &&
+              souElegivel &&
+              podeMexer.sair &&
+              (podeMexer.entrar || minhaPresenca !== undefined) && (
               <div className="flex border-t border-line">
-                <form action={setMyAttendance.bind(null, nextMatch.id, "in")} className="flex-1">
-                  <SubmitButton
-                    variante={
-                      minhaPresenca === "in" || minhaPresenca === "waitlist" ? "primary" : "ghost"
-                    }
-                    // Só o "Vou". Sair da lista não é conquista de ninguém.
-                    //
-                    // `sobre-accent` porque aqui o botão SOBREVIVE à action, e a
-                    // bola pousa em cima dele — que ao voltar já é o lime cheio
-                    // de quem está na lista. E é justamente por sobreviver que
-                    // ele precisa dizer o que a action muda: sem o
-                    // `festejaQuando`, clicar com a lista recém-fechada pelo
-                    // sorteio comemorava uma entrada que não houve.
-                    festeja="sobre-accent"
-                    festejaQuando={minhaPresenca ?? "fora"}
-                    tamanho="lg"
-                    className="w-full rounded-none rounded-bl-card border-0 border-r border-line"
-                  >
-                    {/* O botão diz o que vai acontecer, não o que a pessoa
-                        gostaria: clicar "Vou" num fut lotado põe na espera,
-                        e descobrir isso só depois é a pior versão disto. */}
-                    {minhaPresenca === "waitlist"
-                      ? "Na espera"
-                      : nextMatch.maxPlayers !== null &&
-                          confirmados.length >= nextMatch.maxPlayers &&
-                          minhaPresenca !== "in"
-                        ? "Entrar na espera"
-                        : "Vou"}
-                  </SubmitButton>
-                </form>
+                {podeMexer.entrar && (
+                  <form action={setMyAttendance.bind(null, nextMatch.id, "in")} className="flex-1">
+                    <SubmitButton
+                      variante={
+                        minhaPresenca === "in" || minhaPresenca === "waitlist" ? "primary" : "ghost"
+                      }
+                      // Só o "Vou". Sair da lista não é conquista de ninguém.
+                      //
+                      // `sobre-accent` porque aqui o botão SOBREVIVE à action, e
+                      // a bola pousa em cima dele — que ao voltar já é o lime
+                      // cheio de quem está na lista. E é justamente por
+                      // sobreviver que ele precisa dizer o que a action muda: sem
+                      // o `festejaQuando`, clicar com a lista recém-fechada pelo
+                      // sorteio comemorava uma entrada que não houve.
+                      festeja="sobre-accent"
+                      festejaQuando={minhaPresenca ?? "fora"}
+                      tamanho="lg"
+                      className="w-full rounded-none rounded-bl-card border-0 border-r border-line"
+                    >
+                      {/* O botão diz o que vai acontecer, não o que a pessoa
+                          gostaria: clicar "Vou" num fut lotado põe na espera,
+                          e descobrir isso só depois é a pior versão disto. */}
+                      {minhaPresenca === "waitlist"
+                        ? "Na espera"
+                        : nextMatch.maxPlayers !== null &&
+                            confirmados.length >= nextMatch.maxPlayers &&
+                            minhaPresenca !== "in"
+                          ? "Entrar na espera"
+                          : "Vou"}
+                    </SubmitButton>
+                  </form>
+                )}
                 <form action={setMyAttendance.bind(null, nextMatch.id, "out")} className="flex-1">
                   <SubmitButton
                     variante={minhaPresenca === "out" ? "danger" : "ghost"}
                     tamanho="lg"
-                    className="w-full rounded-none rounded-br-card border-0"
+                    // Sozinho no rodapé do cartão (lista já sorteada), arredonda
+                    // os dois cantos de baixo — senão sobra um canto reto onde
+                    // não há vizinho.
+                    className={`w-full rounded-none border-0 ${podeMexer.entrar ? "rounded-br-card" : "rounded-b-card"}`}
                   >
-                    Fora
+                    {podeMexer.entrar ? "Fora" : "Retirar meu nome"}
                   </SubmitButton>
                 </form>
               </div>

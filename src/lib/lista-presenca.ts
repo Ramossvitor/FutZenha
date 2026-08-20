@@ -23,6 +23,37 @@ export function listaFechada(status: "scheduled" | "teams_drawn" | "finished"): 
   return status !== "scheduled";
 }
 
+/**
+ * O que a PRÓPRIA pessoa ainda pode fazer com o próprio nome nesta lista.
+ *
+ * `listaFechada` responde "a lista aceita mexida?", e por muito tempo foi a única
+ * pergunta porque as duas mexidas eram simétricas. Deixaram de ser quando a
+ * inclusão por terceiro ganhou aviso e botão de saída: sair passou a ser um
+ * direito, e um direito que só vale enquanto o organizador não sorteia os times
+ * não é direito nenhum — é justamente **depois** do sorteio que ele pode incluir
+ * quem quiser (a exceção da lista fechada, em ./permissions).
+ *
+ * - **sair** vale até o fut ser encerrado. Sair depois do sorteio não desfaz time
+ *   já sorteado (`team_players` não é tocado): a pessoa some da lista de presença,
+ *   e quem organiza vê isso na tela de encerrar, que é onde ele registra quem
+ *   apareceu de verdade.
+ * - **entrar** continua só com a lista aberta, **exceto** para quem já disse não
+ *   neste fut. Esse ramo é o desfazer da própria decisão, e ele precisa existir:
+ *   a recusa bloqueia todo mundo, inclusive o admin da plataforma, então sem ele
+ *   quem recusou e apareceu na quadra ficaria trancado fora de um fut em que
+ *   está fisicamente — e não haveria ninguém no mundo capaz de destravar.
+ *
+ * Encerrado é o piso dos dois: presença de fut encerrado é imutável, e quem
+ * garante isso de verdade é o `exigirNaoEncerrada` dentro da transação.
+ */
+export function podeMexerNoProprioNome(
+  status: "scheduled" | "teams_drawn" | "finished",
+  pessoa: { recusou: boolean },
+): { entrar: boolean; sair: boolean } {
+  if (status === "finished") return { entrar: false, sair: false };
+  return { entrar: !listaFechada(status) || pessoa.recusou, sair: true };
+}
+
 export type LinhaDaLista = {
   playerId: number;
   status: StatusPresenca;

@@ -27,6 +27,8 @@ import {
   resgatarLinkDoFut,
   responderConviteDeFut,
 } from "./entrada-actions";
+import { setMyAttendance } from "./actions";
+import { definirPresenca } from "./gerenciar/actions";
 import {
   confirmarPresenca,
   criarFut,
@@ -177,6 +179,123 @@ describe("responderConviteDeFut", () => {
       "/futs?erro=convite-invalido",
     );
     expect(await statusDe(fut, bisbilhoteiro.jogador)).toBeNull();
+  });
+
+  // Recusar um convite vale o mesmo que tirar o nome da lista: é uma das duas
+  // formas de dizer não, e as duas fecham o fut para quem chamou.
+  describe("depois de recusar", () => {
+    async function recusou() {
+      const { a, b, fut, convite } = await comConvite();
+      await logarComo(b.conta);
+      await esperaRedirect(responderConviteDeFut(fut.id, convite.id, false));
+      return { a, b, fut };
+    }
+
+    // A porta dos fundos: o índice único de convites é parcial em `pending`,
+    // então uma recusa não estorva a próxima linha. Sem a regra, quem organiza
+    // manda convite atrás de convite, cada um com notificação e push.
+    it("não dá para chamar de novo para o MESMO fut", async () => {
+      const { a, b, fut } = await recusou();
+      await logarComo(a.conta);
+
+      const url = await esperaRedirect(convidarParaOFut(fut.id, b.jogador.id));
+
+      expect(url).toBe(`/fut/${fut.id}?erro=alvo-recusou`);
+      // Nenhum convite pendente novo — só o recusado de antes.
+      const convites = await db.select().from(matchDayInvitations);
+      expect(convites).toHaveLength(1);
+      expect(convites[0].status).toBe("declined");
+    });
+
+    // O bloqueio é por par (fut, jogador) e morre com o fut: recusar hoje não
+    // tira ninguém do fut da semana que vem.
+    it("mas continua podendo ser chamada para OUTRO fut", async () => {
+      const { a, b } = await recusou();
+      const outro = await criarFut({ createdByPlayerId: a.jogador.id });
+      await logarComo(a.conta);
+
+      const url = await esperaRedirect(convidarParaOFut(outro.id, b.jogador.id));
+
+      expect(url).toBe(`/fut/${outro.id}?ok=convite-enviado`);
+    });
+
+    // A outra metade do bloqueio: recusar o convite também fecha a marcação
+    // direta pela tela de gestão, não só o reconvite.
+    it("quem organiza também não marca a presença dela", async () => {
+      const { a, b, fut } = await recusou();
+      await db.update(matchDays).set({ status: "teams_drawn" }).where(eq(matchDays.id, fut.id));
+      await logarComo(a.conta);
+
+      const url = await esperaRedirect(definirPresenca(fut.id, b.jogador.id, "in"));
+
+      expect(url).toBe(`/fut/${fut.id}/gerenciar?erro=recusou`);
+      expect(await statusDe(fut, b.jogador)).toBeNull();
+    });
+
+    // Pedido pendente de antes da recusa não vira porta de entrada: a última
+    // palavra dela é a que vale, e aprovar entraria gravando-a como autora.
+    it("pedido pendente de antes não é aprovável depois da recusa", async () => {
+      const { a, b, fut } = await recusou();
+      await db.insert(matchDayJoinRequests).values({ matchDayId: fut.id, playerId: b.jogador.id });
+      const [pedido] = await db.select().from(matchDayJoinRequests);
+      await logarComo(a.conta);
+
+      const url = await esperaRedirect(decidirPedidoDeFut(fut.id, pedido.id, true));
+
+      expect(url).toBe(`/fut/${fut.id}/gerenciar?erro=alvo-recusou`);
+      expect(await statusDe(fut, b.jogador)).toBeNull();
+      // E o pedido continua pendente — não foi decidido coisa nenhuma.
+      const [depois] = await db.select().from(matchDayJoinRequests);
+      expect(depois.status).toBe("pending");
+    });
+
+    // Recusar não é entrar na lista: sem linha em `attendances`, o vínculo do
+    // fut avulso ("já dividiu um fut com") continua não existindo. É por isso
+    // que a recusa NÃO vira linha ali — ver recusouEsteFut.
+    it("não cria linha na lista, e portanto não cria vínculo de círculo", async () => {
+      const { b, fut } = await recusou();
+      expect(await statusDe(fut, b.jogador)).toBeNull();
+    });
+
+    // O desfazer também vale para esta metade da recusa. Limpar só `opted_out_at`
+    // deixava um beco sem saída: quem recusou o convite e depois entrou sozinha
+    // ficava `in` na lista com `declined` vivo para sempre, e nada no app move
+    // `declined` — nem o admin da plataforma destravava.
+    describe("e voltar sozinha", () => {
+      async function voltou() {
+        const { a, b, fut } = await recusou();
+        await logarComo(b.conta);
+        await setMyAttendance(fut.id, "in");
+        expect(await statusDe(fut, b.jogador)).toBe("in");
+        return { a, b, fut };
+      }
+
+      it("o convite recusado deixa de valer como recusa", async () => {
+        const { b, fut } = await voltou();
+        const [convite] = await db
+          .select()
+          .from(matchDayInvitations)
+          .where(
+            and(
+              eq(matchDayInvitations.matchDayId, fut.id),
+              eq(matchDayInvitations.playerId, b.jogador.id),
+            ),
+          );
+        expect(convite.status).toBe("accepted");
+      });
+
+      // A consequência que doía: com `declined` vivo, `avaliarMarcacao` barrava
+      // quem organiza nos DOIS sentidos — inclusive escalar na súmula alguém que
+      // está na lista e na quadra.
+      it("quem organiza volta a mandar na presença dela", async () => {
+        const { a, b, fut } = await voltou();
+        await logarComo(a.conta);
+
+        await definirPresenca(fut.id, b.jogador.id, "out");
+
+        expect(await statusDe(fut, b.jogador)).toBe("out");
+      });
+    });
   });
 });
 
