@@ -204,6 +204,13 @@
       "when": 1787228649982,
       "tag": "0028_recusa_de_presenca",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1787234520466,
+      "tag": "0029_resumo_do_fut",
+      "breakpoints": true
     }
   ]
 }

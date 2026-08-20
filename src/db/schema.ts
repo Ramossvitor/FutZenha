@@ -424,6 +424,21 @@ export const attendances = pgTable(
     // esteve não é consentimento retirado, e trancaria o organizador contra
     // alguém que nunca esteve na lista dele.
     optedOutAt: timestamp("opted_out_at"),
+    // Quando saiu o e-mail de resumo deste fut para esta pessoa. Ledger do
+    // encerramento (ver src/lib/email-resumo.ts), e o `is null` dele É a
+    // idempotência do envio: só recebe quem ainda não recebeu.
+    //
+    // Timestamp sozinho, sem a coluna-contador irmã que a agenda precisou ter.
+    // A diferença é que a agenda REENVIA no mesmo par (atualização,
+    // cancelamento), e um carimbo sobrescrito fazia dez envios contarem 1; o
+    // resumo sai UMA vez por par (fut, jogador), para sempre — o fut encerra
+    // uma vez só e não existe "reabrir". Aqui uma linha carimbada é um e-mail,
+    // e um contador só assumiria 0 e 1.
+    //
+    // Envio de FATO, como os irmãos: carimba depois do 200 do Resend, e
+    // best-effort na escrita — falhar aqui custa um e-mail repetido, não um
+    // e-mail perdido.
+    resumoEmailSentAt: timestamp("resumo_email_sent_at"),
   },
   (t) => [
     unique().on(t.matchDayId, t.playerId),
@@ -440,6 +455,12 @@ export const attendances = pgTable(
     // atende essa forma, e estas consultas rodam em toda renderização de
     // /fut/[id], em todo setMyAttendance("in") e na varredura de véspera.
     index("attendances_jogador_idx").on(t.playerId),
+    // O teto diário da instalação soma o resumo junto com os outros fluxos (ver
+    // src/lib/contagem-de-envios.ts). Parcial pelo mesmo motivo do índice de
+    // agenda logo acima: só linha carimbada interessa.
+    index("attendances_resumo_envio_idx")
+      .on(t.playerId, t.resumoEmailSentAt)
+      .where(sql`resumo_email_sent_at is not null`),
   ],
 );
 
@@ -859,6 +880,20 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "fut_convite",
   "fut_pedido",
   "fut_pedido_resolvido",
+  // O encerramento, empacotado: um aviso só por pessoa, no lugar dos dois que
+  // competiriam pela mesma atenção (o placar saiu / avalie a rapaziada). São
+  // dois valores, e não um, pela mesma razão dos `deletion_vote_*` e dos de
+  // grupo — "encerraram o fut que VOCÊ jogou" (que traz placar por e-mail e
+  // pode pedir sua avaliação) não é o mesmo evento que "encerraram um fut do
+  // seu grupo", e `type` é a única classificação da caixa de entrada legível
+  // por máquina.
+  //
+  // `rating_round_open` continua no enum, mas não é mais emitido: quem abre a
+  // rodada parou de notificar e o aviso passou a sair daqui, com o resumo
+  // junto. Fica declarado porque há linhas gravadas em produção, e Postgres não
+  // remove valor de enum.
+  "fut_encerrado",
+  "fut_encerrado_no_grupo",
 ]);
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que

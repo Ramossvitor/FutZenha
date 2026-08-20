@@ -170,10 +170,11 @@ export function RatingForm({
         </div>
       )}
 
+      {/* Não há banner de sucesso: enviar leva para a página do fut (ver
+          enviarAvaliacoes). O aviso de que dá para mudar até o prazo acabar
+          continua no rodapé aqui embaixo, que é onde ele é lido antes de
+          enviar — e não depois. */}
       {state.error && <Banner tom="erro">{state.error}</Banner>}
-      {state.success && (
-        <Banner tom="ok">Avaliação enviada. Dá para mudar enquanto o prazo não acabar.</Banner>
-      )}
 
       {/* Fica colado no rodapé porque a lista é longa e o botão não pode ficar
           só lá embaixo. O bottom desconta a faixa que a tab bar cobre — ela é

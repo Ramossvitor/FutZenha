@@ -84,6 +84,11 @@ export default defineConfig({
             // o setup migrando um banco e os testes conectando em outro.
             DATABASE_URL: resolverUrlDeTeste(),
             SESSION_SECRET: "segredo-de-teste-nao-usado-em-producao",
+            // A pausa anti-rate-limit do lote de resumo (ver email-resumo.ts).
+            // Zerada aqui porque o Resend do teste é um `vi.fn()`: seis envios
+            // custariam 2,5s de setTimeout real por teste, contra o testTimeout
+            // de 5s, e o que estaria sendo medido era o relógio.
+            RESUMO_ESPERA_MS: "0",
           },
         },
       },

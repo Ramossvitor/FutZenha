@@ -1,16 +1,20 @@
 import { expect, test } from "@playwright/test";
 
 // A rodada aberta do seed é alcançada pelos avisos (/notificacoes), nunca por
-// id hardcoded. O aviso "Avalie seus companheiros" sobrevive entre as duas
-// passadas do e2e — na segunda, o formulário aparece pré-preenchido e o botão
-// vira "Atualizar avaliação"; o spec cobre os dois estados.
+// id hardcoded. O aviso do encerramento sobrevive entre as duas passadas do
+// e2e — na segunda, o formulário aparece pré-preenchido e o botão vira
+// "Atualizar avaliação"; o spec cobre os dois estados.
 
-test("chega na rodada aberta pelos avisos, dá as notas e vê a confirmação", async ({ page }) => {
+test("chega na rodada aberta pelos avisos, dá as notas e cai na página do fut", async ({
+  page,
+}) => {
   await page.goto("/notificacoes");
-  await page.getByRole("link", { name: /Avalie seus companheiros/ }).first().click();
+  await page.getByRole("link", { name: /avalie a rapaziada/i }).first().click();
 
   await expect(page).toHaveURL(/\/avaliar\/\d+$/);
-  await expect(page.getByText("Como foi")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Como foi a rapaziada/ })).toBeVisible();
+  // O resumo do fut vem antes do formulário: o aviso prometeu "vem ver como foi".
+  await expect(page.getByText("Como foi o fut")).toBeVisible();
   await expect(page.getByText("Ninguém vai saber que foi você.")).toBeVisible();
 
   // A lista de cobrança e o botão de compartilhar são asseverados ANTES do
@@ -41,8 +45,11 @@ test("chega na rodada aberta pelos avisos, dá as notas e vê a confirmação", 
   await expect(page.getByText("Quem foi o melhor em campo?")).toBeVisible();
   await page.locator('label:has(input[name="mvp"])').first().click();
 
+  // Enviar termina na página do fut — não há banner de confirmação. É de lá que
+  // a pessoa veio pelo aviso, e mudar a nota é voltar pelo painel de avaliação.
   await page.getByRole("button", { name: /Enviar avaliação|Atualizar avaliação/ }).click();
-  await expect(
-    page.getByText("Avaliação enviada. Dá para mudar enquanto o prazo não acabar."),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/fut\/\d+$/);
+  // Os títulos de seção são eyebrows (span), não headings — ver Section.
+  await expect(page.getByText("Jogos", { exact: true })).toBeVisible();
+  await expect(page.getByText("Presença", { exact: true })).toBeVisible();
 });

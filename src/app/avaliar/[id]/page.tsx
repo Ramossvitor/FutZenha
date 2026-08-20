@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
+import { ResumoDoFutView } from "@/components/fut/resumo-do-fut";
 import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
 import { LinkButton } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   getMinhasAvaliacoes,
 } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
+import { getResumoDoFut } from "@/lib/resumo-do-fut";
 import { siteUrl } from "@/lib/site-url";
 import { textoDeCobrancaDeAvaliacao } from "@/lib/whatsapp";
 import { RatingForm, type CandidatoMvpForm, type CompanheiroForm } from "./rating-form";
@@ -60,11 +62,14 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
     );
   if (!rodada) notFound();
 
-  const [companheiros, jaDadas, avaliadores, candidatos] = await Promise.all([
+  const [companheiros, jaDadas, avaliadores, candidatos, resumo] = await Promise.all([
     getCompanheiros(rodada.matchDayId, session.player.id),
     getMinhasAvaliacoes(roundId, session.player.id),
     getAvaliadoresDaRodada(roundId),
     getCandidatosMvp(rodada.matchDayId, session.player.id),
+    // O aviso do encerramento prometeu "vem ver como foi" e trouxe a pessoa
+    // para cá — o resumo é a primeira coisa que ela precisa encontrar.
+    getResumoDoFut(db, rodada.matchDayId),
   ]);
 
   const encerrada = rodada.status !== "open" || rodada.venceu;
@@ -94,6 +99,27 @@ export default async function AvaliarRodadaPage({ params }: PageProps<"/avaliar/
           </>
         }
       />
+
+      {/* Antes do card de anonimato e do formulário: quem chegou pela
+          notificação veio ver o placar, e avaliar é o que ela faz depois de
+          ver. O botão de enviar é sticky (ver rating-form), então a rolagem a
+          mais não esconde o CTA. */}
+      {resumo.jogos.length > 0 && (
+        <Section
+          titulo="Como foi o fut"
+          acao={
+            <LinkButton
+              href={`/fut/${rodada.matchDayId}`}
+              variante="ghost"
+              tamanho="sm"
+            >
+              Página do fut
+            </LinkButton>
+          }
+        >
+          <ResumoDoFutView resumo={resumo} meuPlayerId={session.player.id} />
+        </Section>
+      )}
 
       {!encerrada && (
         <Card className="border-accent-line bg-accent-tint p-3.5">

@@ -12,7 +12,12 @@ import {
 } from "@/db/schema";
 import { apurarMvp } from "./mvp";
 import { notificar } from "./notifications";
-import { getAgregadosMvp, getRatersElegiveis, prazoEmHoras } from "./ratings";
+import {
+  getAgregadosMvp,
+  getRatersElegiveis,
+  prazoEmHoras,
+  type RaterElegivel,
+} from "./ratings";
 import { PRAZO_AVALIACAO_HORAS, PRAZO_DENUNCIA_HORAS } from "./regras";
 import { diffNotas, replaySkills, type RatingInput, type SkillChange } from "./skill";
 
@@ -29,22 +34,39 @@ export const LOCK_NOTA = 918273645;
  */
 export type MotivoReplay = { tipo: "rodada" | "revisao"; dedupeKey: string };
 
+/** A rodada recém-aberta e o eleitorado dela — ver `abrirRodada`. */
+export type RodadaAberta = { roundId: number; raters: RaterElegivel[] };
+
 /**
  * Abre a rodada de avaliação de um fut encerrado.
  *
  * Idempotente por construção: a unique em `rating_rounds.match_day_id` mais o
  * `onConflictDoNothing` garantem que encerrar o mesmo fut duas vezes não
- * abre duas rodadas nem notifica de novo.
+ * abre duas rodadas.
  *
- * Devolve o id da rodada criada, ou null quando não há o que avaliar — fut
+ * Devolve a rodada e quem a avalia, ou null quando não há o que avaliar — fut
  * sem jogos lançados, sem escalação, ou sem ninguém com conta ativa. Nesses
  * casos o fut encerra normalmente, só não gera avaliação.
+ *
+ * **Não notifica.** Notificava, com um `rating_round_open` por avaliador; hoje o
+ * aviso do encerramento é UM só por pessoa, com o resumo do fut junto, e quem o
+ * monta é `notificarEncerramento` (./encerramento-avisos). Dois avisos no mesmo
+ * segundo competiam pela mesma atenção, e o segundo — "avalie" — chegava antes
+ * de a pessoa saber como o jogo terminou.
+ *
+ * Devolve os raters em vez de deixar quem chama reconsultá-los porque
+ * `getRatersElegiveis` já rodou aqui dentro, na mesma transação: repetir a
+ * consulta seria uma segunda definição de "quem avalia", pronta para divergir
+ * da que congelou o eleitorado.
  *
  * Recebe o executor em vez de abrir a própria transação para que encerrar a
  * fut e abrir a rodada sejam o mesmo commit: encerrar sem rodada seria um
  * beco sem saída, já que não existe "reabrir fut".
  */
-export async function abrirRodada(exec: Executor, matchDayId: number): Promise<number | null> {
+export async function abrirRodada(
+  exec: Executor,
+  matchDayId: number,
+): Promise<RodadaAberta | null> {
   // No MESMO executor da transação — com o `db` global aqui, a query ficava na
   // fila esperando a conexão que a própria transação segurava (deadlock).
   const raters = await getRatersElegiveis(exec, matchDayId);
@@ -62,19 +84,7 @@ export async function abrirRodada(exec: Executor, matchDayId: number): Promise<n
     raters.map((r) => ({ roundId: round.id, playerId: r.playerId, userId: r.userId })),
   );
 
-  await notificar(
-    exec,
-    raters.map((r) => ({
-      playerId: r.playerId,
-      type: "rating_round_open" as const,
-      title: "Avalie seus companheiros",
-      body: `Você tem ${PRAZO_AVALIACAO_HORAS} horas para avaliar quem jogou com você.`,
-      href: `/avaliar/${round.id}`,
-      dedupeKey: `rodada:${round.id}:aberta`,
-    })),
-  );
-
-  return round.id;
+  return { roundId: round.id, raters };
 }
 
 // Não existe função para descartar rodada: a escalação é confirmada no

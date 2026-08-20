@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { CartaoDeJogo } from "@/components/fut/resumo-do-fut";
 import { Badge } from "@/components/ui/badge";
 import { Banner, BannerDaQuery } from "@/components/ui/banner";
 import { BotoesDeAgenda } from "@/components/ui/botoes-de-agenda";
@@ -37,9 +38,10 @@ import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { podeMexerNoProprioNome, repartirLista, vagasLivres } from "@/lib/lista-presenca";
 import { STATUS_FUT } from "@/lib/match-day-form";
 import { podeGerenciarFut, podeOperarSumula } from "@/lib/permissions";
+import { montarResumo } from "@/lib/resumo";
 import { recusouEsteFut } from "@/lib/presenca";
 import { temSumulaDelegada } from "@/lib/require-operador-sumula";
-import { jogoEmAndamento, sumulaDisponivel } from "@/lib/sumula";
+import { sumulaDisponivel } from "@/lib/sumula";
 import { getSession } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
 import { textoDeConvocacao, textoDeTimes } from "@/lib/whatsapp";
@@ -247,19 +249,18 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
     // Vazio enquanto a rodada de avaliação corre — o título só existe apurado.
     matchDay.status === "finished" ? getMvpDoFut(id) : [],
   ]);
-  const nomeDoTime = new Map(teamList.map((t) => [t.id, t.name]));
-  const jogoPorId = new Map(gameList.map((g) => [g.id, g]));
-  // Chave `jogo:jogador` porque a mesma pessoa pode trocar de lado entre jogos.
-  // Quem marcou gol sem linha de escalação fica de fora do mapa e cai no colete
-  // neutro do VestChip — melhor um chip cinza honesto do que chutar um lado.
-  const timeNoJogo = new Map(
-    escalacao.map((e) => {
-      const jogo = jogoPorId.get(e.gameId);
-      const teamId = e.side === "A" ? jogo?.teamAId : jogo?.teamBId;
-      const nome = teamId === undefined ? undefined : nomeDoTime.get(teamId);
-      return [`${e.gameId}:${e.playerId}`, nome ?? ""];
-    }),
-  );
+  // Placar, gols e o colete de cada gol saem do módulo puro, com os dados que
+  // esta página já carregou — nenhuma consulta a mais. O mesmo montarResumo
+  // alimenta a tela de avaliação e o e-mail de encerramento, e é por isso que
+  // ele existe: a regra do colete (escalação do jogo, com o `side` do gol de
+  // reserva) tinha três candidatos a dono e nenhum era natural.
+  const resumo = montarResumo({
+    times: teamList,
+    jogos: gameList,
+    gols: goalRows,
+    escalacao,
+    elencos: teamMembers,
+  });
 
   // A minha linha na lista, para a pergunta que só ela responde: quem me pôs
   // aqui (`confirmedByPlayerId`). A recusa não sai daqui — ela tem duas fontes,
@@ -480,83 +481,12 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
           />
         ) : (
           <div className="flex flex-col gap-2.5">
-            {gameList.map((game) => {
-              const gols = goalRows.filter((g) => g.gameId === game.id);
-              const timeA = nomeDoTime.get(game.teamAId) ?? "";
-              const timeB = nomeDoTime.get(game.teamBId) ?? "";
-              const emAndamento = jogoEmAndamento(game);
-              return (
-                <Card key={game.id} className="p-3.5">
-                  {/* Transparência da súmula ao vivo: o placar parcial é
-                      público desde o primeiro gol — todo mundo vê na hora se
-                      alguém inventar. Atualiza no puxar-para-atualizar. */}
-                  {emAndamento && (
-                    <div className="mb-2 flex justify-center">
-                      <Badge tom="accent" ponto>
-                        em andamento
-                      </Badge>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3">
-                    <span className="flex flex-1 items-center justify-end gap-2">
-                      <span className="truncate font-display text-[12px] font-bold text-fg-2">
-                        {timeA}
-                      </span>
-                      <VestChip time={timeA} />
-                    </span>
-                    <span
-                      className="font-display text-[26px] leading-none font-black font-stretch-125% text-fg"
-                      data-num
-                    >
-                      {game.scoreA} × {game.scoreB}
-                    </span>
-                    <span className="flex flex-1 items-center gap-2">
-                      <VestChip time={timeB} />
-                      <span className="truncate font-display text-[12px] font-bold text-fg-2">
-                        {timeB}
-                      </span>
-                    </span>
-                  </div>
-
-                  {gols.length > 0 && (
-                    <ul className="mt-3 flex flex-col gap-1.5 border-t border-line-soft pt-2.5">
-                      {gols.map((g, i) => {
-                        // A cor é a do colete do lado em que a pessoa jogou
-                        // NESTE jogo — é o que permite ler de relance para que
-                        // lado foi o gol. Gol sem autor não tem escalação para
-                        // consultar, então o lado vem do `side` gravado pela
-                        // súmula; ele também é o fallback de quem marcou sem
-                        // linha de escalação, no lugar do chip cinza de antes.
-                        const timeDoLado =
-                          g.side === null ? undefined : g.side === "A" ? timeA : timeB;
-                        const time =
-                          timeNoJogo.get(`${game.id}:${g.playerId}`) ?? timeDoLado ?? "";
-                        return (
-                          <li key={i} className="flex items-center gap-2">
-                            <VestChip time={time} tamanho="sm" />
-                            <span
-                              className={`flex-1 truncate text-[12.5px] ${
-                                g.playerId === null ? "text-fg-4 italic" : "text-fg-2"
-                              }`}
-                            >
-                              {g.playerId === null
-                                ? "Gol contra / sem autor"
-                                : (g.nickname ?? g.playerName)}
-                            </span>
-                            <span
-                              className="font-display text-[12px] font-extrabold text-fg"
-                              data-num
-                            >
-                              {g.quantity}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </Card>
-              );
-            })}
+            {/* O MESMO cartão da tela de avaliação. A página mostra só ele
+                daqui: artilharia ela não tem, e a seção de times é a dela, com
+                nota e ações que o resumo compartilhado não carrega. */}
+            {resumo.jogos.map((jogo) => (
+              <CartaoDeJogo key={jogo.id} jogo={jogo} />
+            ))}
           </div>
         )}
       </Section>

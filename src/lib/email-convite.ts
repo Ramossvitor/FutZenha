@@ -3,14 +3,13 @@ import { after } from "next/server";
 import { and, count, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { groupInvitations, groups, invites, players, users } from "@/db/schema";
-import { enviadosPelaAgendaNoDia } from "./agenda-convite";
+import { tetoDiarioAtingido } from "./contagem-de-envios";
 import { mesmoEmail } from "./email";
 import { emailDeDestino } from "./email-destino";
 import { emailConfigurado, enviarEmail } from "./email-envio";
 import {
   JANELA_DIARIA_HORAS,
   JANELA_POR_DESTINATARIO_MIN,
-  TETO_DIARIO,
   TETO_POR_CONVIDANTE_DIA,
 } from "./freios-de-envio";
 import {
@@ -59,42 +58,16 @@ export type ResultadoEnvioDeConvite =
 // caixa de entrada, quantas vezes quiser — e ainda queima a cota de todo mundo.
 //
 // A janela por destinatário é o que impede encher a caixa de uma pessoa; o teto
-// diário é o que impede espalhar por muitas. Os dois valem para os DOIS fluxos —
-// convite de plataforma e aviso de grupo — e saem de `email_sent_at` (invites e
-// group_invitations), sem tabela nova. O teto fica abaixo dos 100/dia do free
-// tier para sobrar margem (a cota do Resend conta recebidos também).
-// Os números moram em ./freios-de-envio, com o porquê de cada um — inclusive o
-// do sub-teto que separa conveniência (agenda) de recuperação de conta (este
-// arquivo). Aqui ficou só o uso.
-
-/**
- * O teto diário vale para a instalação inteira, somando os TRÊS fluxos.
- *
- * A agenda entrou nesta soma junto com o freio dela. Enquanto ela ficava de
- * fora, este teto media meia realidade: os e-mails de calendário gastavam a
- * mesma cota do Resend e não apareciam em contagem nenhuma, então o convite
- * podia ser recusado por uma cota que ele achava livre — ou, pior, passar e
- * estourar de verdade no Resend.
- */
-async function tetoDiarioAtingido(): Promise<boolean> {
-  const [[plataforma], [grupo], agenda] = await Promise.all([
-    db
-      .select({ total: count() })
-      .from(invites)
-      .where(gt(invites.emailSentAt, sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`)),
-    db
-      .select({ total: count() })
-      .from(groupInvitations)
-      .where(
-        gt(
-          groupInvitations.emailSentAt,
-          sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`,
-        ),
-      ),
-    enviadosPelaAgendaNoDia(),
-  ]);
-  return plataforma.total + grupo.total + agenda >= TETO_DIARIO;
-}
+// diário é o que impede espalhar por muitas. A janela vale para os DOIS fluxos
+// daqui — convite de plataforma e aviso de grupo — e sai de `email_sent_at`
+// (invites e group_invitations), sem tabela nova. O teto diário é mais largo que
+// este arquivo: ele soma os QUATRO fluxos da instalação, porque a cota que ele
+// protege é a do Resend, e ela não distingue quem gastou.
+// Os números moram em ./freios-de-envio, com o porquê de cada um — inclusive os
+// sub-tetos que separam conveniência (agenda) e volume (resumo do fut) de
+// recuperação de acesso (este arquivo). A soma dos fluxos mora em
+// ./contagem-de-envios, que saiu daqui quando o resumo virou o segundo leitor
+// dela. Aqui ficou só o uso.
 
 /**
  * Esta caixa de entrada já recebeu email nosso na janela por destinatário?
