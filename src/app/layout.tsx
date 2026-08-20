@@ -84,12 +84,25 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const temSeletor = grupos.length > 0;
 
   // Prazos vencidos são aplicados depois da resposta, no máximo 1× por minuto
-  // por instância. O cron diário é só a rede de segurança para quando o site
-  // fica sem tráfego.
-  agendarProcessamento();
-  // Push pendente sai no mesmo esquema — e as actions sensíveis a tempo furam
-  // o throttle com agendarDespachoDePush(true).
-  agendarDespachoDePush();
+  // por instância. O cron diário é a rede de segurança para quando o site fica
+  // sem tráfego.
+  //
+  // **Só com sessão.** Este layout roda em TODA renderização, inclusive /login,
+  // a home deslogada e 404 — então, sem esta condição, qualquer visitante
+  // anônimo (ou crawler, ou prefetch) abria a transação da varredura e a do
+  // claim de push. O throttle de 60s é por instância e não ajuda aqui, porque
+  // instâncias serverless não dividem memória; o advisory lock limita
+  // CONCORRÊNCIA, não frequência, então cada request ainda pagava uma transação
+  // para descobrir que não pegou o lock.
+  //
+  // Nada deixa de acontecer por causa disto: prazo não deixa de vencer porque
+  // ninguém logado passou, e é exatamente para esse caso que o cron existe.
+  if (session) {
+    agendarProcessamento();
+    // Push pendente sai no mesmo esquema — e as actions sensíveis a tempo furam
+    // o throttle com agendarDespachoDePush(true).
+    agendarDespachoDePush();
+  }
 
   return (
     <html
