@@ -1,4 +1,6 @@
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
+import { MAX_SENHA, MIN_SENHA } from "./regras";
 
 // Hash de senha com scrypt do node:crypto — sem dependências, memory-hard.
 // Server Actions rodam no runtime Node; o proxy nunca toca em senha.
@@ -22,6 +24,19 @@ function scryptAsync(password: string, salt: Buffer, N: number, r: number, p: nu
     });
   });
 }
+
+/**
+ * O que conta como senha aceitável, num lugar só: o resgate de convite e a troca
+ * no /perfil pediam a mesma coisa em dois schemas separados.
+ *
+ * Os números vêm de src/lib/regras.ts, e não daqui, porque os formulários que
+ * precisam do `minLength` são Client Components — este módulo importa
+ * `node:crypto` e não pode ser alcançado por eles. O porquê do valor está lá.
+ */
+export const senhaSchema = z
+  .string()
+  .min(MIN_SENHA, `A senha precisa de pelo menos ${MIN_SENHA} caracteres.`)
+  .max(MAX_SENHA, "Senha longa demais.");
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);

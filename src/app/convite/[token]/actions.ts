@@ -8,7 +8,7 @@ import { invites, players, users } from "@/db/schema";
 import { createSessionToken } from "@/lib/auth";
 import { parseEmailDeContato, parseEmailDeContatoOpcional } from "@/lib/email-contato";
 import { temEmailDeDestino } from "@/lib/email-destino";
-import { hashPassword } from "@/lib/password";
+import { hashPassword, senhaSchema } from "@/lib/password";
 import { platformAdminsDoAmbiente } from "@/lib/platform-admins";
 import { setSessionCookie } from "@/lib/session";
 import { USERNAME_REGEX } from "@/lib/username";
@@ -24,10 +24,8 @@ const usernameSchema = z
     "Nome de usuário inválido: use 2 a 20 caracteres entre letras minúsculas, números, ponto, hífen ou _.",
   );
 
-const passwordSchema = z
-  .string()
-  .min(6, "A senha precisa de pelo menos 6 caracteres.")
-  .max(100, "Senha longa demais.");
+// O piso e o teto moram em src/lib/password.ts, junto de quem sabe o que é uma
+// senha — a mesma regra vale para a troca no /perfil.
 
 // O drizzle embrulha o erro do driver (DrizzleQueryError → cause) — percorre a
 // cadeia de cause atrás do código 23505 do Postgres.
@@ -64,7 +62,7 @@ export async function claimInvite(
   const [player] = await db.select().from(players).where(eq(players.id, invite.playerId));
   if (!player || !player.active) return { error: "Jogador inativo — fala com o admin da plataforma." };
 
-  const passwordParsed = passwordSchema.safeParse(formData.get("password"));
+  const passwordParsed = senhaSchema.safeParse(formData.get("password"));
   if (!passwordParsed.success) return { error: passwordParsed.error.issues[0].message };
   if (passwordParsed.data !== formData.get("confirm")) {
     return { error: "As senhas não coincidem." };
