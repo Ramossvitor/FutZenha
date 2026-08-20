@@ -34,9 +34,26 @@ self.addEventListener("push", (event) => {
   );
 });
 
+// Destino interno seguro, ou "/". É a mesma regra — e o mesmo regex — do
+// `destinoSeguro` em src/lib/oauth-state.ts, onde ela está explicada e testada:
+// uma barra, e o caractere seguinte não pode abrir autoridade (o "\" vira "/"
+// em esquema especial, então "/\evil.com" também escaparia).
+//
+// Aqui a cópia é inevitável: este arquivo é JS puro servido de public/, sem
+// bundler e sem import — e por isso também sem teste. Se aquele regex mudar,
+// este tem que mudar junto.
+//
+// Hoje todo `href` é construído pelo servidor (src/lib/notifications.ts), então
+// isto é defesa em profundidade. Ela não é decorativa: o `navigate()` do
+// WindowClient já é same-origin por especificação, mas o `openWindow()` do
+// fallback abaixo NÃO é — um payload com URL externa abriria o site de outro.
+function destinoSeguro(bruto) {
+  return typeof bruto === "string" && /^\/[^/\\]/.test(bruto) ? bruto : "/";
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const href = (event.notification.data && event.notification.data.href) || "/";
+  const href = destinoSeguro(event.notification.data && event.notification.data.href);
   // Reusa uma janela aberta em vez de empilhar abas — no app instalado só
   // existe uma janela mesmo, e navegar nela é o comportamento esperado.
   event.waitUntil(
