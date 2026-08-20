@@ -42,7 +42,20 @@ export async function gerarConvite(
  */
 export async function criarJogadorComConvite(
   exec: Executor,
-  dados: { name: string; nickname: string | null; isGoalkeeper: boolean; email?: string | null },
+  dados: {
+    name: string;
+    nickname: string | null;
+    isGoalkeeper: boolean;
+    email?: string | null;
+    /**
+     * Quem está cadastrando. Não é cosmético: `players.name` é UNIQUE, então
+     * cadastrar nome é TOMAR nome — inclusive um que ainda vai virar admin (ver
+     * src/db/platform-admins-bootstrap.ts). É por esta coluna que o teto diário
+     * de src/lib/tetos-de-criacao.ts conta, e é ela que diz quem chegou
+     * primeiro quando um nome vira disputa.
+     */
+    createdByPlayerId?: number | null;
+  },
 ): Promise<{ playerId: number; token: string }> {
   const { email = null, ...jogador } = dados;
   const [created] = await exec.insert(players).values(jogador).returning();

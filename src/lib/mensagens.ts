@@ -118,6 +118,13 @@ export const MENSAGENS: Record<string, string> = {
   "administracao-transferida": "Administração transferida.",
   "membro-removido":
     "Membro removido. O link do grupo foi revogado junto — gere outro para continuar convidando.",
+  // Os tetos de src/lib/tetos-de-criacao.ts. O texto diz "hoje" e não "agora"
+  // porque a janela é de 24h corridas — prometer que volta já seria mentira.
+  "muitos-futs":
+    "Você marcou muitos futs hoje. Espere algumas horas para marcar outro — o limite existe para o aviso e o e-mail de agenda não virarem enxurrada.",
+  "muitos-grupos": "Você criou muitos grupos hoje. Espere algumas horas para criar outro.",
+  "muitos-jogadores":
+    "Você cadastrou muitos jogadores hoje. Espere algumas horas para cadastrar outro.",
   "link-gerado": "Link novo gerado — o anterior deixou de valer.",
   "link-revogado": "Link revogado.",
   // Salvou, mas o aviso de agenda ficou retido pelo freio de

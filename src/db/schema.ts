@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   date,
@@ -44,17 +45,38 @@ export const attendanceStatusEnum = pgEnum("attendance_status", [
 
 export const gameSideEnum = pgEnum("game_side", ["A", "B"]);
 
-export const players = pgTable("players", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  nickname: text("nickname"),
-  // A nota é calculada pelas avaliações dos companheiros (ver src/lib/skill.ts)
-  // — o admin não digita mais. Todo jogador começa em 5,0.
-  skill: numeric("skill", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
-  isGoalkeeper: boolean("is_goalkeeper").notNull().default(false),
-  active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const players = pgTable(
+  "players",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull().unique(),
+    nickname: text("nickname"),
+    // A nota é calculada pelas avaliações dos companheiros (ver src/lib/skill.ts)
+    // — o admin não digita mais. Todo jogador começa em 5,0.
+    skill: numeric("skill", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
+    isGoalkeeper: boolean("is_goalkeeper").notNull().default(false),
+    active: boolean("active").notNull().default(true),
+    // Quem cadastrou este jogador. Espelho do `groups.created_by_player_id`, e
+    // `set null` pelo mesmo motivo: apagar quem convidou não pode apagar quem
+    // foi convidado.
+    //
+    // Serve a duas coisas que não são cosméticas. A primeira é o teto diário de
+    // src/lib/tetos-de-criacao.ts: `convidarParaFut` cria linha em `players` com
+    // nome à escolha e sem limite, e sem esta coluna não há por quem contar. A
+    // segunda é auditoria — `players.name` é UNIQUE, então cadastrar nome é
+    // tomar nome, e quando um nome vira alvo de disputa (ver a trava de squat em
+    // src/db/platform-admins-bootstrap.ts) esta coluna é a única testemunha de
+    // quem chegou primeiro. Nulo no que veio antes dela e no que o seed cria.
+    createdByPlayerId: integer("created_by_player_id").references((): AnyPgColumn => players.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // O teto diário pergunta "quantos este jogador criou nas últimas 24h".
+    index("players_criador_idx").on(t.createdByPlayerId, t.createdAt),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // Grupos
@@ -110,7 +132,11 @@ export const groups = pgTable(
     }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
-  (t) => [index("groups_descoberta_idx").on(t.visibility, t.name)],
+  (t) => [
+    index("groups_descoberta_idx").on(t.visibility, t.name),
+    // O teto diário de criação de grupo — ver src/lib/tetos-de-criacao.ts.
+    index("groups_criador_idx").on(t.createdByPlayerId, t.createdAt),
+  ],
 );
 
 export const groupMembers = pgTable(
@@ -298,6 +324,8 @@ export const matchDays = pgTable("match_days", {
   // Todo recorte de grupo (futs do grupo e as quatro consultas de
   // src/lib/stats.ts) entra por group_id e ordena por data.
   index("match_days_group_idx").on(t.groupId, t.date),
+  // O teto diário de criação de fut — ver src/lib/tetos-de-criacao.ts.
+  index("match_days_criador_idx").on(t.createdByPlayerId, t.createdAt),
   // A trava de verdade da duração — o zod de match-day-form.ts dá a mensagem,
   // este check dá a garantia. Quem administra o fut consegue reescrever o evento
   // na agenda de quem confirmou; sem teto, "das 8h às 23h de sexta a domingo"
@@ -336,8 +364,27 @@ export const attendances = pgTable(
     // UID — cliente estrito ignora REQUEST com SEQUENCE ≤ o do último CANCEL,
     // e é isso que faz "desmarquei e remarquei" reativar o evento.
     calendarSequence: integer("calendar_sequence").notNull().default(0),
+    // Quando saiu o último e-mail de agenda deste par (fut, jogador). É o
+    // ledger do freio de src/lib/freios-de-envio.ts, e é uma coluna de domínio
+    // pelo mesmo motivo que `invites.email_sent_at` é: o projeto já resolveu
+    // "quantas vezes mandei para esta caixa" lendo a linha que registra o envio,
+    // sem tabela de contador — que traria GC próprio, uma segunda noção de
+    // "quando" e uma chave opaca que nenhum `\d` explica.
+    //
+    // Envio de FATO, não intenção: uma falha silenciosa não pode custar 10
+    // minutos de bloqueio. Best-effort na escrita, como o email_sent_at.
+    agendaEmailSentAt: timestamp("agenda_email_sent_at"),
   },
-  (t) => [unique().on(t.matchDayId, t.playerId)],
+  (t) => [
+    unique().on(t.matchDayId, t.playerId),
+    // O teto por caixa de entrada pergunta "quantos este jogador recebeu nas
+    // últimas 24h". Parcial porque só linha carimbada interessa, e a esmagadora
+    // maioria das presenças nunca gerou e-mail — mesmo molde do
+    // notifications_push_pendentes_idx.
+    index("attendances_agenda_envio_idx")
+      .on(t.playerId, t.agendaEmailSentAt)
+      .where(sql`agenda_email_sent_at is not null`),
+  ],
 );
 
 export const teams = pgTable("teams", {

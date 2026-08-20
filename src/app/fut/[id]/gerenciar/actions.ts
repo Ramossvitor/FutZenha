@@ -55,6 +55,7 @@ import { TIMES_MAX, TIMES_MIN } from "@/lib/regras";
 import { agendarDespachoDePush } from "@/lib/push-envio";
 import { esquecerStats } from "@/lib/stats";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
+import { podeCriarMaisJogador } from "@/lib/tetos-de-criacao";
 import { defaultTeamNames } from "@/lib/team-colors";
 
 export async function updateMatchDay(matchDayId: number, formData: FormData) {
@@ -510,8 +511,16 @@ const convidadoSchema = z.object({
  * mão, como sempre.
  */
 export async function convidarParaFut(matchDayId: number, formData: FormData) {
-  const { matchDay } = await requireFutAdmin(matchDayId);
+  const { session, matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
+
+  // Cadastrar jogador é auto-servível (basta criar um fut) e insere em
+  // `players`, cujo `name` é UNIQUE — sem teto, dá para tomar nomes em massa.
+  // Ver src/lib/tetos-de-criacao.ts.
+  const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
+  if (!(await podeCriarMaisJogador(ator))) {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=muitos-jogadores`);
+  }
 
   const parsed = convidadoSchema.safeParse({
     name: formData.get("name") ?? "",
@@ -529,6 +538,7 @@ export async function convidarParaFut(matchDayId: number, formData: FormData) {
         nickname: null,
         isGoalkeeper: parsed.data.isGoalkeeper,
         email: email.data,
+        createdByPlayerId: session.player.id,
       });
       // Passa pela lista como qualquer um: com o fut lotado e a lista aberta,
       // o convidado entra na espera. Um insert cru de `status: "in"` aqui furaria

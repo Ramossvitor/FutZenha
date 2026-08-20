@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { groupMembers, groups } from "@/db/schema";
 import { parseGrupoForm } from "@/lib/grupos-form";
 import { requirePlayer } from "@/lib/require-player";
+import { podeCriarMaisGrupo } from "@/lib/tetos-de-criacao";
 
 /**
  * Qualquer jogador logado cria um grupo — e vira o admin dele.
@@ -20,6 +21,11 @@ import { requirePlayer } from "@/lib/require-player";
  */
 export async function criarGrupo(formData: FormData) {
   const session = await requirePlayer();
+  // Grupo atrás de grupo estreia pares (grupo, jogador) novos, que é o contorno
+  // que o dedupe do aviso de convite sozinho não pega — ver
+  // src/lib/tetos-de-criacao.ts.
+  const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
+  if (!(await podeCriarMaisGrupo(ator))) redirect("/grupos/novo?erro=muitos-grupos");
 
   const parsed = parseGrupoForm(formData);
   if (!parsed.success) redirect("/grupos/novo?erro=dados-invalidos");

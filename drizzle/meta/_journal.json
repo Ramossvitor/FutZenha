@@ -176,6 +176,13 @@
       "when": 1787173951396,
       "tag": "0024_horario_de_fim_do_fut",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787180435901,
+      "tag": "0025_consentimento_e_freios",
+      "breakpoints": true
     }
   ]
 }

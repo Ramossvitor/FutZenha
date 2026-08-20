@@ -47,7 +47,7 @@ function parsePlayerForm(formData: FormData) {
 // envia; o botão de gerar convite segue existindo para reenviar quando o prazo
 // vencer.
 export async function createPlayer(formData: FormData) {
-  await requirePlatformAdmin();
+  const session = await requirePlatformAdmin();
   const parsed = parsePlayerForm(formData);
   if (!parsed.success) redirect("/admin/jogadores?erro=dados-invalidos");
   const email = parseEmailDeConvite(formData.get("email"));
@@ -56,7 +56,13 @@ export async function createPlayer(formData: FormData) {
   let criado: { token: string };
   try {
     criado = await db.transaction((tx) =>
-      criarJogadorComConvite(tx, { ...parsed.data, email: email.data }),
+      // O criador entra aqui também: a coluna é auditoria de quem tomou o nome,
+      // e o admin da plataforma não é exceção a isso — só ao teto.
+      criarJogadorComConvite(tx, {
+        ...parsed.data,
+        email: email.data,
+        createdByPlayerId: session.player.id,
+      }),
     );
   } catch (error) {
     if (isUniqueViolation(error)) redirect("/admin/jogadores?erro=nome-duplicado");
