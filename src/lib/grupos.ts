@@ -95,6 +95,15 @@ export async function listarGruposDoSeletor(playerId: number): Promise<GrupoDoSe
  * um vazamento: grupo privado não aparece em listagem nenhuma, nem com termo de
  * busca que case o nome exato.
  */
+/** Mínimo de caracteres para a busca de grupo recortar alguma coisa. */
+export const MIN_BUSCA = 2;
+
+/** O termo utilizável, ou `null` — curto demais não vira filtro. */
+function termoDeBusca(termo?: string): string | null {
+  const limpo = termo?.trim() ?? "";
+  return limpo.length >= MIN_BUSCA ? limpo : null;
+}
+
 export async function listarGruposPublicos(
   termo?: string,
 ): Promise<(Group & { membros: number })[]> {
@@ -115,7 +124,13 @@ export async function listarGruposPublicos(
     .where(
       and(
         eq(groups.visibility, "public"),
-        termo && termo.trim() !== "" ? ilike(groups.name, `%${termo.trim()}%`) : undefined,
+        // Mínimo de 2 caracteres. `ilike '%x%'` tem curinga à esquerda, então
+        // nenhum índice B-tree o atende — é varredura da tabela. Com 1
+        // caractere (ou com `%`, que o usuário pode digitar) a busca casa
+        // quase tudo e o filtro deixa de filtrar; a partir de 2 ela volta a ser
+        // uma busca. Não é defesa contra injeção — o valor é parametrizado —,
+        // é contra a consulta que não recorta nada.
+        termoDeBusca(termo) ? ilike(groups.name, `%${termoDeBusca(termo)}%`) : undefined,
       ),
     )
     .orderBy(asc(groups.name))
