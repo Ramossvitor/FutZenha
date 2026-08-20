@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, eq, exists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import { attendances, groupMembers, players, type Player } from "@/db/schema";
 
@@ -21,6 +22,52 @@ import { attendances, groupMembers, players, type Player } from "@/db/schema";
  * escalação de um jogo que a pessoa jogou.
  */
 export type EscopoDaLista = { id: number; groupId: number | null };
+
+/**
+ * Já dividiu um fut com esta pessoa — a única relação que existe fora de grupo.
+ *
+ * É o recorte que substitui "a plataforma inteira" no fut avulso. Sai de
+ * `attendances`, e não de `game_players`, de propósito: quem confirmou presença
+ * junto já se conhece o bastante para receber um aviso, mesmo que um dos dois
+ * tenha faltado no dia.
+ */
+export function condicaoJaJogouCom(playerId: number) {
+  return exists(
+    db
+      .select({ um: sql`1` })
+      .from(attendances)
+      .innerJoin(
+        alias(attendances, "minhas"),
+        and(
+          eq(sql`minhas.match_day_id`, attendances.matchDayId),
+          eq(sql`minhas.player_id`, playerId),
+        ),
+      )
+      .where(eq(attendances.playerId, players.id)),
+  );
+}
+
+/**
+ * Quem é AVISADO de um fut novo.
+ *
+ * Existe separado de `condicaoElegivel` porque as duas perguntas nunca foram a
+ * mesma, e colá-las custou caro: *quem pode entrar* é uma coisa, *quem merece
+ * ser interrompido* é outra. Em fut de grupo elas coincidem (os membros), mas em
+ * fut avulso `condicaoElegivel` devolve `undefined` — e um `undefined` dentro de
+ * `and()` é descartado em silêncio pelo drizzle, então o aviso de "marcaram
+ * fut" saía para **todo jogador ativo da plataforma**, com push junto, a cada
+ * fut avulso criado por qualquer pessoa.
+ *
+ * Nunca devolve `undefined`, e é isso que o teste unitário crava: é a ausência
+ * de retorno, não o valor errado, que produz a falha silenciosa.
+ */
+export function condicaoDeAviso(matchDay: EscopoDaLista, criadorId: number | null) {
+  if (matchDay.groupId !== null) return condicaoElegivel(matchDay)!;
+  // Fut avulso órfão (criador apagado — a FK é `set null`) não tem círculo a
+  // quem avisar. `false` explícito, e não `undefined`: era exatamente o
+  // `undefined` engolido pelo `and()` que fazia isto virar "avise todo mundo".
+  return criadorId === null ? sql`false` : condicaoJaJogouCom(criadorId);
+}
 
 /**
  * A condição em forma de SQL, para quem precisa compor com a própria consulta —

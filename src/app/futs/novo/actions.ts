@@ -6,7 +6,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { matchDays, players, users } from "@/db/schema";
 import { avisoDeFutCriado } from "@/lib/avisos-fut";
-import { condicaoElegivel } from "@/lib/elegiveis";
+import { condicaoDeAviso } from "@/lib/elegiveis";
 import { podeCriarFutNoGrupo } from "@/lib/grupos-permissions";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
 import { parseMatchDayForm } from "@/lib/match-day-form";
@@ -77,7 +77,12 @@ export async function createMatchDay(formData: FormData) {
         and(
           eq(players.active, true),
           ne(players.id, session.player.id),
-          condicaoElegivel({ id: fut.id, groupId }),
+          // `condicaoDeAviso`, e não `condicaoElegivel`: aquela devolve
+          // `undefined` em fut avulso, e o `and()` do drizzle descarta o termo
+          // em silêncio — o aviso ia para a plataforma inteira, com push junto,
+          // a cada fut avulso criado por qualquer pessoa. Em fut avulso o
+          // alcance agora é quem já dividiu um fut com quem marcou.
+          condicaoDeAviso({ id: fut.id, groupId }, session.player.id),
         ),
       );
     await notificar(
