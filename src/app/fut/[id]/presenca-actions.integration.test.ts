@@ -99,9 +99,30 @@ describe("setMyAttendance", () => {
     expect((await linhaDe(fut, jogador))?.status).toBe("in");
   });
 
-  it("fut avulso aceita qualquer jogador ativo", async () => {
-    const fut = await criarFut();
+  // A outra metade do consentimento: assim como quem organiza não põe estranho
+  // na lista, estranho não se põe sozinho. Em fut avulso a entrada de quem
+  // nunca esteve ali é por pedido, convite ou link (ver src/lib/fut-entrada.ts).
+  it("fut avulso NÃO aceita quem nunca esteve na lista — tem que pedir", async () => {
+    // Com organizador: fut órfão não tem lista de ninguém a proteger, e por
+    // isso continua aberto a todos (ver estaNoCirculoDoFut).
+    const dono = await criarJogadorComConta();
+    const fut = await criarFut({ createdByPlayerId: dono.jogador.id });
     const { jogador, conta } = await criarJogadorComConta();
+    await logarComo(conta);
+
+    const url = await esperaRedirect(() => setMyAttendance(fut.id, "in"));
+
+    expect(url).toBe(`/fut/${fut.id}?erro=precisa-pedir-entrada`);
+    expect(await linhaDe(fut, jogador)).toBeNull();
+  });
+
+  // Quem JÁ tem linha na lista segue no vaivém normal: sair e voltar é o caso
+  // de todo dia, e o consentimento já foi dado quando a pessoa entrou.
+  it("fut avulso: quem já esteve na lista volta sozinho", async () => {
+    const dono = await criarJogadorComConta();
+    const fut = await criarFut({ createdByPlayerId: dono.jogador.id });
+    const { jogador, conta } = await criarJogadorComConta();
+    await confirmarPresenca(fut, jogador, { status: "out" });
     await logarComo(conta);
 
     await setMyAttendance(fut.id, "in");
@@ -172,9 +193,13 @@ describe("definirPresenca", () => {
     expect(await notificacoesDe(alvo.jogador)).toHaveLength(0);
   });
 
-  it("lista fechada: elegível entra e é avisado no mesmo commit", async () => {
-    const { fut } = await futComAdminLogado({ status: "teams_drawn" });
+  // A exceção da lista fechada vale em fut DE GRUPO, onde "elegível" quer dizer
+  // membro — e entrar no grupo foi o consentimento.
+  it("lista fechada em fut de grupo: membro entra e é avisado no mesmo commit", async () => {
+    const groupId = await criarGrupo();
+    const { fut } = await futComAdminLogado({ groupId, status: "teams_drawn" });
     const alvo = await criarJogadorComConta();
+    await entrarNoGrupo(groupId, alvo.jogador);
 
     await definirPresenca(fut.id, alvo.jogador.id, "in");
 
@@ -185,6 +210,33 @@ describe("definirPresenca", () => {
       type: "pelada_presenca_definida",
       dedupeKey: `presenca:${fut.id}:${alvo.jogador.id}`,
     });
+  });
+
+  // E NÃO vale em fut avulso. Ali "elegível" é a plataforma inteira (o
+  // `undefined` de condicaoElegivel), então a exceção transformava qualquer
+  // pessoa logada — basta criar um fut e sortear — em alguém que marca presença
+  // de estranhos. Cada marcação dispara notificação, push e um e-mail de
+  // calendário com texto livre dela para a caixa da vítima.
+  it("lista fechada em fut AVULSO: estranho com conta não é marcado", async () => {
+    const { fut } = await futComAdminLogado({ status: "teams_drawn" });
+    const alvo = await criarJogadorComConta();
+
+    const url = await esperaRedirect(definirPresenca(fut.id, alvo.jogador.id, "in"));
+
+    expect(url).toBe(`/fut/${fut.id}/gerenciar?erro=precisa-confirmar`);
+    expect(await linhaDe(fut, alvo.jogador)).toBeNull();
+    expect(await notificacoesDe(alvo.jogador)).toHaveLength(0);
+  });
+
+  // O caso que a exceção existe para servir continua de pé: o convidado que
+  // chegou na hora não tem conta e não consegue se marcar sozinho.
+  it("lista fechada em fut avulso: quem não tem conta segue livre", async () => {
+    const { fut } = await futComAdminLogado({ status: "teams_drawn" });
+    const semConta = await criarJogador();
+
+    await definirPresenca(fut.id, semConta.id, "in");
+
+    expect((await linhaDe(fut, semConta))?.status).toBe("in");
   });
 
   it("lista fechada: inelegível é recusado", async () => {

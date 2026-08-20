@@ -387,6 +387,120 @@ export const attendances = pgTable(
   ],
 );
 
+export const matchDayInvitationStatusEnum = pgEnum("match_day_invitation_status", [
+  "pending",
+  "accepted",
+  "declined",
+  "revoked",
+]);
+
+export const matchDayJoinRequestStatusEnum = pgEnum("match_day_join_request_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+
+// ---------------------------------------------------------------------------
+// Entrar num fut sem ser posto nele
+//
+// As três tabelas abaixo são o espelho literal do que os grupos já têm
+// (group_invitations, group_join_requests, group_invite_links), e existem pelo
+// mesmo motivo que aquelas: **ninguém entra numa lista por decisão de outra
+// pessoa**.
+//
+// O que elas substituem era uma exceção em `podeDefinirPresencaPor` que, em fut
+// avulso, deixava quem criasse o fut marcar presença de qualquer jogador ativo
+// da plataforma — e cada marcação dispara notificação, push e um e-mail de
+// calendário com texto livre do organizador para a caixa da pessoa. A exceção
+// continua existindo para quem NÃO tem conta (o convidado que chegou na hora e
+// não consegue se marcar), que é o caso para o qual ela foi escrita.
+//
+// Os três caminhos de entrada, do enunciado do produto:
+//
+// - **convite** — quem já jogou com você chama; quem decide é você;
+// - **pedido** — você encontra o fut na aba de explorar e pede; quem decide é
+//   quem organiza;
+// - **link** — quem organiza manda o link; quem abre entra.
+//
+// Convite e pedido são a mesma forma com decisores OPOSTOS, e por isso são duas
+// tabelas e não uma com discriminador — a mesma decisão (e o mesmo comentário)
+// de group_invitations. Um `where` que esquecesse o discriminador viraria
+// escalada: aprovar o próprio pedido pela rota de "aceitar convite".
+
+export const matchDayInvitations = pgTable(
+  "match_day_invitations",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    invitedByPlayerId: integer("invited_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    status: matchDayInvitationStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    respondedAt: timestamp("responded_at"),
+  },
+  (t) => [
+    // Um pendente por pessoa por fut. Parcial, como o de grupo: quem recusou
+    // pode ser chamado de novo no fut seguinte, e a recusa fica no histórico.
+    uniqueIndex("match_day_invitations_pendente_idx")
+      .on(t.matchDayId, t.playerId)
+      .where(sql`status = 'pending'`),
+    index("match_day_invitations_convidado_idx").on(t.playerId, t.status),
+  ],
+);
+
+export const matchDayJoinRequests = pgTable(
+  "match_day_join_requests",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    status: matchDayJoinRequestStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    decidedAt: timestamp("decided_at"),
+    decidedByPlayerId: integer("decided_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    uniqueIndex("match_day_join_requests_pendente_idx")
+      .on(t.matchDayId, t.playerId)
+      .where(sql`status = 'pending'`),
+    index("match_day_join_requests_fila_idx").on(t.matchDayId, t.status),
+  ],
+);
+
+export const matchDayInviteLinks = pgTable(
+  "match_day_invite_links",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(), // 32 bytes aleatórios em base64url
+    createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    // Multi-uso pelo mesmo motivo do link de grupo: link que morre no primeiro
+    // clique é inútil num grupo de WhatsApp. Nulo = sem teto.
+    maxUses: integer("max_uses"),
+    usesCount: integer("uses_count").notNull().default(0),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("match_day_invite_links_fut_idx").on(t.matchDayId, t.revokedAt)],
+);
+
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   matchDayId: integer("match_day_id")
@@ -682,6 +796,13 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // Eleito melhor em campo na apuração da rodada. Nasce já com o nome novo do
   // domínio — só os quatro `pelada_*` acima carregam o legado.
   "mvp_do_fut",
+  // A entrada no fut, no mesmo molde dos três de grupo acima e pelo mesmo
+  // motivo: a caixa de entrada precisa distinguir "te chamaram para um fut"
+  // (que espera resposta sua) de "pediram para entrar no seu fut" (que espera
+  // decisão sua).
+  "fut_convite",
+  "fut_pedido",
+  "fut_pedido_resolvido",
 ]);
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
@@ -958,6 +1079,9 @@ export type GroupRole = (typeof groupRoleEnum.enumValues)[number];
 export type GroupVisibility = (typeof groupVisibilityEnum.enumValues)[number];
 export type GroupJoinPolicy = (typeof groupJoinPolicyEnum.enumValues)[number];
 export type MatchDay = typeof matchDays.$inferSelect;
+export type MatchDayInvitation = typeof matchDayInvitations.$inferSelect;
+export type MatchDayJoinRequest = typeof matchDayJoinRequests.$inferSelect;
+export type MatchDayInviteLink = typeof matchDayInviteLinks.$inferSelect;
 export type Attendance = typeof attendances.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Game = typeof games.$inferSelect;

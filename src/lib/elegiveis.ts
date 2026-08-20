@@ -94,11 +94,49 @@ export function condicaoElegivel(matchDay: EscopoDaLista) {
   return or(ehMembro, jaEstaNaLista);
 }
 
-export async function jogadoresElegiveis(matchDay: EscopoDaLista): Promise<Player[]> {
+/**
+ * Quem o organizador pode MARCAR — o espelho em SQL de `podeDefinirPresencaPor`.
+ *
+ * Existe porque a tela e a action precisam concordar. A regra de autorização
+ * mudou (fut avulso não deixa mais marcar terceiro com conta ativa), e uma
+ * lista que continuasse oferecendo a plataforma inteira viraria uma fileira de
+ * botões que só produzem `?erro=precisa-confirmar` — pior que não oferecer.
+ *
+ * Em fut de GRUPO nada muda: os elegíveis são os membros, e ser membro é o
+ * consentimento. Em fut AVULSO sobra exatamente o que o predicado permite:
+ *
+ * - quem **não tem conta ativa** — o convidado que chegou na hora, que é o caso
+ *   para o qual a exceção existe e que não tem como se marcar sozinho;
+ * - quem **já está no fut** — corrigir presença de quem entrou é do organizador;
+ * - o **próprio ator**, que se marca sempre e não pode sumir do próprio painel.
+ */
+export function condicaoMarcavel(matchDay: EscopoDaLista, atorId?: number) {
+  if (matchDay.groupId !== null) return condicaoElegivel(matchDay)!;
+
+  const semContaAtiva = sql`not exists (
+    select 1 from users u where u.player_id = ${players.id} and u.active
+  )`;
+  const jaEstaNoFut = exists(
+    db
+      .select({ um: sql`1` })
+      .from(attendances)
+      .where(and(eq(attendances.matchDayId, matchDay.id), eq(attendances.playerId, players.id))),
+  );
+  return or(
+    semContaAtiva,
+    jaEstaNoFut,
+    ...(atorId === undefined ? [] : [eq(players.id, atorId)]),
+  )!;
+}
+
+export async function jogadoresElegiveis(
+  matchDay: EscopoDaLista,
+  atorId?: number,
+): Promise<Player[]> {
   return db
     .select()
     .from(players)
-    .where(and(eq(players.active, true), condicaoElegivel(matchDay)))
+    .where(and(eq(players.active, true), condicaoMarcavel(matchDay, atorId)))
     .orderBy(asc(players.name));
 }
 

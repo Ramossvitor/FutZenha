@@ -11,7 +11,7 @@ import { VestChip } from "@/components/ui/vest";
 import { db } from "@/db";
 import { attendances, gamePlayers, games, players, teams, users } from "@/db/schema";
 import { cx } from "@/lib/cx";
-import { condicaoElegivel } from "@/lib/elegiveis";
+import { condicaoMarcavel } from "@/lib/elegiveis";
 import { montarChecklist, quemViraFalta } from "@/lib/encerramento";
 import { formatDate } from "@/lib/format";
 import { companheirosPorJogador, gruposElegiveis } from "@/lib/lineup";
@@ -38,7 +38,7 @@ export default async function EncerrarFutPage({
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
 
-  const { matchDay } = await requireFutAdmin(id);
+  const { matchDay, session } = await requireFutAdmin(id);
   // Encerrado já não tem o que conferir — a escalação virou imutável.
   if (matchDay.status === "finished") redirect(`/fut/${id}/gerenciar`);
 
@@ -63,8 +63,9 @@ export default async function EncerrarFutPage({
       // desativada como ativa e prometia uma rodada que o servidor não abre.
       .leftJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
       // O mesmo escopo das outras duas telas de presença: fut de grupo lista
-      // o grupo, não a plataforma — e o incluirNoJogo recusa quem está fora dele.
-      .where(and(eq(players.active, true), condicaoElegivel(matchDay)))
+      // o grupo, e avulso lista só quem o organizador pode marcar de fato — o
+      // espelho de podeDefinirPresencaPor, que o incluirNoJogo reafirma.
+      .where(and(eq(players.active, true), condicaoMarcavel(matchDay, session.player.id)))
       .orderBy(asc(players.name)),
     db
       .select({ playerId: attendances.playerId })

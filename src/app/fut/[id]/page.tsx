@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
-import { Banner } from "@/components/ui/banner";
+import { Banner, BannerDaQuery } from "@/components/ui/banner";
 import { BotoesDeAgenda } from "@/components/ui/botoes-de-agenda";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { Card, CardHeader, Eyebrow, PageHeader, Section } from "@/components/ui/card";
@@ -28,6 +28,9 @@ import {
   teams,
 } from "@/db/schema";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
+import { comoEntraNoFut } from "@/lib/fut-entrada";
+import { estaNoCirculoDoFut, temPedidoPendenteNoFut } from "@/lib/fut-entrada-db";
+import { cancelarPedidoDeFut, pedirParaEntrarNoFut } from "./entrada-actions";
 import { formatDate, formatHorario, formatSkill } from "@/lib/format";
 import { getMvpDoFut } from "@/lib/ratings";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
@@ -114,8 +117,8 @@ function Bloco({
   );
 }
 
-export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
-  const { id: idParam } = await params;
+export default async function FutPage({ params, searchParams }: PageProps<"/fut/[id]">) {
+  const [{ id: idParam }, { ok, erro }] = await Promise.all([params, searchParams]);
   const id = Number(idParam);
   if (!Number.isInteger(id)) notFound();
 
@@ -127,19 +130,28 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
   ]);
   if (!matchDay) notFound();
 
-  const [activePlayers, attendanceRows, teamList, gameList, papel] = await Promise.all([
-    // Fut de grupo lista o grupo; avulso lista a plataforma. Antes disto era
-    // sempre a plataforma inteira — ver src/lib/elegiveis.ts.
-    jogadoresElegiveis(matchDay),
-    db.select().from(attendances).where(eq(attendances.matchDayId, id)),
-    db.select().from(teams).where(eq(teams.matchDayId, id)).orderBy(asc(teams.sortOrder)),
-    db.select().from(games).where(eq(games.matchDayId, id)).orderBy(asc(games.sortOrder), asc(games.id)),
-    // Em fut de grupo, o admin do grupo também gerencia — e o papel sai do
-    // groupId do próprio fut, nunca de um id vindo da URL.
-    session && matchDay.groupId !== null
-      ? papelNoGrupo(matchDay.groupId, session.player.id)
-      : null,
-  ]);
+  const meuPlayerId = session?.player.id ?? null;
+
+  const [activePlayers, attendanceRows, teamList, gameList, papel, noCirculo] =
+    await Promise.all([
+      // Fut de grupo lista o grupo. Avulso lista só quem o organizador pode
+      // marcar de fato — sem conta, já no fut, ou ele mesmo —, que é o espelho de
+      // podeDefinirPresencaPor: oferecer mais seria enfileirar botões que só
+      // devolvem "precisa-confirmar". Ver src/lib/elegiveis.ts.
+      jogadoresElegiveis(matchDay, session?.player.id),
+      db.select().from(attendances).where(eq(attendances.matchDayId, id)),
+      db.select().from(teams).where(eq(teams.matchDayId, id)).orderBy(asc(teams.sortOrder)),
+      db.select().from(games).where(eq(games.matchDayId, id)).orderBy(asc(games.sortOrder), asc(games.id)),
+      // Em fut de grupo, o admin do grupo também gerencia — e o papel sai do
+      // groupId do próprio fut, nunca de um id vindo da URL.
+      session && matchDay.groupId !== null
+        ? papelNoGrupo(matchDay.groupId, session.player.id)
+        : null,
+      // Nesta onda, e não num await solto lá embaixo: só depende do fut e de
+      // quem pergunta, os dois já resolvidos — e esta é a página pública mais
+      // quente do app.
+      meuPlayerId === null ? false : estaNoCirculoDoFut(matchDay, meuPlayerId),
+    ]);
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
   const jogadorPorId = new Map(activePlayers.map((p) => [p.id, p]));
   // Quem tem linha mas não está elegível é jogador desativado: some da lista,
@@ -244,11 +256,29 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
   );
 
   const podeMarcar = matchDay.status === "scheduled";
-  const meuPlayerId = session?.player.id ?? null;
   // Num fut de grupo, quem não é do grupo não entra na lista — o servidor já
   // recusa (ver setMyAttendance). Sem este teste a tela oferecia o botão assim
   // mesmo, e clicar não fazia nada: sem erro, sem banner, sem explicação.
   const souElegivel = meuPlayerId !== null && activePlayers.some((p) => p.id === meuPlayerId);
+  // O caminho de consentimento do fut avulso (ver src/lib/fut-entrada.ts):
+  // quem nunca esteve nesta lista pede, e quem organiza decide. Quem já tem
+  // linha aqui — inclusive quem marcou "Fora" — segue no vaivém normal.
+  const entrada =
+    meuPlayerId === null
+      ? null
+      : comoEntraNoFut(matchDay, {
+          jaEstaNaLista: statusByPlayer.has(meuPlayerId),
+          elegivel: souElegivel,
+          noCirculo,
+        });
+  const precisaPedir = entrada === "pede-entrada";
+  // Este fica preguiçoso de propósito: só quem precisa pedir tem pedido a
+  // conferir, e é o caso raro. Enfiá-lo na onda lá em cima custaria uma consulta
+  // a cada renderização para todo mundo.
+  const jaPediu =
+    precisaPedir && meuPlayerId !== null
+      ? await temPedidoPendenteNoFut(matchDay.id, meuPlayerId)
+      : false;
 
   const podeGerenciar =
     session !== null &&
@@ -545,6 +575,14 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
           </span>
         }
       >
+        {/* Os três caminhos de entrada (src/app/fut/[id]/entrada-actions.ts) e o
+            `precisa-pedir-entrada` do setMyAttendance redirecionam para cá com
+            `?ok=` / `?erro=`. Sem este banner a pessoa clicava, a página voltava
+            igual e nada explicava o que houve — o mesmo silêncio que o teste de
+            cobertura de slugs (src/lib/mensagens.test.ts) existe para evitar, e
+            que ele não pega sozinho: ele confere que o slug TEM texto, não que
+            a tela o mostra. */}
+        <BannerDaQuery ok={ok} erro={erro} />
         {matchDay.status === "teams_drawn" && (
           <Banner tom="info">
             <IconeCadeado className="mr-1.5 inline size-4 align-text-bottom" />
@@ -630,7 +668,40 @@ export default async function FutPage({ params }: PageProps<"/fut/[id]">) {
           </Banner>
         )}
 
-        {podeMarcar && meuPlayerId !== null && souElegivel && (
+        {/* Fut avulso de quem você não conhece: a entrada é por PEDIDO, e quem
+            decide é quem organiza. É a outra metade do desenho — a primeira foi
+            tirar de quem organiza o poder de marcar presença por você. */}
+        {podeMarcar && session && precisaPedir && (
+          <div className="flex flex-col gap-2">
+            <Banner tom="info">
+              Você ainda não jogou neste fut. Peça para entrar — quem organiza decide.
+            </Banner>
+            {jaPediu ? (
+              <span className="flex gap-1.5">
+                <Badge tom="dashed">pedido enviado</Badge>
+                <form action={cancelarPedidoDeFut.bind(null, matchDay.id)}>
+                  <SubmitButton variante="secondary" tamanho="sm">
+                    Cancelar pedido
+                  </SubmitButton>
+                </form>
+              </span>
+            ) : (
+              <form action={pedirParaEntrarNoFut.bind(null, matchDay.id)}>
+                <SubmitButton tamanho="sm">Pedir para entrar</SubmitButton>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* `!precisaPedir` não é redundante com `souElegivel`. Em fut avulso a
+            lista de elegíveis inclui o próprio visitante (é o `eq(players.id,
+            atorId)` de `condicaoMarcavel`, que existe para quem organiza poder
+            se marcar), então `souElegivel` é sempre verdadeiro para quem está
+            logado — e sem esta condição o estranho via o bloco "Peça para
+            entrar" E o botão "Vou" ao mesmo tempo, com o "Vou" caindo em
+            `?erro=precisa-pedir-entrada`. Dois caminhos oferecidos, um deles
+            sem saída. */}
+        {podeMarcar && meuPlayerId !== null && souElegivel && !precisaPedir && (
           <span className="flex gap-1.5">
             {statusByPlayer.get(meuPlayerId) !== "in" &&
               statusByPlayer.get(meuPlayerId) !== "waitlist" && (

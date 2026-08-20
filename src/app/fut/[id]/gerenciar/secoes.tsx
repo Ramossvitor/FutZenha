@@ -8,12 +8,20 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input, Select } from "@/components/ui/field";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeLuva } from "@/components/ui/icons";
+import { NomeJogador } from "@/components/ui/nome-jogador";
 import { Nota } from "@/components/ui/nota";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
 import { formatPercent, formatSkill, formatTime } from "@/lib/format";
 import { JANELA_CORRECAO_HORAS } from "@/lib/regras";
 import { jogoEmAndamento } from "@/lib/sumula";
+import { futAceitaEntrada } from "@/lib/fut-entrada";
+import { urlDoLinkDoFut } from "@/lib/fut-entrada-db";
+import {
+  decidirPedidoDeFut,
+  gerarLinkDoFutAction,
+  revogarLinkDoFutAction,
+} from "@/app/fut/[id]/entrada-actions";
 import { listaFechada } from "@/lib/lista-presenca";
 import { emailConfigurado } from "@/lib/email-envio";
 import { siteUrl } from "@/lib/site-url";
@@ -337,6 +345,121 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
           </ul>
         </Card>
       )}
+    </Section>
+  );
+}
+
+
+/**
+ * Quem quer entrar, e por onde entra.
+ *
+ * A seção existe porque a marcação de presença por terceiro deixou de alcançar
+ * estranhos em fut avulso (ver podeDefinirPresencaPor). O que substituiu aquilo
+ * são três caminhos com decisor próprio, e dois deles pedem uma decisão de quem
+ * organiza — a fila de pedidos e o link. O terceiro (convite) sai da página
+ * pública do fut, onde está a lista de quem já jogou com você.
+ *
+ * Some inteira depois do sorteio: `futAceitaEntrada` é falso e nada aqui teria
+ * efeito.
+ */
+export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
+  const { matchDay, pedidosDeEntrada, convitesDeFut, linkDoFut } = fut;
+  if (!futAceitaEntrada(matchDay)) return null;
+
+  const url = linkDoFut ? urlDoLinkDoFut(linkDoFut.token) : null;
+
+  return (
+    <Section titulo="Quem quer entrar">
+      {pedidosDeEntrada.length > 0 && (
+        <Card>
+          <CardHeader>
+            <span className="font-display text-[14px] font-bold text-fg">
+              Pedidos ({pedidosDeEntrada.length})
+            </span>
+          </CardHeader>
+          <ul className="flex flex-col">
+            {pedidosDeEntrada.map((p) => (
+              <li
+                key={p.id}
+                className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3 last:border-0"
+              >
+                <NomeJogador apelido={p.nickname} nome={p.name} />
+                {p.isGoalkeeper && <Badge tom="warn">goleiro</Badge>}
+                <Nota valor={p.skill} />
+                <form action={decidirPedidoDeFut.bind(null, matchDay.id, p.id, true)}>
+                  <SubmitButton tamanho="sm">Aceitar</SubmitButton>
+                </form>
+                <form action={decidirPedidoDeFut.bind(null, matchDay.id, p.id, false)}>
+                  <SubmitButton variante="secondary" tamanho="sm">
+                    Recusar
+                  </SubmitButton>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {convitesDeFut.length > 0 && (
+        <Card>
+          <CardHeader>
+            <span className="font-display text-[14px] font-bold text-fg">
+              Chamados, esperando resposta
+            </span>
+          </CardHeader>
+          <ul className="flex flex-col">
+            {convitesDeFut.map((c) => (
+              <li
+                key={c.id}
+                className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3 last:border-0"
+              >
+                <NomeJogador apelido={c.nickname} nome={c.name} />
+                <Badge tom="dashed">aguardando</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <span className="font-display text-[14px] font-bold text-fg">Link do fut</span>
+        </CardHeader>
+        <CardBody>
+          {url ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded-selo bg-surface-2 px-2 py-1 text-[11px] text-fg-3">
+                  {url}
+                </code>
+                <CopyButton text={url} />
+                <form action={revogarLinkDoFutAction.bind(null, matchDay.id, linkDoFut!.id)}>
+                  <SubmitButton variante="secondary" tamanho="sm">
+                    Revogar
+                  </SubmitButton>
+                </form>
+              </div>
+              <p className="text-[12px] text-fg-3">
+                Quem abrir com uma conta entra direto na lista.
+                {linkDoFut!.maxUses !== null &&
+                  ` ${linkDoFut!.usesCount} de ${linkDoFut!.maxUses} usos.`}
+              </p>
+            </div>
+          ) : (
+            <form action={gerarLinkDoFutAction.bind(null, matchDay.id)} className="flex flex-col gap-2">
+              <p className="text-[12.5px] text-fg-2">
+                Para chamar quem ainda não jogou com você: manda o link, e quem abrir entra.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <Field htmlFor="maxUses" label="Limite de usos" ajuda="Vazio = sem limite.">
+                  <Input id="maxUses" name="maxUses" type="number" min={1} max={60} />
+                </Field>
+                <SubmitButton tamanho="sm">Gerar link</SubmitButton>
+              </div>
+            </form>
+          )}
+        </CardBody>
+      </Card>
     </Section>
   );
 }

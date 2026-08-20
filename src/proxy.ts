@@ -34,6 +34,10 @@ export default async function proxy(request: NextRequest) {
     // quase sempre é aberto por alguém deslogado. Sem este prefixo, o ?next=
     // não é montado, a pessoa cai na home depois do login e o token se perde.
     "/convite-grupo",
+    // Mesmo motivo do /convite-grupo: o link do fut corre no WhatsApp e quase
+    // sempre é aberto por quem não está logado. Sem o prefixo, o ?next= não é
+    // montado e a pessoa cai na home depois do login, longe do fut.
+    "/convite-fut",
   ];
   // Gestão de fut e de grupo ficam embaixo de rotas dinâmicas, então não dá
   // para casar por prefixo como as outras.
@@ -79,6 +83,7 @@ export const config = {
     "/grupos",
     "/grupos/:path*",
     "/convite-grupo/:path*",
+    "/convite-fut/:path*",
     // Os dois padrões são necessários: ":path*" não casa o caminho sem sufixo.
     "/fut/:id/gerenciar",
     "/fut/:id/gerenciar/:path*",

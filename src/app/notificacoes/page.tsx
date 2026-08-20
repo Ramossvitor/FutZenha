@@ -16,7 +16,7 @@ import type { notificationTypeEnum } from "@/db/schema";
 type TipoDeAviso = (typeof notificationTypeEnum.enumValues)[number];
 
 /**
- * O ícone por família de aviso. São 16 tipos e cinco famílias — o que importa
+ * O ícone por família de aviso. São 19 tipos e cinco famílias — o que importa
  * de relance é a natureza do aviso, não o tipo exato.
  *
  * `rating_round_closed` está declarado no enum mas nunca é emitido: o
@@ -40,6 +40,12 @@ const ICONE: Record<TipoDeAviso, { icone: React.ReactNode; cor: string }> = {
   pelada_times_sorteados: { icone: <IconeBola />, cor: "text-accent-ink" },
   pelada_lembrete_vespera: { icone: <IconeBola />, cor: "text-warn-ink" },
   mvp_do_fut: { icone: <IconeBola />, cor: "text-warn-ink" },
+  // A entrada no fut. Mesma leitura de cor dos três de grupo: o que espera
+  // resposta SUA vem em accent, o que espera decisão sua vem em warn, e o
+  // resolvido é histórico.
+  fut_convite: { icone: <IconeBola />, cor: "text-accent-ink" },
+  fut_pedido: { icone: <IconeBola />, cor: "text-warn-ink" },
+  fut_pedido_resolvido: { icone: <IconeBola />, cor: "text-fg-3" },
 };
 
 export const metadata: Metadata = { title: "Avisos" };

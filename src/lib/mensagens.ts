@@ -118,6 +118,28 @@ export const MENSAGENS: Record<string, string> = {
   "administracao-transferida": "Administração transferida.",
   "membro-removido":
     "Membro removido. O link do grupo foi revogado junto — gere outro para continuar convidando.",
+  // Entrada no fut — os três caminhos de src/app/fut/[id]/entrada-actions.ts.
+  // Os slugs genéricos ("convite-enviado", "pedido-cancelado", "pedido-aprovado",
+  // "pedido-recusado", "convite-recusado", "convite-invalido") são os MESMOS dos
+  // grupos e dizem a mesma coisa nos dois domínios — reusar é o certo. Os de
+  // baixo existem porque a frase muda: em grupo quem decide é o administrador,
+  // aqui é quem organiza, e "entrada fechada" tem motivo diferente.
+  //
+  // `fut-entrou` é um deles, e não o `entrou` genérico logo acima: aquele diz
+  // "você está no grupo", que é a frase errada para quem acabou de entrar numa
+  // LISTA. Reusar o slug daria a mensagem de outro domínio no banner.
+  "fut-entrou": "Pronto, você está na lista.",
+  "fut-pedido-enviado": "Pedido enviado. Quem organiza o fut decide.",
+  "fut-entrada-fechada":
+    "Este fut não aceita mais gente entrando: os times já foram sorteados.",
+  "fut-fechado": "Este fut não aceita mais gente entrando.",
+  "sem-vinculo-para-convidar":
+    "Você só chama para um fut avulso quem já jogou com você. Para quem ainda não jogou, mande o link do fut.",
+  "convidado-sem-conta":
+    "Essa pessoa ainda não tem conta e não conseguiria responder ao convite. Cadastre e marque a presença dela pela tela de gestão.",
+  "ja-esta-na-lista": "Essa pessoa já está na lista deste fut.",
+  "precisa-pedir-entrada":
+    "Você ainda não jogou neste fut. Peça para entrar — quem organiza decide — ou entre pelo link que ele mandar.",
   // Os tetos de src/lib/tetos-de-criacao.ts. O texto diz "hoje" e não "agora"
   // porque a janela é de 24h corridas — prometer que volta já seria mentira.
   "muitos-futs":

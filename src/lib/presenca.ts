@@ -68,7 +68,13 @@ export async function avaliarMarcacao(
   // próprio fut e confirma a própria presença pela tela de gestão.
   const permitido =
     playerId === session.player.id ||
-    podeDefinirPresencaPor(ator, alvo, listaFechada(matchDay.status));
+    podeDefinirPresencaPor(ator, alvo, {
+      listaFechada: listaFechada(matchDay.status),
+      // Fut avulso não tem grupo, e portanto não tem consentimento a invocar —
+      // ver podeDefinirPresencaPor. O escopo sai do `matchDay` que o guard já
+      // leu do banco, nunca de um id vindo do cliente.
+      ehDeGrupo: matchDay.groupId !== null,
+    });
   return { permitido, alvo };
 }
 
