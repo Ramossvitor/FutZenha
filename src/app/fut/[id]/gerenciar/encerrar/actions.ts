@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/format";
 import { revalidateMatchDay } from "../../revalidate";
 import { notificar } from "@/lib/notifications";
 import { avaliarMarcacao, entrarNaLista, mereceAviso, travarFut } from "@/lib/presenca";
+import { agendarDespachoDePush } from "@/lib/push-envio";
 import { abrirRodada } from "@/lib/ratings-engine";
 import { esquecerStats } from "@/lib/stats";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
@@ -93,10 +94,18 @@ export async function incluirNoJogo(
   // for elegível — e aqui a lista está sempre fechada, porque já existe jogo.
   const { permitido, alvo } = await avaliarMarcacao(session, matchDay, playerId);
   if (!permitido) {
+    // Quem recusou não é escalado por outro, nem aqui. É o caso mais áspero da
+    // regra — a pessoa pode estar na quadra —, e por isso a mensagem ensina a
+    // saída: ela entra sozinha pelo celular, e o botão "Vou" volta a aparecer
+    // justamente para quem recusou (ver podeMexerNoProprioNome).
+    //
+    // Literais, e não um ternário interpolado: ver o mesmo ponto em
+    // ../actions.ts (a varredura de slugs de src/lib/mensagens.test.ts).
+    if (alvo.recusou) redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=recusou`);
     redirect(`/fut/${matchDayId}/gerenciar/encerrar?erro=precisa-confirmar`);
   }
-  const avisar = mereceAviso(session, playerId, alvo);
 
+  let avisou = false;
   await db.transaction(async (tx) => {
     await tx
       .insert(gamePlayers)
@@ -108,21 +117,26 @@ export async function incluirNoJogo(
     // Entrar pela lista, e não por upsert cru: quem foi marcado como falta e
     // depois apareceu na escalação tem que voltar a contar presença, e é o
     // entrarNaLista que sabe disso.
-    await entrarNaLista(tx, matchDay.id, playerId);
+    const entrada = await entrarNaLista(tx, matchDay.id, playerId, session.player.id);
 
-    if (avisar) {
+    if (mereceAviso(session, playerId, alvo, entrada)) {
+      avisou = true;
       await notificar(tx, [
         {
           playerId,
           type: "pelada_presenca_definida",
           title: "Marcaram sua presença num fut",
-          body: `${session.player.name} escalou você no fut de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
+          body: `${session.player.name} escalou você no fut de ${formatDate(matchDay.date)}, em ${matchDay.location}. Se não for, retire seu nome pela página do fut.`,
           href: `/fut/${matchDayId}`,
           dedupeKey: `presenca:${matchDayId}:${playerId}`,
         },
       ]);
     }
   });
+  // Fura o throttle, como no definirPresenca: ser escalado num jogo que já está
+  // acontecendo é o aviso mais sensível a tempo que existe — esperar a próxima
+  // varredura entregaria "você está jogando" depois do apito final.
+  if (avisou) agendarDespachoDePush(true);
   revalidar(matchDayId);
 }
 

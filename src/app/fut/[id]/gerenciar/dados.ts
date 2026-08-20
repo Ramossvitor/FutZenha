@@ -9,6 +9,7 @@ import {
   games,
   goals,
   invites,
+  matchDayInvitations,
   matchDays,
   players,
   teamPlayers,
@@ -43,6 +44,7 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
   const [
     [matchDay],
     attendanceRows,
+    convitesRecusados,
     teamList,
     gameList,
     votacao,
@@ -61,6 +63,20 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
         .from(matchDays)
         .where(eq(matchDays.id, matchDayId)),
       db.select().from(attendances).where(eq(attendances.matchDayId, matchDayId)),
+      // A metade da recusa que não mora em `attendances` (ver recusouEsteFut, em
+      // src/lib/presenca.ts). Nesta onda, e não num await solto lá embaixo:
+      // depende só do id, e este é o painel que já fazia 6 níveis de await em
+      // série — um sétimo por causa de uma consulta que não espera nada seria
+      // desfazer justamente o que esta onda existe para consertar.
+      db
+        .select({ playerId: matchDayInvitations.playerId })
+        .from(matchDayInvitations)
+        .where(
+          and(
+            eq(matchDayInvitations.matchDayId, matchDayId),
+            eq(matchDayInvitations.status, "declined"),
+          ),
+        ),
       db.select().from(teams).where(eq(teams.matchDayId, matchDayId)).orderBy(asc(teams.sortOrder)),
       db
         .select()
@@ -117,6 +133,19 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
   const podeEditarPlacar = matchDay.status !== "finished" || dentroDaJanela;
 
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
+  // Quem já disse não para este fut. As duas origens da recusa (ver
+  // recusouEsteFut, em src/lib/presenca.ts), colapsadas de uma vez para o fut
+  // inteiro a partir de linhas que a onda lá em cima já trouxe — e não uma
+  // pergunta por jogador da busca.
+  //
+  // A tela precisa disto para não oferecer os botões "Vai" e "Fora" a quem
+  // `definirPresenca` vai recusar nos dois sentidos. Botão que só produz banner
+  // de erro é pior que botão nenhum, e é o mesmo racional de `condicaoMarcavel`
+  // em src/lib/elegiveis.ts.
+  const recusaram = new Set([
+    ...attendanceRows.filter((a) => a.optedOutAt !== null).map((a) => a.playerId),
+    ...convitesRecusados.map((c) => c.playerId),
+  ]);
   const gameIds = gameList.map((g) => g.id);
 
   const [activePlayers, teamMembers, goalRows, lineupRows] = await Promise.all([
@@ -209,6 +238,7 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
     jogadorPorId,
     lista,
     statusByPlayer,
+    recusaram,
     confirmed,
     teamList,
     teamMembers,

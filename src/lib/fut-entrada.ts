@@ -28,6 +28,31 @@
 // na hora não consegue se marcar sozinho, não tem caixa de entrada para ser
 // incomodada, e é o caso para o qual ela foi escrita (ver podeDefinirPresencaPor
 // em ./permissions).
+//
+// ---------------------------------------------------------------------------
+// A outra metade: e depois que a pessoa diz não?
+// ---------------------------------------------------------------------------
+//
+// Os três caminhos acima cobrem a ENTRADA. Só que a exceção que sobrou — fut de
+// grupo com os times sorteados, e o admin da plataforma em qualquer fut — deixa
+// alguém ser posto na lista mesmo assim, e aí o princípio precisa de um segundo
+// tempo: **dizer não é a palavra final.**
+//
+// Existem duas formas de dizer não, e elas valem o mesmo:
+//
+// - recusar o convite (`declined`, em match_day_invitations);
+// - tirar o próprio nome da lista (`opted_out_at`, em attendances).
+//
+// Qualquer uma bloqueia, NAQUELE fut, tanto marcar a presença da pessoa
+// (podeDefinirPresencaPor) quanto chamá-la de novo (podeConvidarParaFut, logo
+// abaixo) — contra todo mundo, inclusive o admin da plataforma. Quem junta as
+// duas fontes num booleano é `situacaoDoAlvo`, em ./presenca; daqui para baixo
+// a recusa é um `boolean` e ninguém precisa saber de onde veio.
+//
+// O desfazer é da pessoa e só dela: entrar por conta própria limpa a recusa —
+// as DUAS fontes, o carimbo e o convite recusado. Limpar só uma deixava a pessoa
+// na lista e recusada ao mesmo tempo, e aí nem quem organiza conseguia escalá-la
+// num jogo que ela estava jogando (ver entrarNaLista, em ./presenca).
 
 import type { Ator } from "./permissions";
 
@@ -65,13 +90,26 @@ export function futAceitaEntrada(fut: FutParaEntrada): boolean {
  * Quem organiza e NÃO conhece a pessoa tem o caminho desenhado para isso: o
  * link do fut, que ela decide abrir.
  *
- * `jaJogouComOAlvo` chega resolvido de fora — este módulo não consulta nada.
+ * **`alvoRecusou` é a primeira condição, e vale contra o admin da plataforma.**
+ * Quem já disse não para ESTE fut — recusando o convite ou tirando o nome da
+ * lista — não é chamado de novo. Sem isso o bloqueio de `podeDefinirPresencaPor`
+ * teria porta dos fundos: barrado no botão "Vai", quem organiza manda convite
+ * atrás de convite, e cada um deles é uma notificação com push. O índice único
+ * de `match_day_invitations` é parcial em `pending`, então uma recusa não
+ * estorva a próxima linha — nada, além desta regra, limita quantas saem.
+ *
+ * O bloqueio é por par (fut, jogador) e morre com o fut: recusar hoje não tira
+ * ninguém do fut da semana que vem, que é o que o comentário do índice descreve.
+ *
+ * `jaJogouComOAlvo` e `alvoRecusou` chegam resolvidos de fora — este módulo não
+ * consulta nada.
  */
 export function podeConvidarParaFut(
   ator: Ator,
   fut: FutParaEntrada,
-  contexto: { ehOrganizador: boolean; jaJogouComOAlvo: boolean },
+  contexto: { ehOrganizador: boolean; jaJogouComOAlvo: boolean; alvoRecusou: boolean },
 ): boolean {
+  if (contexto.alvoRecusou) return false;
   if (!futAceitaEntrada(fut)) return false;
   if (ator.isPlatformAdmin) return true;
   // Fut de grupo: quem não organiza não chama. O grupo tem os próprios convites.

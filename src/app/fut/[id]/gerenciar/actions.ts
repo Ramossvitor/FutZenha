@@ -543,7 +543,11 @@ export async function convidarParaFut(matchDayId: number, formData: FormData) {
       // Passa pela lista como qualquer um: com o fut lotado e a lista aberta,
       // o convidado entra na espera. Um insert cru de `status: "in"` aqui furaria
       // o limite pelo caminho que ninguém olha.
-      await entrarNaLista(tx, matchDay.id, criado.playerId);
+      //
+      // O autor é quem cadastrou, e é honesto: o jogador acabou de ser criado,
+      // não tem conta e nunca pediu nada. É o único caso em que a autoria de
+      // terceiro não gera aviso nenhum — não há caixa de entrada para avisar.
+      await entrarNaLista(tx, matchDay.id, criado.playerId, session.player.id);
       return criado.token;
     });
   } catch (error) {
@@ -615,43 +619,63 @@ export async function definirPresenca(
   // admin inclui quem é elegível (ver podeDefinirPresencaPor em permissions.ts).
   const { permitido, alvo } = await avaliarMarcacao(session, matchDay, playerId);
   if (!permitido) {
+    // Duas causas, dois consertos. `precisa-confirmar` se resolve com a pessoa
+    // entrando sozinha; `recusou` não se resolve por aqui — ela já respondeu, e
+    // só ela desfaz.
+    //
+    // Os dois slugs vão literais, e não interpolados num ternário: quem cobra
+    // que todo slug emitido tenha mensagem é uma varredura por regex sobre o
+    // texto do arquivo (src/lib/mensagens.test.ts), e `?erro=${...}` é invisível
+    // para ela — o slug passaria a existir sem banner, que é exatamente o modo
+    // de falha silencioso que aquele teste existe para pegar.
+    if (alvo.recusou) redirect(`/fut/${matchDayId}/gerenciar?erro=recusou`);
     redirect(`/fut/${matchDayId}/gerenciar?erro=precisa-confirmar`);
   }
 
-  // O aviso é o contrapeso da exceção da lista fechada, e por isso vai no MESMO
-  // commit da presença: uma inclusão que grava e não avisa é justamente o que a
-  // regra antiga existia para impedir.
-  const avisar = status === "in" && mereceAviso(session, playerId, alvo);
-
-  let houveAviso = avisar;
+  let houveAviso = false;
   let confirmado = false;
   let saiuDeVaga = false;
   let promovidoDaEspera: number | null = null;
   await db.transaction(async (tx) => {
     if (status === "in") {
-      const entrada = await entrarNaLista(tx, matchDay.id, playerId);
+      const entrada = await entrarNaLista(tx, matchDay.id, playerId, session.player.id);
       confirmado = entrada.para === "in" && entrada.de !== "in";
+
+      // O aviso é o contrapeso da exceção da lista fechada, e por isso vai no
+      // MESMO commit da presença: uma inclusão que grava e não avisa é
+      // justamente o que a regra antiga existia para impedir.
+      //
+      // Decidido DEPOIS da escrita porque quem responde é a transição, não o
+      // retrato pré-transação: `alvo.jaEstaNoFut` é "tem linha", e linha `out` é
+      // linha — quem tinha marcado "Fora" e era reposto não recebia aviso
+      // nenhum, que é a pessoa com mais motivo para receber.
+      if (mereceAviso(session, playerId, alvo, entrada)) {
+        houveAviso = true;
+        // O texto diz onde a pessoa caiu. Com o fut lotado a inclusão vira
+        // espera, e um aviso dizendo "incluiu você" mandaria para a quadra quem
+        // não tem vaga — o oposto do que o aviso existe para fazer.
+        const naEspera = entrada.para === "waitlist";
+        await notificar(tx, [
+          {
+            playerId,
+            type: "pelada_presenca_definida",
+            title: naEspera ? "Puseram você na espera de um fut" : "Marcaram sua presença num fut",
+            body: naEspera
+              ? `${session.player.name} colocou você na espera do fut de ${formatDate(matchDay.date)}, em ${matchDay.location}. Você entra se abrir vaga — se não for, retire seu nome pela página do fut.`
+              : `${session.player.name} incluiu você no fut de ${formatDate(matchDay.date)}, em ${matchDay.location}. Se não for, retire seu nome pela página do fut.`,
+            href: `/fut/${matchDayId}`,
+            dedupeKey: `presenca:${matchDayId}:${playerId}`,
+          },
+        ]);
+      }
     } else {
-      const saida = await sairDaLista(tx, matchDay.id, playerId);
+      const saida = await sairDaLista(tx, matchDay.id, playerId, session.player.id);
       saiuDeVaga = saida.saiuDeVaga;
       if (saida.promovido !== null) {
         await notificar(tx, [avisoDePromocao(matchDay, saida.promovido)]);
         houveAviso = true;
         promovidoDaEspera = saida.promovido;
       }
-    }
-
-    if (avisar) {
-      await notificar(tx, [
-        {
-          playerId,
-          type: "pelada_presenca_definida",
-          title: "Marcaram sua presença num fut",
-          body: `${session.player.name} incluiu você no fut de ${formatDate(matchDay.date)}, em ${matchDay.location}.`,
-          href: `/fut/${matchDayId}`,
-          dedupeKey: `presenca:${matchDayId}:${playerId}`,
-        },
-      ]);
     }
   });
   if (houveAviso) agendarDespachoDePush(true);

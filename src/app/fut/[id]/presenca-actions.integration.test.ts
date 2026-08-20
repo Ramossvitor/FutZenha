@@ -445,3 +445,95 @@ describe("incluirNoJogo", () => {
     expect((await linhaDe(fut, faltoso))?.status).toBe("in");
   });
 });
+
+// O ciclo completo do consentimento retirado: o organizador põe, a pessoa tira o
+// nome, e a partir daí ninguém a repõe. É o contrapeso da exceção da lista
+// fechada — sem ele, o aviso de "marcaram sua presença" não servia de nada,
+// porque a única reação possível podia ser desfeita pelo mesmo organizador.
+describe("retirar o nome da lista", () => {
+  /**
+   * Fut de grupo já sorteado, com o alvo posto na lista pelo organizador — a
+   * situação exata que a exceção da lista fechada permite. Devolve as duas
+   * contas porque os testes trocam de sessão no meio.
+   */
+  async function postoNaLista() {
+    const groupId = await criarGrupo();
+    const organizador = await criarJogadorComConta();
+    await logarComo(organizador.conta);
+    const fut = await criarFut({
+      groupId,
+      status: "teams_drawn",
+      createdByPlayerId: organizador.jogador.id,
+    });
+    const alvo = await criarJogadorComConta();
+    await entrarNoGrupo(groupId, alvo.jogador);
+    await definirPresenca(fut.id, alvo.jogador.id, "in");
+    expect((await linhaDe(fut, alvo.jogador))?.status).toBe("in");
+    return { fut, organizador, alvo };
+  }
+
+  // Sem isto a promessa do aviso é vazia: é DEPOIS do sorteio que o organizador
+  // pode incluir quem quiser, e era exatamente aí que o botão "Fora" sumia.
+  it("a pessoa sai mesmo com a lista fechada — é aí que ela mais precisa", async () => {
+    const { fut, alvo } = await postoNaLista();
+    await logarComo(alvo.conta);
+
+    await setMyAttendance(fut.id, "out");
+
+    expect((await linhaDe(fut, alvo.jogador))?.status).toBe("out");
+  });
+
+  it("depois de sair, o organizador não repõe", async () => {
+    const { fut, organizador, alvo } = await postoNaLista();
+    await logarComo(alvo.conta);
+    await setMyAttendance(fut.id, "out");
+    await logarComo(organizador.conta);
+
+    const url = await esperaRedirect(definirPresenca(fut.id, alvo.jogador.id, "in"));
+
+    expect(url).toBe(`/fut/${fut.id}/gerenciar?erro=recusou`);
+    expect((await linhaDe(fut, alvo.jogador))?.status).toBe("out");
+  });
+
+  // A recusa vale contra todo mundo, e o admin da plataforma é o teste que
+  // importa: ele atravessa todas as outras regras de fut, e esta não.
+  it("nem o admin da plataforma repõe", async () => {
+    const { fut, alvo } = await postoNaLista();
+    await logarComo(alvo.conta);
+    await setMyAttendance(fut.id, "out");
+
+    const chefe = await criarJogadorComConta({}, { isPlatformAdmin: true });
+    await logarComo(chefe.conta);
+
+    const url = await esperaRedirect(definirPresenca(fut.id, alvo.jogador.id, "in"));
+
+    expect(url).toBe(`/fut/${fut.id}/gerenciar?erro=recusou`);
+    expect((await linhaDe(fut, alvo.jogador))?.status).toBe("out");
+  });
+
+  // O desfazer, e o único caminho de volta que existe — sem ele, quem recusou
+  // ficaria trancado fora de um fut em que pode estar fisicamente.
+  it("a própria pessoa volta quando quer, mesmo com a lista fechada", async () => {
+    const { fut, alvo } = await postoNaLista();
+    await logarComo(alvo.conta);
+    await setMyAttendance(fut.id, "out");
+
+    await setMyAttendance(fut.id, "in");
+
+    expect((await linhaDe(fut, alvo.jogador))?.status).toBe("in");
+  });
+
+  // E voltando ela destrava o organizador de novo: a recusa é um estado, não uma
+  // punição permanente.
+  it("voltando, o organizador volta a mandar na presença dela", async () => {
+    const { fut, organizador, alvo } = await postoNaLista();
+    await logarComo(alvo.conta);
+    await setMyAttendance(fut.id, "out");
+    await setMyAttendance(fut.id, "in");
+    await logarComo(organizador.conta);
+
+    await definirPresenca(fut.id, alvo.jogador.id, "out");
+
+    expect((await linhaDe(fut, alvo.jogador))?.status).toBe("out");
+  });
+});

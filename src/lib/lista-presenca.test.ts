@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   listaFechada,
   ordenarPorChegada,
+  podeMexerNoProprioNome,
   proximoDaEspera,
   repartirLista,
   statusAoConfirmar,
@@ -28,6 +29,36 @@ describe("listaFechada", () => {
     expect(listaFechada("scheduled")).toBe(false);
     expect(listaFechada("teams_drawn")).toBe(true);
     expect(listaFechada("finished")).toBe(true);
+  });
+});
+
+describe("podeMexerNoProprioNome", () => {
+  const normal = { recusou: false };
+  const recusou = { recusou: true };
+
+  it("com a lista aberta, entra e sai", () => {
+    expect(podeMexerNoProprioNome("scheduled", normal)).toEqual({ entrar: true, sair: true });
+  });
+
+  // O ponto do helper. Sair só valer enquanto a lista está aberta não é direito
+  // nenhum: é DEPOIS do sorteio que o organizador inclui quem quiser, e é aí que
+  // o botão de retirar o nome precisa existir.
+  it("com os times sorteados, ainda sai — mas não entra", () => {
+    expect(podeMexerNoProprioNome("teams_drawn", normal)).toEqual({ entrar: false, sair: true });
+  });
+
+  // O desfazer da própria decisão. A recusa barra todo mundo, inclusive o admin
+  // da plataforma, então sem este ramo quem recusou e apareceu na quadra ficaria
+  // trancado fora sem ninguém no mundo capaz de destravar.
+  it("quem recusou entra de volta mesmo com os times sorteados", () => {
+    expect(podeMexerNoProprioNome("teams_drawn", recusou)).toEqual({ entrar: true, sair: true });
+  });
+
+  it("fut encerrado não aceita nem uma coisa nem outra", () => {
+    expect(podeMexerNoProprioNome("finished", normal)).toEqual({ entrar: false, sair: false });
+    // Nem para quem recusou: presença de fut encerrado é imutável, e este é o
+    // piso dos dois ramos.
+    expect(podeMexerNoProprioNome("finished", recusou)).toEqual({ entrar: false, sair: false });
   });
 });
 

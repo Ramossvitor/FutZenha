@@ -8,25 +8,69 @@ import type { Session } from "@/lib/session";
 // mereceAviso só lê player.id — o resto da sessão não participa da regra.
 const sessaoDe = (playerId: number) => ({ player: { id: playerId } }) as Session;
 
-const incluidoDeFora = { temContaAtiva: true, jaEstaNoFut: false, elegivel: true };
+const incluidoDeFora = {
+  temContaAtiva: true,
+  jaEstaNoFut: false,
+  elegivel: true,
+  recusou: false,
+};
+
+// As transições que `entrarNaLista` devolve. Quem decide o aviso é ela, e não
+// mais `alvo.jaEstaNoFut` — ver o comentário de mereceAviso.
+const entrou = { de: null, para: "in" } as const;
+const voltou = { de: "out", para: "in" } as const;
+const reconfirmou = { de: "in", para: "in" } as const;
+const foiParaEspera = { de: null, para: "waitlist" } as const;
+const caiuParaEspera = { de: "in", para: "waitlist" } as const;
+const seguiuNaEspera = { de: "waitlist", para: "waitlist" } as const;
 
 describe("mereceAviso", () => {
   // Exatamente o caso que a exceção da lista fechada abriu: alguém com conta
   // sendo posto no fut por outra pessoa.
   it("avisa quem tem conta, estava fora e foi posto por outro", () => {
-    expect(mereceAviso(sessaoDe(1), 2, incluidoDeFora)).toBe(true);
+    expect(mereceAviso(sessaoDe(1), 2, incluidoDeFora, entrou)).toBe(true);
+  });
+
+  // O buraco que a troca de `jaEstaNoFut` pela transição fechou: linha `out` é
+  // linha, então quem tinha marcado "Fora" e era reposto pelo organizador não
+  // recebia aviso NENHUM — a pessoa com mais motivo para receber.
+  it("avisa quem tinha marcado Fora e foi reposto por outro", () => {
+    expect(mereceAviso(sessaoDe(1), 2, { ...incluidoDeFora, jaEstaNoFut: true }, voltou)).toBe(
+      true,
+    );
   });
 
   it("não avisa o próprio ator do que ele mesmo fez", () => {
-    expect(mereceAviso(sessaoDe(2), 2, incluidoDeFora)).toBe(false);
+    expect(mereceAviso(sessaoDe(2), 2, incluidoDeFora, entrou)).toBe(false);
   });
 
   it("não avisa quem não tem conta ativa — não há onde receber", () => {
-    expect(mereceAviso(sessaoDe(1), 2, { ...incluidoDeFora, temContaAtiva: false })).toBe(false);
+    expect(
+      mereceAviso(sessaoDe(1), 2, { ...incluidoDeFora, temContaAtiva: false }, entrou),
+    ).toBe(false);
   });
 
-  it("não avisa quem já estava no fut — não é novidade", () => {
-    expect(mereceAviso(sessaoDe(1), 2, { ...incluidoDeFora, jaEstaNoFut: true })).toBe(false);
+  // A tela é idempotente: clicar "Vai" em quem já está `in` não é evento novo.
+  it("não avisa quem já ocupava vaga — não é novidade", () => {
+    expect(mereceAviso(sessaoDe(1), 2, incluidoDeFora, reconfirmou)).toBe(false);
+  });
+
+  // Ser posto na espera por outra pessoa também é novidade. Exigir vaga aqui
+  // silenciava a inclusão de terceiro em fut lotado: `avisoDePromocao` só sai SE
+  // abrir vaga, então a pessoa podia nunca saber que a puseram numa fila.
+  it("avisa quem foi posto na espera por outro", () => {
+    expect(mereceAviso(sessaoDe(1), 2, incluidoDeFora, foiParaEspera)).toBe(true);
+  });
+
+  // Rebaixamento não é inclusão: quem já tinha vaga e caiu para a espera não
+  // recebe "marcaram sua presença".
+  it("não avisa quem saiu da vaga para a espera", () => {
+    expect(mereceAviso(sessaoDe(1), 2, incluidoDeFora, caiuParaEspera)).toBe(false);
+  });
+
+  // O mesmo status de novo é a tela sendo idempotente, na espera como na vaga.
+  it("não avisa quem já estava na espera e continuou nela", () => {
+    expect(mereceAviso(sessaoDe(1), 2, incluidoDeFora, seguiuNaEspera)).toBe(false);
   });
 });
 

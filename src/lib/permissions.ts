@@ -116,12 +116,34 @@ export function podeGerenciarFut(
  *
  * O admin da plataforma passa por cima — ele é o fallback de todo fut, e é
  * quem conserta fut órfão e fut abandonado.
+ *
+ * **`recusou` vem antes de tudo, inclusive do admin da plataforma.** Todas as
+ * regras acima decidem quem pode PÔR alguém numa lista; esta decide quando não
+ * há mais o que decidir, porque a pessoa já respondeu. Ela cobre as duas formas
+ * de dizer não que o app tem — recusar o convite do fut (`declined` em
+ * match_day_invitations) e tirar o próprio nome da lista (`opted_out_at`) —, e
+ * quem junta as duas num booleano é `situacaoDoAlvo`, em ./presenca.
+ *
+ * Sem ela o contrapeso da exceção da lista fechada não fechava o ciclo: o item 3
+ * ali em cima promete que quem é incluído recebe notificação, mas notificar não
+ * serve de nada se a única reação possível — sair — puder ser desfeita pelo
+ * mesmo organizador, quantas vezes ele quiser. `jaEstaNoFut` devolvia `true`
+ * para quem tem linha `out`, então sair da lista era o que MAIS liberava o
+ * organizador a repor.
+ *
+ * O admin da plataforma entra na regra, e é a única coisa neste módulo que ele
+ * não atravessa. O fallback dele existe para consertar fut órfão e fut
+ * abandonado — coisas que ninguém mais pode consertar. Desfazer o "não" de uma
+ * pessoa não é conserto, e é justamente o que ninguém mais deveria poder fazer.
+ * Quem quiser voltar volta sozinho: a própria pessoa nunca é barrada, porque
+ * `avaliarMarcacao` decide antes disto quando ator e alvo são o mesmo.
  */
 export function podeDefinirPresencaPor(
   ator: Ator,
-  alvo: { temContaAtiva: boolean; jaEstaNoFut: boolean; elegivel: boolean },
+  alvo: { temContaAtiva: boolean; jaEstaNoFut: boolean; elegivel: boolean; recusou: boolean },
   fut: { listaFechada: boolean; ehDeGrupo: boolean },
 ): boolean {
+  if (alvo.recusou) return false;
   if (ator.isPlatformAdmin) return true;
   if (!alvo.temContaAtiva || alvo.jaEstaNoFut) return true;
   return fut.ehDeGrupo && fut.listaFechada && alvo.elegivel;

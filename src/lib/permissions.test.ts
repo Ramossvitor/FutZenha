@@ -76,9 +76,9 @@ describe("podeGerenciarFut em fut de grupo", () => {
 
 describe("podeDefinirPresencaPor com a lista aberta", () => {
   const ABERTA = { listaFechada: false, ehDeGrupo: true };
-  const semConta = { temContaAtiva: false, jaEstaNoFut: false, elegivel: true };
-  const comContaDeFora = { temContaAtiva: true, jaEstaNoFut: false, elegivel: true };
-  const comContaJaNoFut = { temContaAtiva: true, jaEstaNoFut: true, elegivel: true };
+  const semConta = { temContaAtiva: false, jaEstaNoFut: false, elegivel: true, recusou: false };
+  const comContaDeFora = { temContaAtiva: true, jaEstaNoFut: false, elegivel: true, recusou: false };
+  const comContaJaNoFut = { temContaAtiva: true, jaEstaNoFut: true, elegivel: true, recusou: false };
 
   // O caso que o override existe para resolver: quem não resgatou o convite (ou
   // teve a conta desativada) não consegue se marcar sozinho.
@@ -128,7 +128,7 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut de GRUPO", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true },
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true, recusou: false },
         FECHADA,
       ),
     ).toBe(true);
@@ -140,7 +140,7 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut de GRUPO", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: true, jaEstaNoFut: false, elegivel: false },
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: false, recusou: false },
         FECHADA,
       ),
     ).toBe(false);
@@ -153,7 +153,7 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut de GRUPO", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: true, jaEstaNoFut: true, elegivel: false },
+        { temContaAtiva: true, jaEstaNoFut: true, elegivel: false, recusou: false },
         FECHADA,
       ),
     ).toBe(true);
@@ -165,7 +165,7 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut de GRUPO", () => {
     expect(
       podeDefinirPresencaPor(
         plataforma,
-        { temContaAtiva: true, jaEstaNoFut: false, elegivel: false },
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: false, recusou: false },
         FECHADA,
       ),
     ).toBe(true);
@@ -177,7 +177,7 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut de GRUPO", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: false, jaEstaNoFut: false, elegivel: false },
+        { temContaAtiva: false, jaEstaNoFut: false, elegivel: false, recusou: false },
         FECHADA,
       ),
     ).toBe(true);
@@ -197,7 +197,7 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut AVULSO", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true },
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true, recusou: false },
         FECHADA_AVULSA,
       ),
     ).toBe(false);
@@ -209,7 +209,7 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut AVULSO", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: false, jaEstaNoFut: false, elegivel: false },
+        { temContaAtiva: false, jaEstaNoFut: false, elegivel: false, recusou: false },
         FECHADA_AVULSA,
       ),
     ).toBe(true);
@@ -219,7 +219,7 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut AVULSO", () => {
     expect(
       podeDefinirPresencaPor(
         criador,
-        { temContaAtiva: true, jaEstaNoFut: true, elegivel: false },
+        { temContaAtiva: true, jaEstaNoFut: true, elegivel: false, recusou: false },
         FECHADA_AVULSA,
       ),
     ).toBe(true);
@@ -229,10 +229,57 @@ describe("podeDefinirPresencaPor com a lista fechada, em fut AVULSO", () => {
     expect(
       podeDefinirPresencaPor(
         plataforma,
-        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true },
+        { temContaAtiva: true, jaEstaNoFut: false, elegivel: true, recusou: false },
         FECHADA_AVULSA,
       ),
     ).toBe(true);
+  });
+});
+
+// A recusa é a palavra final da lista. Cobre as duas formas de dizer não —
+// recusar o convite do fut e tirar o próprio nome —, que `situacaoDoAlvo`
+// (src/lib/presenca.ts) já entrega colapsadas num booleano.
+describe("podeDefinirPresencaPor depois que a pessoa recusou", () => {
+  const recusou = { temContaAtiva: true, jaEstaNoFut: true, elegivel: true, recusou: true };
+
+  // Este é o caso que a coluna existe para fechar: `jaEstaNoFut` é "tem linha em
+  // attendances", e linha `out` é linha — então SAIR da lista era justamente o
+  // que mais liberava o organizador a repor, quantas vezes ele quisesse.
+  it("o organizador não repõe quem saiu, mesmo com a lista fechada", () => {
+    expect(podeDefinirPresencaPor(criador, recusou, { listaFechada: true, ehDeGrupo: true })).toBe(
+      false,
+    );
+  });
+
+  it("nem com a lista aberta, nem em fut avulso", () => {
+    expect(podeDefinirPresencaPor(criador, recusou, { listaFechada: false, ehDeGrupo: true })).toBe(
+      false,
+    );
+    expect(podeDefinirPresencaPor(criador, recusou, { listaFechada: true, ehDeGrupo: false })).toBe(
+      false,
+    );
+  });
+
+  // A única regra deste módulo que o admin da plataforma NÃO atravessa. O
+  // fallback dele conserta fut órfão e fut abandonado — desfazer o "não" de uma
+  // pessoa não é conserto, e é o que ninguém mais deveria poder fazer.
+  it("o admin da plataforma também é barrado — é a única regra que ele não atravessa", () => {
+    expect(
+      podeDefinirPresencaPor(plataforma, recusou, { listaFechada: true, ehDeGrupo: true }),
+    ).toBe(false);
+  });
+
+  // A recusa vem ANTES de tudo, inclusive do ramo "quem não tem conta é livre".
+  // Na prática quem não tem conta não recusa (não tem por onde), mas a ordem das
+  // cláusulas é o que garante que nenhum ramo futuro passe por baixo dela.
+  it("vem antes até do ramo de quem não tem conta", () => {
+    expect(
+      podeDefinirPresencaPor(
+        criador,
+        { ...recusou, temContaAtiva: false },
+        { listaFechada: true, ehDeGrupo: true },
+      ),
+    ).toBe(false);
   });
 });
 

@@ -10,9 +10,15 @@ import { agendarCancelamentosDeAgenda, agendarConvitesDeAgenda } from "@/lib/age
 import { ehElegivel } from "@/lib/elegiveis";
 import { comoEntraNoFut } from "@/lib/fut-entrada";
 import { estaNaLista, estaNoCirculoDoFut } from "@/lib/fut-entrada-db";
-import { listaFechada } from "@/lib/lista-presenca";
+import { podeMexerNoProprioNome } from "@/lib/lista-presenca";
 import { notificar } from "@/lib/notifications";
-import { avisoDePromocao, entrarNaLista, sairDaLista, travarFut } from "@/lib/presenca";
+import {
+  avisoDePromocao,
+  entrarNaLista,
+  recusouEsteFut,
+  sairDaLista,
+  travarFut,
+} from "@/lib/presenca";
 import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requirePlayer } from "@/lib/require-player";
 
@@ -28,7 +34,14 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
 
   const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, parsedId));
   if (!matchDay) return;
-  if (listaFechada(matchDay.status)) {
+
+  // Já disse não para este fut? O fato serve a duas coisas de uma vez: destrava
+  // o "Vou" mesmo com a lista fechada (é o desfazer da própria decisão, e o
+  // único caminho de volta que existe — a recusa barra até o admin da
+  // plataforma) e não muda nada para quem nunca recusou.
+  const recusou = await recusouEsteFut(parsedId, session.player.id);
+  const podeMexer = podeMexerNoProprioNome(matchDay.status, { recusou });
+  if (parsedStatus === "in" ? !podeMexer.entrar : !podeMexer.sair) {
     // Status mudou entre o render e o clique — revalida para a UI travar os botões.
     revalidatePath(`/fut/${parsedId}`);
     return;
@@ -49,7 +62,12 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
   // Quem JÁ tem linha na lista não passa por aqui: `comoEntraNoFut` devolve
   // "ja-esta" para ele, inclusive para quem marcou "Fora" e mudou de ideia. É
   // essa distinção que mantém o vaivém de presença funcionando como sempre.
-  if (parsedStatus === "in") {
+  //
+  // Quem RECUSOU também não passa, e por um motivo próprio: a recusa é resposta
+  // a um chamado, então o fut já reconheceu essa pessoa — ou ela esteve na
+  // lista, ou recebeu convite nominal. Mandá-la pedir entrada para desfazer a
+  // própria recusa seria pedir permissão para mudar de ideia.
+  if (parsedStatus === "in" && !recusou) {
     const entrada = comoEntraNoFut(matchDay, {
       jaEstaNaLista: await estaNaLista(parsedId, session.player.id),
       elegivel: true,
@@ -69,15 +87,18 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
     // isto, um "Vou" concorrendo com o sorteio passava no status velho e entrava
     // numa lista que acabou de fechar.
     const fresca = await travarFut(tx, parsedId);
-    if (listaFechada(fresca.status)) return;
+    const aindaPode = podeMexerNoProprioNome(fresca.status, { recusou });
+    if (parsedStatus === "in" ? !aindaPode.entrar : !aindaPode.sair) return;
 
     if (parsedStatus === "in") {
-      const entrada = await entrarNaLista(tx, parsedId, session.player.id);
+      // O quarto argumento é quem está mandando, e aqui é sempre a própria
+      // pessoa — é o que grava `confirmed_by_player_id` nulo e limpa a recusa.
+      const entrada = await entrarNaLista(tx, parsedId, session.player.id, session.player.id);
       // Só a transição para vaga gera convite de agenda — reconfirmar quem já
       // está `in` é a tela sendo idempotente, não um evento novo.
       confirmei = entrada.para === "in" && entrada.de !== "in";
     } else {
-      const saida = await sairDaLista(tx, parsedId, session.player.id);
+      const saida = await sairDaLista(tx, parsedId, session.player.id, session.player.id);
       saiDeVaga = saida.saiuDeVaga;
       if (saida.promovido !== null) {
         await notificar(tx, [avisoDePromocao(matchDay, saida.promovido)]);

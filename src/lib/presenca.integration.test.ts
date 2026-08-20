@@ -15,15 +15,22 @@ import {
 } from "@/lib/presenca";
 import { confirmarPresenca, criarJogador, criarFut } from "@/test/fixtures";
 
-const entrar = (fut: MatchDay, jogador: Player) =>
-  db.transaction((tx) => entrarNaLista(tx, fut.id, jogador.id));
+// `por` default é a própria pessoa, que é o caso da esmagadora maioria dos
+// testes daqui. Quem exercita autoria de terceiro passa o organizador.
+const entrar = (fut: MatchDay, jogador: Player, por: Player = jogador) =>
+  db.transaction((tx) => entrarNaLista(tx, fut.id, jogador.id, por.id));
 
-const sair = (fut: MatchDay, jogador: Player) =>
-  db.transaction((tx) => sairDaLista(tx, fut.id, jogador.id));
+const sair = (fut: MatchDay, jogador: Player, por: Player = jogador) =>
+  db.transaction((tx) => sairDaLista(tx, fut.id, jogador.id, por.id));
 
 async function linhaDe(fut: MatchDay, jogador: Player) {
   const [linha] = await db
-    .select({ status: attendances.status, confirmedAt: attendances.confirmedAt })
+    .select({
+      status: attendances.status,
+      confirmedAt: attendances.confirmedAt,
+      confirmedByPlayerId: attendances.confirmedByPlayerId,
+      optedOutAt: attendances.optedOutAt,
+    })
     .from(attendances)
     .where(and(eq(attendances.matchDayId, fut.id), eq(attendances.playerId, jogador.id)));
   return linha ?? null;
@@ -370,5 +377,92 @@ describe("concorrência", () => {
     const statuses = [(await linhaDe(fut, e))?.status, (await linhaDe(fut, f))?.status];
     expect(statuses.filter((s) => s === "in")).toHaveLength(1);
     expect(statuses.filter((s) => s === "waitlist")).toHaveLength(1);
+  });
+});
+
+// As duas colunas que separam "eu entrei" de "me puseram", e "eu saí" de "me
+// tiraram". Sem elas as quatro histórias produzem linhas idênticas.
+describe("autoria e recusa", () => {
+  it("entrar por conta própria não grava autor", async () => {
+    const fut = await criarFut();
+    const jogador = await criarJogador();
+    await entrar(fut, jogador);
+    expect((await linhaDe(fut, jogador))?.confirmedByPlayerId).toBeNull();
+  });
+
+  it("o organizador pondo alguém grava quem foi", async () => {
+    const fut = await criarFut();
+    const [organizador, jogador] = [await criarJogador(), await criarJogador()];
+    await entrar(fut, jogador, organizador);
+    expect((await linhaDe(fut, jogador))?.confirmedByPlayerId).toBe(organizador.id);
+  });
+
+  // O e-mail de agenda ramifica por esta coluna: quem foi posto por outro e
+  // depois confirma sozinho deixou de ser uma inclusão de terceiro, e o texto
+  // não pode continuar dizendo "Fulano confirmou você".
+  it("confirmar sozinho depois apaga a autoria de terceiro", async () => {
+    const fut = await criarFut();
+    const [organizador, jogador] = [await criarJogador(), await criarJogador()];
+    await entrar(fut, jogador, organizador);
+    await entrar(fut, jogador);
+    expect((await linhaDe(fut, jogador))?.confirmedByPlayerId).toBeNull();
+  });
+
+  it("sair por conta própria carimba a recusa", async () => {
+    const fut = await criarFut();
+    const jogador = await criarJogador();
+    await entrar(fut, jogador);
+    await sair(fut, jogador);
+    expect((await linhaDe(fut, jogador))?.optedOutAt).toBeInstanceOf(Date);
+  });
+
+  // O `out` do organizador é correção de lista, não decisão da pessoa. Travar a
+  // lista contra ele mesmo não faria sentido nenhum.
+  it("o organizador tirando alguém NÃO carimba recusa", async () => {
+    const fut = await criarFut();
+    const [organizador, jogador] = [await criarJogador(), await criarJogador()];
+    await entrar(fut, jogador);
+    await sair(fut, jogador, organizador);
+    const linha = await linhaDe(fut, jogador);
+    expect(linha?.status).toBe("out");
+    expect(linha?.optedOutAt).toBeNull();
+  });
+
+  // Nem apaga a recusa de quem já tinha saído: mexer na linha de quem recusou
+  // não pode ser o caminho para destravá-la.
+  it("o organizador mexendo depois não apaga a recusa", async () => {
+    const fut = await criarFut();
+    const [organizador, jogador] = [await criarJogador(), await criarJogador()];
+    await entrar(fut, jogador);
+    await sair(fut, jogador);
+    await sair(fut, jogador, organizador);
+    expect((await linhaDe(fut, jogador))?.optedOutAt).toBeInstanceOf(Date);
+  });
+
+  // O desfazer, e é só dela: entrar por conta própria limpa o carimbo. Sem isto
+  // quem recusou ficaria trancada fora para sempre — a recusa barra até o admin
+  // da plataforma, então não haveria ninguém capaz de destravar.
+  it("entrar por conta própria limpa a recusa", async () => {
+    const fut = await criarFut();
+    const jogador = await criarJogador();
+    await entrar(fut, jogador);
+    await sair(fut, jogador);
+    await entrar(fut, jogador);
+    const linha = await linhaDe(fut, jogador);
+    expect(linha?.status).toBe("in");
+    expect(linha?.optedOutAt).toBeNull();
+  });
+
+  // Sair de uma lista em que nunca se esteve não é consentimento retirado. A
+  // tela oferece esse botão (ver src/app/page.tsx, o cartão do próximo fut), e
+  // carimbar ali trancaria quem organiza contra alguém que nunca esteve na
+  // lista dele — de um clique, e sem que a pessoa soubesse.
+  it("sair sem nunca ter entrado não carimba recusa", async () => {
+    const fut = await criarFut();
+    const jogador = await criarJogador();
+    await sair(fut, jogador);
+    const linha = await linhaDe(fut, jogador);
+    expect(linha?.status).toBe("out");
+    expect(linha?.optedOutAt).toBeNull();
   });
 });

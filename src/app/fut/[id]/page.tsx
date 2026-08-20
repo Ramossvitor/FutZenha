@@ -34,9 +34,10 @@ import { cancelarPedidoDeFut, pedirParaEntrarNoFut } from "./entrada-actions";
 import { formatDate, formatHorario, formatSkill } from "@/lib/format";
 import { getMvpDoFut } from "@/lib/ratings";
 import { getGrupo, papelNoGrupo } from "@/lib/grupos";
-import { repartirLista, vagasLivres } from "@/lib/lista-presenca";
+import { podeMexerNoProprioNome, repartirLista, vagasLivres } from "@/lib/lista-presenca";
 import { STATUS_FUT } from "@/lib/match-day-form";
 import { podeGerenciarFut, podeOperarSumula } from "@/lib/permissions";
+import { recusouEsteFut } from "@/lib/presenca";
 import { temSumulaDelegada } from "@/lib/require-operador-sumula";
 import { jogoEmAndamento, sumulaDisponivel } from "@/lib/sumula";
 import { getSession } from "@/lib/session";
@@ -132,7 +133,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
 
   const meuPlayerId = session?.player.id ?? null;
 
-  const [activePlayers, attendanceRows, teamList, gameList, papel, noCirculo] =
+  const [activePlayers, attendanceRows, teamList, gameList, papel, noCirculo, recusei] =
     await Promise.all([
       // Fut de grupo lista o grupo. Avulso lista só quem o organizador pode
       // marcar de fato — sem conta, já no fut, ou ele mesmo —, que é o espelho de
@@ -151,6 +152,11 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
       // quem pergunta, os dois já resolvidos — e esta é a página pública mais
       // quente do app.
       meuPlayerId === null ? false : estaNoCirculoDoFut(matchDay, meuPlayerId),
+      // Pelo mesmo motivo, e é o mesmo par de argumentos. Tentador pendurar num
+      // `||` depois de olhar `optedOutAt` na linha que já veio — só que o
+      // curto-circuito pouparia a consulta exatamente de quem JÁ recusou, o
+      // caso raro, e todo visitante normal pagaria o round-trip em série.
+      meuPlayerId === null ? false : recusouEsteFut(id, meuPlayerId),
     ]);
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
   const jogadorPorId = new Map(activePlayers.map((p) => [p.id, p]));
@@ -255,7 +261,32 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
     }),
   );
 
+  // A minha linha na lista, para a pergunta que só ela responde: quem me pôs
+  // aqui (`confirmedByPlayerId`). A recusa não sai daqui — ela tem duas fontes,
+  // e `recusouEsteFut` (na onda lá em cima) já leu as duas.
+  const minhaLinha =
+    meuPlayerId === null ? undefined : attendanceRows.find((a) => a.playerId === meuPlayerId);
+  // Entrar e sair deixaram de ser a mesma pergunta: sair vale até o fut ser
+  // encerrado (é DEPOIS do sorteio que o organizador inclui quem quiser, e é aí
+  // que retirar o nome precisa existir), e quem recusou pode voltar mesmo com a
+  // lista fechada. Ver podeMexerNoProprioNome.
+  const podeMexer = podeMexerNoProprioNome(matchDay.status, { recusou: recusei });
   const podeMarcar = matchDay.status === "scheduled";
+  // Quem me pôs na lista, quando não fui eu — é o que dispara o aviso de
+  // "confirmaram você" e o botão de retirar o nome.
+  //
+  // Consulta própria, e não `jogadorPorId`: aquele mapa vem de
+  // `jogadoresElegiveis`, e quem confirmou não está necessariamente lá — em fut
+  // avulso a lista de elegíveis é quase só o próprio visitante. Preguiçosa, como
+  // o `jaPediu` logo abaixo: a coluna é nula na esmagadora maioria das linhas.
+  const [confirmador] =
+    minhaLinha?.confirmedByPlayerId == null
+      ? []
+      : await db
+          .select({ nome: players.name, apelido: players.nickname })
+          .from(players)
+          .where(eq(players.id, minhaLinha.confirmedByPlayerId));
+  const quemMeConfirmou = confirmador ? (confirmador.apelido ?? confirmador.nome) : null;
   // Num fut de grupo, quem não é do grupo não entra na lista — o servidor já
   // recusa (ver setMyAttendance). Sem este teste a tela oferecia o botão assim
   // mesmo, e clicar não fazia nada: sem erro, sem banner, sem explicação.
@@ -701,35 +732,81 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             entrar" E o botão "Vou" ao mesmo tempo, com o "Vou" caindo em
             `?erro=precisa-pedir-entrada`. Dois caminhos oferecidos, um deles
             sem saída. */}
-        {podeMarcar && meuPlayerId !== null && souElegivel && !precisaPedir && (
-          <span className="flex gap-1.5">
-            {statusByPlayer.get(meuPlayerId) !== "in" &&
-              statusByPlayer.get(meuPlayerId) !== "waitlist" && (
-                <form action={setMyAttendance.bind(null, matchDay.id, "in")}>
-                  {/* Este botão SOME quando a action dá certo — a condição acima
-                      deixa de valer. É o caminho que a comemoração cobre pela
-                      desmontagem, e não pelo pending caindo, e é por isso que
-                      aqui não vai `festejaQuando`: a desmontagem já é a prova, e
-                      a action que volta em silêncio devolve esta mesma tela com
-                      o botão no lugar.
-
-                      `padrao`, e não `sobre-accent`, justamente porque o botão
-                      lime não está mais lá quando a bola é desenhada — ela cai
-                      na surface da página. */}
-                  <SubmitButton tamanho="sm" festeja="padrao">
-                    {listaCheia ? "Entrar na espera" : "Vou"}
+        {/* Confirmaram você. É o par do push e do e-mail que saíram no mesmo
+            momento: os três dizem quem foi, que não há nada a fazer se estiver
+            tudo certo, e por onde sair. Some no instante em que a pessoa
+            confirma sozinha (o que zera `confirmed_by_player_id`) ou sai. */}
+        {quemMeConfirmou !== null &&
+          meuPlayerId !== null &&
+          (statusByPlayer.get(meuPlayerId) === "in" ||
+            statusByPlayer.get(meuPlayerId) === "waitlist") && (
+            <div className="rounded-ctl border border-line bg-surface-2 px-3 py-2.5">
+              <p className="text-[13px] leading-[1.45] text-fg-2">
+                <strong className="font-semibold text-fg">
+                  {quemMeConfirmou} confirmou você neste fut.
+                </strong>{" "}
+                Se estiver tudo certo, não precisa fazer nada.
+              </p>
+              {podeMexer.sair && (
+                <form
+                  action={setMyAttendance.bind(null, matchDay.id, "out")}
+                  className="mt-2.5"
+                >
+                  <SubmitButton variante="secondary" tamanho="sm">
+                    Retirar meu nome
                   </SubmitButton>
                 </form>
               )}
-            {statusByPlayer.get(meuPlayerId) !== "out" && (
-              <form action={setMyAttendance.bind(null, matchDay.id, "out")}>
-                <SubmitButton variante="secondary" tamanho="sm">
-                  Fora
-                </SubmitButton>
-              </form>
-            )}
-          </span>
-        )}
+            </div>
+          )}
+
+        {/* O gate deixou de ser `podeMarcar` sozinho: sair vale depois do
+            sorteio, e quem recusou pode voltar. Ver podeMexerNoProprioNome. */}
+        {(podeMexer.entrar || podeMexer.sair) &&
+          meuPlayerId !== null &&
+          souElegivel &&
+          !precisaPedir && (
+            <span className="flex gap-1.5">
+              {podeMexer.entrar &&
+                statusByPlayer.get(meuPlayerId) !== "in" &&
+                statusByPlayer.get(meuPlayerId) !== "waitlist" && (
+                  <form action={setMyAttendance.bind(null, matchDay.id, "in")}>
+                    {/* Este botão SOME quando a action dá certo — a condição
+                        acima deixa de valer. É o caminho que a comemoração cobre
+                        pela desmontagem, e não pelo pending caindo, e é por isso
+                        que aqui não vai `festejaQuando`: a desmontagem já é a
+                        prova, e a action que volta em silêncio devolve esta
+                        mesma tela com o botão no lugar.
+
+                        `padrao`, e não `sobre-accent`, justamente porque o botão
+                        lime não está mais lá quando a bola é desenhada — ela cai
+                        na surface da página. */}
+                    <SubmitButton tamanho="sm" festeja="padrao">
+                      {listaCheia ? "Entrar na espera" : "Vou"}
+                    </SubmitButton>
+                  </form>
+                )}
+              {/* Escondido quando o aviso acima já oferece "Retirar meu nome":
+                  dois botões que fazem a mesma coisa, um do lado do outro, é a
+                  tela perguntando duas vezes.
+
+                  E, depois do sorteio, escondido de quem não tem linha nenhuma:
+                  ali o botão sozinho não é mais o par do "Vou" — é uma saída
+                  oferecida a quem nunca entrou. Com a lista aberta ele continua
+                  aparecendo para todo mundo, que é como sempre foi: dizer "não
+                  vou" antes de o organizador perguntar tem valor. */}
+              {podeMexer.sair &&
+                quemMeConfirmou === null &&
+                (podeMexer.entrar || statusByPlayer.has(meuPlayerId)) &&
+                statusByPlayer.get(meuPlayerId) !== "out" && (
+                  <form action={setMyAttendance.bind(null, matchDay.id, "out")}>
+                    <SubmitButton variante="secondary" tamanho="sm">
+                      Fora
+                    </SubmitButton>
+                  </form>
+                )}
+            </span>
+          )}
 
         {/* O momento em que o aviso tem valor óbvio: quem acabou de entrar na
             lista quer saber dos times; quem caiu na espera quer saber da vaga.

@@ -1,7 +1,7 @@
 import "server-only";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
-import { attendances, matchDays, users } from "@/db/schema";
+import { attendances, matchDayInvitations, matchDays, users } from "@/db/schema";
 import { ehElegivel, type EscopoDaLista } from "./elegiveis";
 import { formatDate } from "./format";
 import {
@@ -16,14 +16,75 @@ import { podeDefinirPresencaPor } from "./permissions";
 import type { Session } from "./session";
 
 /**
- * Os três fatos que decidem se alguém pode ser marcado por outra pessoa nesta
+ * Os quatro fatos que decidem se alguém pode ser marcado por outra pessoa neste
  * fut. A regra em si é pura e mora em src/lib/permissions.ts.
  */
 export type AlvoDePresenca = {
   temContaAtiva: boolean;
   jaEstaNoFut: boolean;
   elegivel: boolean;
+  /** Já disse não para este fut — ver `recusouEsteFut`, logo abaixo. */
+  recusou: boolean;
 };
+
+/**
+ * Esta pessoa já disse não para este fut?
+ *
+ * As duas formas de dizer não valem o mesmo (ver o cabeçalho de ./fut-entrada), e
+ * é aqui — e só aqui — que elas viram um booleano:
+ *
+ * - **recusou o convite**: `match_day_invitations.status = 'declined'`;
+ * - **tirou o próprio nome**: `attendances.opted_out_at` carimbado.
+ *
+ * Ficam em tabelas diferentes de propósito. Carimbar a recusa de convite numa
+ * linha de `attendances` seria mais simples de ler, e é justamente o que não dá:
+ * `condicaoJaJogouCom` (./elegiveis) e `jaJogaramJuntos` (./fut-entrada-db)
+ * definem "já dividiu um fut com" varrendo `attendances` SEM filtrar status, e
+ * uma linha criada por recusa passaria a render vínculo de círculo — que é o que
+ * autoriza convidar. Recusar um convite daria ao alvo o direito de convidar.
+ *
+ * Dois `exists` num round-trip só, e não duas consultas encadeadas: isto roda em
+ * toda renderização de /fut/[id] — a página mais quente do app — e o caso comum
+ * é o "não" duplo, em que o encadeamento pagaria as duas idas ao banco sempre.
+ * Cada lado é uma busca pelo índice que já existe (a unique de `attendances`, o
+ * `match_day_invitations_convidado_idx`), e o `or` do Postgres já curto-circuita
+ * o segundo quando o primeiro responde.
+ */
+export async function recusouEsteFut(matchDayId: number, playerId: number): Promise<boolean> {
+  // O `from` é o próprio fut: os dois `exists` são escalares e o Postgres exige
+  // uma origem para pendurá-los. A linha existe sempre que o id é válido, e
+  // quando não existe o `?? false` responde — fut apagado não tem recusa.
+  const tirouONome = exists(
+    db
+      .select({ um: sql`1` })
+      .from(attendances)
+      .where(
+        and(
+          eq(attendances.matchDayId, matchDayId),
+          eq(attendances.playerId, playerId),
+          isNotNull(attendances.optedOutAt),
+        ),
+      ),
+  );
+  const recusouConvite = exists(
+    db
+      .select({ um: sql`1` })
+      .from(matchDayInvitations)
+      .where(
+        and(
+          eq(matchDayInvitations.matchDayId, matchDayId),
+          eq(matchDayInvitations.playerId, playerId),
+          eq(matchDayInvitations.status, "declined"),
+        ),
+      ),
+  );
+
+  const [linha] = await db
+    .select({ recusou: sql<boolean>`${or(tirouONome, recusouConvite)}` })
+    .from(matchDays)
+    .where(eq(matchDays.id, matchDayId));
+  return linha?.recusou ?? false;
+}
 
 async function situacaoDoAlvo(
   matchDay: EscopoDaLista,
@@ -42,6 +103,7 @@ async function situacaoDoAlvo(
     temContaAtiva: conta !== undefined,
     jaEstaNoFut: presenca !== undefined,
     elegivel: await ehElegivel(matchDay, playerId),
+    recusou: await recusouEsteFut(matchDay.id, playerId),
   };
 }
 
@@ -81,12 +143,39 @@ export async function avaliarMarcacao(
 /**
  * Se incluir esta pessoa é novidade para ela — e portanto merece aviso.
  *
- * Quem não tem conta não tem onde receber o aviso, e quem já estava no fut
+ * Quem não tem conta não tem onde receber o aviso, e quem já estava numa vaga
  * sabe que está nela. Sobra exatamente o caso que a exceção da lista fechada
  * abriu: alguém com conta sendo posto no fut por outra pessoa.
+ *
+ * **Quem decide é a transição de `entrarNaLista`, não `alvo.jaEstaNoFut`**, e a
+ * troca conserta um buraco. `jaEstaNoFut` é "tem linha em attendances", e linha
+ * `out` é linha: quem tinha marcado "Fora" e era reposto pelo organizador não
+ * recebia aviso NENHUM — justamente a pessoa com mais motivo para ser avisada, e
+ * justamente o vaivém que este trabalho veio fechar. A transição sabe a
+ * diferença entre `out → in` (novidade) e `in → in` (a tela sendo idempotente).
+ *
+ * **A espera conta como novidade.** Com o fut lotado, `entrarNaLista` devolve
+ * `waitlist`, e exigir `in` aqui deixava sem aviso nenhum justamente o caso mais
+ * comum da exceção da lista fechada — `definirPresenca` e `incluirNoJogo` com a
+ * lista fechada acontecem num fut que costuma estar cheio. `avisoDePromocao` só
+ * sai SE abrir vaga, então a pessoa podia nunca saber que foi posta ali. O que
+ * não avisa é `in → waitlist` e o vaivém do mesmo status: aí não houve novidade.
+ *
+ * O preço é a ordem: isto só pode ser decidido DEPOIS da escrita, e portanto
+ * dentro da transação de quem chama. Continua puro — a transição chega pronta.
  */
-export function mereceAviso(session: Session, playerId: number, alvo: AlvoDePresenca): boolean {
-  return playerId !== session.player.id && alvo.temContaAtiva && !alvo.jaEstaNoFut;
+export function mereceAviso(
+  session: Session,
+  playerId: number,
+  alvo: AlvoDePresenca,
+  entrada: ResultadoDeEntrada,
+): boolean {
+  return (
+    playerId !== session.player.id &&
+    alvo.temContaAtiva &&
+    entrada.para !== entrada.de &&
+    entrada.de !== "in"
+  );
 }
 
 /**
@@ -190,11 +279,17 @@ export type ResultadoDeEntrada = {
  *
  * Devolve de onde para onde a pessoa foi: só a transição para vaga é evento
  * novo de agenda, e reconfirmar quem já está `in` não pode virar e-mail.
+ *
+ * `porPlayerId` é quem está mandando — a própria pessoa ou quem organiza. Não é
+ * opcional de propósito: o default silencioso seria "ela mesma", e um call site
+ * distraído gravaria auto-confirmação no lugar de uma inclusão por terceiro,
+ * apagando o aviso, o texto do e-mail e o rastro de quem fez.
  */
 export async function entrarNaLista(
   exec: Executor,
   matchDayId: number,
   playerId: number,
+  porPlayerId: number,
 ): Promise<ResultadoDeEntrada> {
   const fut = await travarFut(exec, matchDayId);
   exigirNaoEncerrada(fut, matchDayId);
@@ -206,21 +301,55 @@ export async function entrarNaLista(
     ? "in"
     : statusAoConfirmar(ocupadas, fut.maxPlayers);
   const confirmedAt = atual?.confirmedAt ?? new Date();
+  const porContaPropria = porPlayerId === playerId;
+  // Nulo quando é ela mesma: é o valor que significa "entrou sozinha", e
+  // reescrevê-lo importa porque quem foi posto por terceiro e depois confirma
+  // por conta própria deixa de ser uma inclusão de terceiro — o e-mail de
+  // agenda não pode continuar dizendo "Fulano confirmou você".
+  const confirmedByPlayerId = porContaPropria ? null : porPlayerId;
 
   await exec
     .insert(attendances)
-    .values({ matchDayId, playerId, status, confirmedAt })
+    .values({ matchDayId, playerId, status, confirmedAt, confirmedByPlayerId })
     .onConflictDoUpdate({
       target: [attendances.matchDayId, attendances.playerId],
       set: {
         status,
         confirmedAt,
+        confirmedByPlayerId,
         updatedAt: new Date(),
         // Toda transição versiona o evento de agenda (ver calendar_sequence
         // no schema) — quem lê é src/lib/agenda-convite.ts.
         calendarSequence: sql`${attendances.calendarSequence} + 1`,
+        // Entrar por conta própria é o desfazer da recusa, e só ela desfaz. Um
+        // terceiro preserva o carimbo — na prática ele nem chega aqui, porque
+        // `podeDefinirPresencaPor` já o barrou, mas esta função é o único
+        // caminho para a lista e não pode depender de quem a chamou ter
+        // perguntado antes.
+        ...(porContaPropria ? { optedOutAt: null } : {}),
       },
     });
+  // A recusa tem DUAS fontes (ver recusouEsteFut), e o desfazer precisa limpar
+  // as duas. Limpar só o carimbo deixava um beco sem saída: quem recusou o
+  // convite e depois entrou sozinha ficava `in` na lista com `declined` vivo
+  // para sempre — e aí `podeDefinirPresencaPor` barrava tudo, inclusive escalar
+  // essa pessoa na súmula de um fut em que ela está jogando. Nada no app move
+  // `declined`, então não havia como destravar.
+  //
+  // `accepted` é o valor honesto: ela está na lista. Não colide com o índice
+  // único de convites, que é parcial em `pending`.
+  if (porContaPropria) {
+    await exec
+      .update(matchDayInvitations)
+      .set({ status: "accepted", respondedAt: new Date() })
+      .where(
+        and(
+          eq(matchDayInvitations.matchDayId, matchDayId),
+          eq(matchDayInvitations.playerId, playerId),
+          eq(matchDayInvitations.status, "declined"),
+        ),
+      );
+  }
   return { de: atual?.status ?? null, para: status };
 }
 
@@ -245,20 +374,38 @@ export type ResultadoDeSaida = {
  *
  * Sair de uma vaga é o único caso que promove. Quem estava na espera, ou já
  * estava fora, não deixa vaga nenhuma para trás.
+ *
+ * `porPlayerId` decide se isto é uma RECUSA ou só um `out`. Sair por conta
+ * própria carimba `opted_out_at`, e é esse carimbo que impede quem organiza de
+ * repor a pessoa na lista (ver podeDefinirPresencaPor). Quem organiza tirando
+ * alguém não carimba nada: o `out` dele é correção de lista, não uma decisão da
+ * pessoa, e travar a lista contra ele mesmo não faria sentido nenhum.
  */
 export async function sairDaLista(
   exec: Executor,
   matchDayId: number,
   playerId: number,
+  porPlayerId: number,
 ): Promise<ResultadoDeSaida> {
   const fut = await travarFut(exec, matchDayId);
   exigirNaoEncerrada(fut, matchDayId);
   const linhas = await linhasDaLista(exec, matchDayId);
-  const ocupavaVaga = linhas.find((l) => l.playerId === playerId)?.status === "in";
+  const minha = linhas.find((l) => l.playerId === playerId);
+  const ocupavaVaga = minha?.status === "in";
+  // Só a saída da própria pessoa é recusa. Quando é um terceiro, a coluna nem
+  // entra no `set` — preservar o valor antigo importa, porque quem já tinha
+  // recusado e é mexido pelo organizador não pode ter a recusa apagada.
+  //
+  // E só carimba quem tinha linha para sair. Sem `minha`, isto não é retirar
+  // consentimento — é alguém clicando "Fora" num fut em que nunca esteve, e a
+  // tela oferece esse botão (ver src/app/page.tsx). Carimbar ali trancaria o
+  // organizador para sempre contra uma pessoa que nunca esteve na lista dele.
+  const recusa =
+    porPlayerId === playerId && minha !== undefined ? { optedOutAt: new Date() } : {};
 
   await exec
     .insert(attendances)
-    .values({ matchDayId, playerId, status: "out", confirmedAt: null })
+    .values({ matchDayId, playerId, status: "out", confirmedAt: null, ...recusa })
     .onConflictDoUpdate({
       target: [attendances.matchDayId, attendances.playerId],
       set: {
@@ -266,6 +413,7 @@ export async function sairDaLista(
         confirmedAt: null,
         updatedAt: new Date(),
         calendarSequence: sql`${attendances.calendarSequence} + 1`,
+        ...recusa,
       },
     });
 

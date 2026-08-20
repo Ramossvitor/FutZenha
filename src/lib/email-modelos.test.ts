@@ -222,4 +222,61 @@ describe("emailDeEventoDeAgenda", () => {
     });
     expect(email.assunto).not.toContain("às");
   });
+
+  // O convite ramificado: quem foi posto na lista por outra pessoa recebe o
+  // mesmo e-mail com o .ics, mas com outra história — quem foi, que não precisa
+  // fazer nada, e por onde sair.
+  describe("quando foi outra pessoa que confirmou", () => {
+    const porOutro = (confirmadoPor: string | null) =>
+      emailDeEventoDeAgenda({ ...dados, tipo: "convite", confirmadoPor });
+
+    // O nome vem PRIMEIRO, e é o que importa: assunto longo é truncado na lista
+    // de e-mails do celular, e o que a pessoa precisa ler antes de abrir é que
+    // alguém a confirmou — não a data, que já está no corpo e no .ics.
+    it("o assunto nomeia quem confirmou, antes de tudo", () => {
+      expect(porOutro("Ana").assunto).toBe(
+        "Ana confirmou você no fut de sábado, 22/08 das 20:00 às 22:00",
+      );
+    });
+
+    it("html e texto dizem que não precisa fazer nada", () => {
+      const email = porOutro("Ana");
+      expect(email.html).toContain("não precisa fazer nada");
+      expect(email.texto).toContain("não precisa fazer nada");
+    });
+
+    it("oferece o caminho para retirar o nome, na página do fut", () => {
+      const email = porOutro("Ana");
+      expect(email.html).toContain("Retire seu nome da lista");
+      expect(email.html).toContain('href="http://localhost:3000/fut/7"');
+      expect(email.texto).toContain("Retire seu nome da lista: http://localhost:3000/fut/7");
+    });
+
+    // Nome de jogador é texto livre de formulário, como o do destinatário — e
+    // este vai no assunto E no corpo.
+    it("escapa o nome de quem confirmou no html, e não no texto", () => {
+      const email = porOutro("Zé <script>alert(1)</script>");
+      expect(email.html).not.toContain("<script>");
+      expect(email.html).toContain("&lt;script&gt;");
+      expect(email.texto).toContain("Zé <script>alert(1)</script>");
+    });
+
+    // Nulo é quem entrou sozinha — a esmagadora maioria e todo o histórico.
+    it("nulo devolve o convite de sempre, sem link de saída", () => {
+      const email = porOutro(null);
+      expect(email.assunto).toContain("Na agenda:");
+      expect(email.html).not.toContain("Retire seu nome");
+    });
+
+    // Atualização fala de um evento que a pessoa já tem, e a inclusão já foi
+    // avisada quando aconteceu; no cancelamento o assunto é a saída. Remoer a
+    // autoria nos dois viraria cobrança.
+    it("só o convite ramifica — os outros tipos ignoram quem confirmou", () => {
+      for (const tipo of ["atualizacao", "saida", "fut-cancelado"] as const) {
+        const email = emailDeEventoDeAgenda({ ...dados, tipo, confirmadoPor: "Ana" });
+        expect(email.assunto).not.toContain("Ana");
+        expect(email.html).not.toContain("Retire seu nome");
+      }
+    });
+  });
 });

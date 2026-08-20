@@ -387,6 +387,43 @@ export const attendances = pgTable(
     // de 24h — ver `carimbarEnvio`. Assim a coluna não precisa de GC: ela se
     // recicla no próximo envio, e fora da janela ninguém a lê.
     agendaEmailsSent: integer("agenda_emails_sent").notNull().default(0),
+    // Quem pôs esta pessoa na lista. Nulo = ela mesma — o valor de todo o
+    // histórico, e o que `entrarNaLista` volta a gravar sempre que a própria
+    // pessoa entra.
+    //
+    // Existe pelos mesmos dois motivos de `players.created_by_player_id`. O
+    // primeiro é que sem esta coluna auto-confirmação e confirmação por terceiro
+    // produzem linhas IDÊNTICAS, e a única testemunha do que aconteceu era uma
+    // linha em `notifications` — outra tabela, com chave opaca, que a pessoa
+    // apaga ao marcar como lida. O segundo é o e-mail: o convite de agenda muda
+    // de texto quando a presença foi marcada por outro (ver
+    // src/lib/agenda-convite.ts), e é daqui que sai o nome de quem marcou.
+    //
+    // `set null`, NUNCA `cascade`: apagar quem confirmou não pode apagar a
+    // presença de quem foi confirmado — a linha carrega V/E/D e avaliação.
+    confirmedByPlayerId: integer("confirmed_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    // Quando a PRÓPRIA pessoa tirou o nome desta lista. É o que desambigua o
+    // `out`, que colapsa três histórias diferentes: "desisti", "nunca respondi"
+    // e "o organizador me tirou". Só a primeira carimba aqui.
+    //
+    // É o registro do consentimento retirado, e por isso ele vale contra todo
+    // mundo — inclusive contra o admin da plataforma, que passa por cima de
+    // qualquer outra regra de fut (ver podeDefinirPresencaPor em
+    // src/lib/permissions.ts). Sem ele, `jaEstaNoFut` devolvia `true` para quem
+    // tinha linha `out` e o organizador repunha na lista quem acabara de sair,
+    // quantas vezes quisesse.
+    //
+    // Limpo quando a pessoa entra por conta própria: o desfazer é dela também.
+    // Junto com ele, `entrarNaLista` fecha a OUTRA fonte de recusa (o convite
+    // `declined`) — meia limpeza deixava a pessoa `in` e recusada ao mesmo
+    // tempo, sem caminho de volta nenhum.
+    //
+    // Só carimba quem tinha linha para sair: "Fora" num fut em que nunca se
+    // esteve não é consentimento retirado, e trancaria o organizador contra
+    // alguém que nunca esteve na lista dele.
+    optedOutAt: timestamp("opted_out_at"),
   },
   (t) => [
     unique().on(t.matchDayId, t.playerId),

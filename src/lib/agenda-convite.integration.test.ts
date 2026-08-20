@@ -129,6 +129,74 @@ describe("agendarConvitesDeAgenda", () => {
     expect(ics).toContain("SEQUENCE:0");
   });
 
+  // O mesmo e-mail, outra história. Não é um segundo envio: um extra para o
+  // mesmo evento gastaria duas vezes a cota diária do Resend e chegaria como
+  // spam — quem confirmou já recebe este aqui, com o .ics.
+  it("quando foi outra pessoa que confirmou, o e-mail diz quem foi e por onde sair", async () => {
+    const fut = await criarFut(FUT_COM_HORA);
+    const jogador = await jogadorComEmail();
+    const organizador = await criarJogador({ name: "Ana Organizadora" });
+    await confirmarPresenca(fut, jogador);
+    await db
+      .update(attendances)
+      .set({ confirmedByPlayerId: organizador.id })
+      .where(eq(attendances.matchDayId, fut.id));
+    const fetchMock = stubResend();
+
+    agendarConvitesDeAgenda(fut.id, [jogador.id]);
+    await flushAfter();
+
+    const payload = payloadDoEnvio(fetchMock);
+    expect(payload.subject).toContain("Ana Organizadora confirmou você");
+    expect(payload.html).toContain("não precisa fazer nada");
+    expect(payload.html).toContain("Retire seu nome da lista");
+    // O .ics continua indo: a pessoa está na lista, e o evento é real até ela
+    // dizer o contrário.
+    expect(icsDoEnvio(fetchMock)).toContain("METHOD:REQUEST");
+  });
+
+  // Quem entrou sozinha nunca tem autor gravado — é o valor de todo o histórico,
+  // e é o que mantém o convite de sempre para a esmagadora maioria.
+  it("quem entrou sozinha recebe o convite de sempre", async () => {
+    const fut = await criarFut(FUT_COM_HORA);
+    const jogador = await jogadorComEmail();
+    await confirmarPresenca(fut, jogador);
+    const fetchMock = stubResend();
+
+    agendarConvitesDeAgenda(fut.id, [jogador.id]);
+    await flushAfter();
+
+    const payload = payloadDoEnvio(fetchMock);
+    expect(payload.subject).toContain("Na agenda:");
+    expect(payload.html).not.toContain("Retire seu nome da lista");
+  });
+
+  // O despachante relê o estado na hora de enviar (só manda para quem está `in`
+  // AGORA), e é isso que faz a saída ganhar da corrida: quem retirou o nome
+  // entre o clique do organizador e o `after()` não recebe um e-mail dizendo
+  // "Fulano confirmou você" depois de já ter saído.
+  it("quem retirou o nome antes do despacho não recebe o convite", async () => {
+    const fut = await criarFut(FUT_COM_HORA);
+    const jogador = await jogadorComEmail();
+    const organizador = await criarJogador({ name: "Ana Organizadora" });
+    await confirmarPresenca(fut, jogador);
+    await db
+      .update(attendances)
+      .set({ confirmedByPlayerId: organizador.id })
+      .where(eq(attendances.matchDayId, fut.id));
+    const fetchMock = stubResend();
+
+    // O estado que o despachante vai encontrar: ela saiu.
+    agendarConvitesDeAgenda(fut.id, [jogador.id]);
+    await db
+      .update(attendances)
+      .set({ status: "out", optedOutAt: new Date() })
+      .where(eq(attendances.matchDayId, fut.id));
+    await flushAfter();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   // `email` é credencial e só nasce do Google; quem entrou por usuário e senha
   // só tem o endereço de contato — e é nele que o convite tem de cair.
   it("cai no contactEmail quando a conta não tem email do Google", async () => {

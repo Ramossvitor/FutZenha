@@ -30,13 +30,22 @@ export function stubResend(...respostas: RespostaFake[]): ReturnType<typeof vi.f
   return fetchMock;
 }
 
-/** O corpo do POST `indice` ao Resend, para asserir destinatário, assunto, texto e anexos. */
+/**
+ * O corpo do POST `indice` ao Resend, para asserir destinatário, assunto, corpo
+ * e anexos.
+ *
+ * `html` e `text` são os dois corpos que `enviarEmail` sempre manda, e os dois
+ * merecem asserção: o texto é o que sobrevive a qualquer cliente, e o html é
+ * onde moram os links — um botão que sumisse do html não apareceria em nenhuma
+ * asserção sobre o texto.
+ */
 export function payloadDoEnvio(
   fetchMock: ReturnType<typeof vi.fn>,
   indice = 0,
 ): {
   to: string[];
   subject: string;
+  html: string;
   text: string;
   attachments?: { filename: string; content: string; content_type: string }[];
 } {
