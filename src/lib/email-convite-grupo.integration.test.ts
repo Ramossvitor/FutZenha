@@ -380,7 +380,7 @@ describe("reenviarAvisoDeGrupo", () => {
 
     it("o teto diário combinado também barra o aviso de grupo", async () => {
       const volume = await criarJogador();
-      await criarVolumeDeConvites(volume, 90, { enviadoHaUmaHora: true });
+      await criarVolumeDeConvites(volume, 100, { enviadoHaUmaHora: true });
       const groupId = await criarGrupo();
       const convidado = await criarConvidado();
       const convite = await criarConviteDeGrupo(groupId, convidado);

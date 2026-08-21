@@ -206,14 +206,17 @@ async function seedRatingRound(matchDayId: number) {
   await db.insert(schema.ratingRoundRaters).values(
     contas.map((c) => ({ roundId: round.id, playerId: c.playerId, userId: c.userId })),
   );
+  // O aviso do encerramento, no formato que o app emite hoje: UM por pessoa,
+  // com o resumo do fut junto (ver avisoDeFutEncerrado). O `rating_round_open`
+  // que ficava aqui não é mais emitido em lugar nenhum.
   await db.insert(schema.notifications).values(
     contas.map((c) => ({
       playerId: c.playerId,
-      type: "rating_round_open" as const,
-      title: "Avalie seus companheiros",
-      body: `Você tem ${PRAZO_AVALIACAO_HORAS} horas para avaliar quem jogou com você.`,
+      type: "fut_encerrado" as const,
+      title: "Fut encerrado — avalie a rapaziada",
+      body: `Saiu o resultado do fut. Vem ver como foi e avaliar quem jogou com você — você tem ${PRAZO_AVALIACAO_HORAS} horas.`,
       href: `/avaliar/${round.id}`,
-      dedupeKey: `rodada:${round.id}:aberta`,
+      dedupeKey: `fut:${matchDayId}:encerrado`,
     })),
   );
   return { round, raters: contas.length };

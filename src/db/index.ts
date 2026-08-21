@@ -147,5 +147,5 @@ export const db = drizzle(connComRetentativa, { schema });
  */
 export type Executor = Pick<
   typeof db,
-  "select" | "insert" | "update" | "delete" | "execute"
+  "select" | "selectDistinct" | "insert" | "update" | "delete" | "execute"
 >;

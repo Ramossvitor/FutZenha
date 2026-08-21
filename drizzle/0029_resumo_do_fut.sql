@@ -1,0 +1,55 @@
+-- Como foi o fut: um aviso so no encerramento, e o e-mail com o placar.
+--
+-- Encerrar o fut mandava uma notificacao ("Avalie seus companheiros") e mais
+-- nada -- nem placar, nem gols, nem times, e e-mail nenhum. Quem e do grupo e
+-- nao jogou nao ficava sabendo. Agora o encerramento entrega UM pacote por
+-- pessoa, nunca dois avisos competindo pela mesma atencao:
+--
+--   quem jogou      -> e-mail com o resumo + aviso levando a avaliacao;
+--   quem jogou e nao avalia (lado sem tres contas) -> o mesmo e-mail, sem a
+--                      chamada, e o aviso levando a pagina do fut;
+--   quem e do grupo -> so o aviso curto, sem e-mail.
+--
+-- Os dois valores de enum entram em statements separados (o drizzle honra os
+-- statement-breakpoint) porque o Postgres nao deixa criar e usar valor de enum
+-- na mesma transacao -- a licao da 0012, que a 0026 repete. Nenhum deles e
+-- usado aqui.
+--
+-- `rating_round_open` continua no enum e nao e mais emitido: `abrirRodada`
+-- parou de notificar e o aviso saiu junto com o resumo. Valor de enum nao se
+-- remove, e ha linhas gravadas em producao que ainda renderizam.
+--
+-- ---------------------------------------------------------------------------
+-- Por que `resumo_email_sent_at` e um carimbo, e nao um contador
+-- ---------------------------------------------------------------------------
+--
+-- A 0027 acabou de ensinar o contrario para a agenda: la o carimbo
+-- `agenda_email_sent_at` e SOBRESCRITO, entao dez envios e um envio deixavam a
+-- linha identica, e os tetos -- que somavam linhas carimbadas -- ficavam presos
+-- em 1. Por isso a coluna irma `agenda_emails_sent`.
+--
+-- O resumo nao tem esse problema, e a diferenca e a que importa: a agenda
+-- REENVIA no mesmo par (atualizacao, cancelamento), o resumo sai UMA vez por
+-- par (fut, jogador), para sempre. O fut encerra uma vez so, nao existe
+-- "reabrir", e o `resumo_email_sent_at is null` no where E a idempotencia do
+-- envio. Aqui uma linha carimbada e exatamente um e-mail, e um contador seria
+-- uma coluna que so assume 0 e 1.
+--
+-- O carimbo tambem nao e enfeite: sem ele o teto diario da instalacao voltaria
+-- a medir meia realidade (o mesmo bug que a agenda tinha antes de entrar na
+-- soma de `tetoDiarioAtingido`), e o resumo e agora o fluxo de MAIOR volume --
+-- um fut de 20 pessoas gasta 20 e-mails de uma vez. E e ele que permite retomar
+-- um lote cortado no meio: o `after()` roda sob maxDuration de 60s, e a porta
+-- de mao unica do encerramento so garante que a ACTION nao repete, nao que o
+-- envio terminou.
+--
+-- Indice parcial no mesmo molde do `attendances_agenda_envio_idx`: so linha
+-- carimbada interessa, e a esmagadora maioria das presencas nunca gerou e-mail.
+--
+-- Tudo aditivo: nenhuma linha existente muda de valor. Nulo e o historico, e e
+-- o valor certo -- ninguem recebeu resumo antes de existir como registra-lo.
+
+ALTER TYPE "public"."notification_type" ADD VALUE 'fut_encerrado';--> statement-breakpoint
+ALTER TYPE "public"."notification_type" ADD VALUE 'fut_encerrado_no_grupo';--> statement-breakpoint
+ALTER TABLE "attendances" ADD COLUMN "resumo_email_sent_at" timestamp;--> statement-breakpoint
+CREATE INDEX "attendances_resumo_envio_idx" ON "attendances" USING btree ("player_id","resumo_email_sent_at") WHERE resumo_email_sent_at is not null;

@@ -7,6 +7,8 @@ import { db, type Executor } from "@/db";
 import { attendances, gamePlayers, games, matchDays } from "@/db/schema";
 import { formatDate } from "@/lib/format";
 import { revalidateMatchDay } from "../../revalidate";
+import { agendarResumoDoFut } from "@/lib/email-resumo";
+import { notificarEncerramento } from "@/lib/encerramento-avisos";
 import { notificar } from "@/lib/notifications";
 import { avaliarMarcacao, entrarNaLista, mereceAviso, travarFut } from "@/lib/presenca";
 import { agendarDespachoDePush } from "@/lib/push-envio";
@@ -190,7 +192,7 @@ async function marcarFaltasAutomaticas(
 }
 
 export async function confirmarEncerramento(matchDayId: number) {
-  const { matchDay } = await requireFutAdmin(matchDayId);
+  const { session, matchDay } = await requireFutAdmin(matchDayId);
   if (matchDay.status === "finished") redirect(`/fut/${matchDayId}/gerenciar`);
 
   // Um jogo sem gente dos dois lados não tem placar que faça sentido, nem
@@ -248,8 +250,22 @@ export async function confirmarEncerramento(matchDayId: number) {
       .set({ status: "finished", finishedAt: sql`now()` })
       .where(eq(matchDays.id, matchDayId));
 
-    await abrirRodada(tx, matchDayId);
+    // O aviso do encerramento é UM só por pessoa, e por isso ele sai daqui e
+    // não de dentro do abrirRodada: quem monta precisa saber tanto de quem
+    // avalia quanto de quem jogou e NÃO avalia — e de quem é do grupo e nem
+    // jogou. O `abrirRodada` devolve o eleitorado justamente para isso.
+    const rodada = await abrirRodada(tx, matchDayId);
+    await notificarEncerramento(tx, matchDay, rodada, session.player.id);
   });
+
+  // Fura o throttle: "acabou o fut, vem ver como foi" perde o sentido se chegar
+  // no próximo pageview de outra pessoa. Fora da transação, porque rede dentro
+  // dela é o que a casa não faz.
+  agendarDespachoDePush(true);
+  // O e-mail com o placar também só depois do commit, e no `after()` — são até
+  // 20 POSTs sequenciais para o Resend, que não podem segurar o redirect nem
+  // viver dentro de uma transação.
+  agendarResumoDoFut(matchDayId);
 
   revalidatePath("/");
   revalidatePath("/futs");

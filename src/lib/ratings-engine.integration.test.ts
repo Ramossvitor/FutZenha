@@ -108,17 +108,17 @@ async function previaViraFalta(fut: MatchDay): Promise<number[]> {
 }
 
 describe("abrirRodada", () => {
-  it("cria a rodada com os raters elegíveis e notifica cada um", async () => {
+  it("cria a rodada com os raters elegíveis e devolve o eleitorado", async () => {
     const fut = await criarFut();
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
     await criarJogo(fut, timeA.jogadores, timeB.jogadores);
 
-    const rodadaId = await abrirRodada(db, fut.id);
-    expect(rodadaId).not.toBeNull();
+    const aberta = await abrirRodada(db, fut.id);
+    expect(aberta).not.toBeNull();
 
     const rodada = await rodadaDoFut(fut);
-    expect(rodada.id).toBe(rodadaId);
+    expect(rodada.id).toBe(aberta!.roundId);
     expect(rodada.status).toBe("open");
 
     const raters = await db
@@ -131,15 +131,28 @@ describe("abrirRodada", () => {
     );
     expect(raters.every((r) => r.submittedAt === null)).toBe(true);
 
-    const avisos = await db
-      .select()
-      .from(notifications)
-      .where(eq(notifications.type, "rating_round_open"));
-    expect(avisos).toHaveLength(6);
-    expect(avisos.map((a) => a.href)).toContain(`/avaliar/${rodada.id}`);
+    // O retorno espelha a tabela: é dele que sai o href de quem avalia, e uma
+    // segunda consulta para descobrir "quem avalia" divergiria do congelado.
+    expect(aberta!.raters.map((r) => r.playerId).sort((a, b) => a - b)).toEqual(
+      esperados.sort((a, b) => a - b),
+    );
   });
 
-  it("abrir duas vezes no mesmo fut não duplica rodada, raters nem avisos", async () => {
+  // O aviso saiu daqui: o encerramento manda UM só, com o resumo do fut junto
+  // (ver notificarEncerramento). Este teste é o guarda contra o `notificar` de
+  // volta — dois avisos no mesmo segundo é exatamente o que se desfez.
+  it("não notifica ninguém — o aviso do encerramento é outro, e é um só", async () => {
+    const fut = await criarFut();
+    const timeA = await criarTrioComConta();
+    const timeB = await criarTrioComConta();
+    await criarJogo(fut, timeA.jogadores, timeB.jogadores);
+
+    await abrirRodada(db, fut.id);
+
+    expect(await db.select().from(notifications)).toHaveLength(0);
+  });
+
+  it("abrir duas vezes no mesmo fut não duplica rodada nem raters", async () => {
     const fut = await criarFut();
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
@@ -165,13 +178,8 @@ describe("abrirRodada", () => {
     const raters = await db
       .select()
       .from(ratingRoundRaters)
-      .where(eq(ratingRoundRaters.roundId, primeira!));
+      .where(eq(ratingRoundRaters.roundId, primeira!.roundId));
     expect(raters).toHaveLength(6);
-    const avisos = await db
-      .select()
-      .from(notifications)
-      .where(eq(notifications.type, "rating_round_open"));
-    expect(avisos).toHaveLength(6);
   });
 
   it("fechar a rodada grava skill_history, move players.skill e notifica quem mudou", async () => {
@@ -179,7 +187,7 @@ describe("abrirRodada", () => {
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
     await criarJogo(fut, timeA.jogadores, timeB.jogadores);
-    const rodadaId = (await abrirRodada(db, fut.id))!;
+    const rodadaId = (await abrirRodada(db, fut.id))!.roundId;
 
     await avaliarTrio(rodadaId, timeA.jogadores, 10);
     await avaliarTrio(rodadaId, timeB.jogadores, 2);
@@ -253,7 +261,7 @@ describe("replay com rodada legada", () => {
 
     // Simula uma rodada apurada antes da meia estrela: quem seta a flag é a
     // MIGRATION (nas rodadas fechadas da época) — fecharRodada nunca seta.
-    const rodadaAntiga = (await abrirRodada(db, futAntigo.id))!;
+    const rodadaAntiga = (await abrirRodada(db, futAntigo.id))!.roundId;
     await avaliarTrio(rodadaAntiga, trio.jogadores, 2); // o 1★ da época, dobrado
     await db
       .update(ratingRounds)
@@ -261,7 +269,7 @@ describe("replay com rodada legada", () => {
       .where(eq(ratingRounds.id, rodadaAntiga));
     await db.transaction((tx) => fecharRodada(tx, rodadaAntiga, "admin"));
 
-    const rodadaNova = (await abrirRodada(db, futNovo.id))!;
+    const rodadaNova = (await abrirRodada(db, futNovo.id))!.roundId;
     await avaliarTrio(rodadaNova, trio.jogadores, 2); // as MESMAS meias 2
     await db.transaction((tx) => fecharRodada(tx, rodadaNova, "admin"));
 
@@ -281,7 +289,7 @@ describe("replay com rodada legada", () => {
     const fut = await criarFut();
     const trio = await criarTrioComConta();
     await criarJogo(fut, trio.jogadores, [await criarJogador(), await criarJogador()]);
-    const rodadaId = (await abrirRodada(db, fut.id))!;
+    const rodadaId = (await abrirRodada(db, fut.id))!.roundId;
 
     await avaliarTrio(rodadaId, trio.jogadores, 7);
     await db
@@ -301,7 +309,7 @@ describe("enviarAvaliacoes", () => {
     const trio = await criarTrioComConta();
     const semConta = [await criarJogador(), await criarJogador(), await criarJogador()];
     await criarJogo(fut, trio.jogadores, semConta);
-    const rodadaId = (await abrirRodada(db, fut.id))!;
+    const rodadaId = (await abrirRodada(db, fut.id))!.roundId;
     return { fut, trio, rodadaId };
   }
 
@@ -312,9 +320,12 @@ describe("enviarAvaliacoes", () => {
     const companheiros = await getCompanheiros(fut.id, trio.jogadores[0].id);
     expect(companheiros).toHaveLength(2);
 
-    // 3,5 estrelas — meia estrela atravessando a action inteira.
-    const resultado = await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 7));
-    expect(resultado).toEqual({ success: true });
+    // 3,5 estrelas — meia estrela atravessando a action inteira. Enviar termina
+    // na página do fut: é de lá que a pessoa veio pela notificação.
+    const destino = await esperaRedirect(
+      enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 7)),
+    );
+    expect(destino).toBe(`/fut/${fut.id}`);
 
     const notas = await db
       .select()
@@ -344,8 +355,9 @@ describe("enviarAvaliacoes", () => {
     for (const [i, conta] of trio.contas.entries()) {
       await logarComo(conta);
       const companheiros = await getCompanheiros(fut.id, trio.jogadores[i].id);
-      const resultado = await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 8));
-      expect(resultado).toEqual({ success: true });
+      expect(
+        await esperaRedirect(enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 8))),
+      ).toBe(`/fut/${fut.id}`);
     }
 
     const rodada = await rodadaDoFut(fut);
@@ -385,7 +397,7 @@ describe("getAvaliadoresDaRodada", () => {
     const caio = await criarJogadorComConta({ name: "Caio" });
     const semConta = [await criarJogador(), await criarJogador(), await criarJogador()];
     await criarJogo(fut, [ana.jogador, bia.jogador, caio.jogador], semConta);
-    const rodadaId = (await abrirRodada(db, fut.id))!;
+    const rodadaId = (await abrirRodada(db, fut.id))!.roundId;
     return { fut, ana, bia, caio, rodadaId };
   }
 
@@ -402,9 +414,9 @@ describe("getAvaliadoresDaRodada", () => {
 
     await logarComo(bia.conta);
     const companheiros = await getCompanheiros(fut.id, bia.jogador.id);
-    expect(await enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 6))).toEqual({
-      success: true,
-    });
+    expect(
+      await esperaRedirect(enviarAvaliacoes(rodadaId, {}, formularioDeNotas(companheiros, 6))),
+    ).toBe(`/fut/${fut.id}`);
 
     // Pendentes primeiro (por nome), quem já avaliou depois — nunca na ordem de
     // envio, que o anonimato não entrega.
@@ -421,7 +433,7 @@ describe("getAvaliadoresDaRodada", () => {
     const dono = await criarJogadorComConta({ name: "Eduardo", nickname: "Du" });
     const trio = await criarTrioComConta();
     await criarJogo(fut, [dono.jogador, ...trio.jogadores], [await criarJogador()]);
-    const rodadaId = (await abrirRodada(db, fut.id))!;
+    const rodadaId = (await abrirRodada(db, fut.id))!.roundId;
 
     const avaliadores = await getAvaliadoresDaRodada(rodadaId);
     expect(avaliadores.find((a) => a.name === "Eduardo")?.nickname).toBe("Du");

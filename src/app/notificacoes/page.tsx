@@ -16,12 +16,14 @@ import type { notificationTypeEnum } from "@/db/schema";
 type TipoDeAviso = (typeof notificationTypeEnum.enumValues)[number];
 
 /**
- * O ícone por família de aviso. São 19 tipos e cinco famílias — o que importa
+ * O ícone por família de aviso. São 21 tipos e cinco famílias — o que importa
  * de relance é a natureza do aviso, não o tipo exato.
  *
  * `rating_round_closed` está declarado no enum mas nunca é emitido: o
- * fechamento avisa por skill_changed. Fica mapeado mesmo assim, porque um
- * `undefined` aqui quebraria a linha.
+ * fechamento avisa por skill_changed. `rating_round_open` também não é mais —
+ * o encerramento passou a mandar um aviso só, com o resumo do fut junto (ver
+ * fut_encerrado). Os dois ficam mapeados mesmo assim, porque há linhas antigas
+ * em produção e um `undefined` aqui quebraria a linha.
  */
 const ICONE: Record<TipoDeAviso, { icone: React.ReactNode; cor: string }> = {
   rating_round_open: { icone: <IconeBola />, cor: "text-accent-ink" },
@@ -46,6 +48,10 @@ const ICONE: Record<TipoDeAviso, { icone: React.ReactNode; cor: string }> = {
   fut_convite: { icone: <IconeBola />, cor: "text-accent-ink" },
   fut_pedido: { icone: <IconeBola />, cor: "text-warn-ink" },
   fut_pedido_resolvido: { icone: <IconeBola />, cor: "text-fg-3" },
+  // O encerramento. Quem jogou vem em accent — pode ter avaliação esperando por
+  // ele; quem só é do grupo vem apagado, que é o peso da notícia para ele.
+  fut_encerrado: { icone: <IconeBola />, cor: "text-accent-ink" },
+  fut_encerrado_no_grupo: { icone: <IconeBola />, cor: "text-fg-3" },
 };
 
 export const metadata: Metadata = { title: "Avisos" };

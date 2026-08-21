@@ -66,7 +66,7 @@ test.describe("celular", () => {
     // O requisito do usuário, escrito como teste. A rodada aberta vem pelos
     // avisos, como no avaliar.spec — nunca por id hardcoded.
     await page.goto("/notificacoes");
-    await page.getByRole("link", { name: /Avalie seus companheiros/ }).first().click();
+    await page.getByRole("link", { name: /avalie a rapaziada/i }).first().click();
     await expect(page).toHaveURL(/\/avaliar\/\d+$/);
 
     const nav = page.getByRole(NAV.role, { name: NAV.nome });
@@ -77,9 +77,17 @@ test.describe("celular", () => {
       name: /Continuar — falta o melhor em campo|Enviar avaliação|Atualizar avaliação/,
     });
 
-    for (const posicao of ["topo", "fim"] as const) {
+    // A ancoragem é no FORMULÁRIO, não no topo da página. O resumo do fut agora
+    // vem antes dele (o aviso do encerramento prometeu "vem ver como foi"), e
+    // no topo da página o formulário inteiro — com o rodapé sticky dele — ainda
+    // está abaixo da dobra. `sticky` nunca tira o elemento do próprio bloco
+    // contêiner, então ali o botão está fora da tela, e não POR BAIXO das abas,
+    // que é o que este teste existe para impedir.
+    for (const posicao of ["começo do formulário", "fim"] as const) {
       if (posicao === "fim") {
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      } else {
+        await page.getByTitle("5 estrelas", { exact: true }).first().scrollIntoViewIfNeeded();
       }
       const caixaEnviar = await enviar.boundingBox();
       const caixaNav = await nav.boundingBox();

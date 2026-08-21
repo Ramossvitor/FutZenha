@@ -16,6 +16,9 @@
 import { urlGoogleAgenda, type FutParaAgenda } from "./agenda";
 import type { EmailPronto } from "./email-envio";
 import { formatDate, formatHorarioPorExtenso } from "./format";
+// ./resumo é puro como este arquivo — a derivação do placar mora lá, e trazê-la
+// para cá seria a terceira cópia da regra do colete de cada gol.
+import { linhaDePlacar, type ResumoDoFut } from "./resumo";
 import { siteUrl } from "./site-url";
 
 /**
@@ -45,8 +48,19 @@ const ACCENT = "#B8EF2A";
 const ACCENT_INK = "#457200";
 const ON_ACCENT = "#0B0E0D";
 
+/**
+ * Por que este e-mail chegou. Fica no rodapé da moldura, e o padrão é o do
+ * convite — que era o único fluxo quando ela nasceu.
+ *
+ * Parametrizado quando o resumo do fut chegou: ele vai para quem JOGOU, e dizer
+ * "alguém convidou você" a quem acabou de sair da quadra é mentira. O default
+ * mantém os quatro templates antigos intactos.
+ */
+const RODAPE_CONVITE =
+  "Você recebeu este email porque alguém do FutZenha convidou você. Se não esperava por ele, pode ignorá-lo.";
+
 /** A moldura comum: fundo, cartão central de ~520px e rodapé explicando o porquê do email. */
-function moldura(conteudo: string): string {
+function moldura(conteudo: string, rodape: string = RODAPE_CONVITE): string {
   return [
     `<div style="margin:0;padding:24px 12px;background-color:${CANVAS};">`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background-color:${SURFACE};border:1px solid ${LINE};border-radius:12px;">`,
@@ -54,7 +68,7 @@ function moldura(conteudo: string): string {
     `<tr><td style="padding:8px 28px 28px 28px;font-family:${FONTE};font-size:14px;line-height:1.6;color:${FG};">${conteudo}</td></tr>`,
     `</table>`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;">`,
-    `<tr><td style="padding:16px 28px;font-family:${FONTE};font-size:11px;line-height:1.5;color:${FG_MUDO};">Você recebeu este email porque alguém do FutZenha convidou você. Se não esperava por ele, pode ignorá-lo.</td></tr>`,
+    `<tr><td style="padding:16px 28px;font-family:${FONTE};font-size:11px;line-height:1.5;color:${FG_MUDO};">${escaparHtml(rodape)}</td></tr>`,
     `</table>`,
     `</div>`,
   ].join("");
@@ -303,4 +317,151 @@ export function emailDeEventoDeAgenda(dados: {
   ].join("\n");
 
   return { assunto, html, texto };
+}
+
+/**
+ * O resumo do fut encerrado: placar de cada jogo, quem marcou, artilharia e os
+ * elencos. Vai só para quem JOGOU — quem não esteve lá recebe apenas o aviso
+ * curto no app (ver notificarEncerramento).
+ *
+ * `podeAvaliar` decide o destino e a chamada. Quem é avaliador elegível vai para
+ * o formulário, que mostra este mesmo resumo antes das estrelas; quem jogou e
+ * não avalia — lado sem três contas ativas — vai para a página do fut. Um href
+ * só levaria metade do elenco a um 404.
+ *
+ * Duas coisas que o resumo NÃO traz, e é melhor dizer do que deixar procurar:
+ * o melhor em campo (só existe quando a rodada de avaliação fecha) e um placar
+ * definitivo (ele é corrigível por 24h — ver ./janela-correcao). As duas viram
+ * uma linha de rodapé em vez de uma ausência inexplicada.
+ */
+export function emailDeResumoDoFut(dados: {
+  nome: string;
+  fut: { id: number; date: string; location: string };
+  resumo: ResumoDoFut;
+  href: string;
+  podeAvaliar: boolean;
+  prazoHoras: number;
+}): EmailPronto {
+  const url = `${siteUrl()}${dados.href}`;
+  const quando = formatDate(dados.fut.date);
+  const placar = linhaDePlacar(dados.resumo);
+
+  const jogosHtml = dados.resumo.jogos
+    .map((jogo) => {
+      const golsHtml = jogo.gols
+        .map(
+          (gol) =>
+            `<tr><td style="padding:2px 0;font-size:13px;color:${gol.autor === null ? FG_MUDO : FG};">${
+              gol.autor === null
+                ? "<em>Gol contra / sem autor</em>"
+                : escaparHtml(gol.autor)
+            }${gol.time ? ` <span style="color:${FG_MUDO};">(${escaparHtml(gol.time)})</span>` : ""}</td>` +
+            `<td align="right" style="padding:2px 0;font-size:13px;font-weight:bold;color:${FG};">${gol.quantidade}</td></tr>`,
+        )
+        .join("");
+
+      return [
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px 0;border:1px solid ${LINE};border-radius:8px;">`,
+        `<tr><td style="padding:12px 14px;font-family:${FONTE};">`,
+        `<p style="margin:0;font-size:15px;font-weight:bold;color:${FG};">${escaparHtml(jogo.timeA)} <span style="color:${ACCENT_INK};">${jogo.placarA} × ${jogo.placarB}</span> ${escaparHtml(jogo.timeB)}</p>`,
+        golsHtml
+          ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;border-top:1px solid ${LINE};font-family:${FONTE};">${golsHtml}</table>`
+          : `<p style="margin:6px 0 0 0;font-size:12px;color:${FG_MUDO};">Sem gols lançados.</p>`,
+        `</td></tr></table>`,
+      ].join("");
+    })
+    .join("");
+
+  const artilhariaHtml =
+    dados.resumo.artilheiros.length === 0
+      ? ""
+      : [
+          `<p style="margin:20px 0 6px 0;font-size:13px;font-weight:bold;color:${FG};">Artilharia do dia</p>`,
+          `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-family:${FONTE};">`,
+          dados.resumo.artilheiros
+            .map(
+              (a) =>
+                `<tr><td style="padding:2px 0;font-size:13px;color:${FG};">${escaparHtml(a.rotulo)}</td>` +
+                `<td align="right" style="padding:2px 0;font-size:13px;font-weight:bold;color:${FG};">${a.gols}</td></tr>`,
+            )
+            .join(""),
+          `</table>`,
+        ].join("");
+
+  const timesHtml =
+    dados.resumo.times.length === 0
+      ? ""
+      : [
+          `<p style="margin:20px 0 6px 0;font-size:13px;font-weight:bold;color:${FG};">Os times</p>`,
+          dados.resumo.times
+            .map(
+              (time) =>
+                `<p style="margin:0 0 8px 0;font-size:13px;color:${FG};"><strong>${escaparHtml(time.nome)}</strong><br />` +
+                `<span style="color:${FG_MUDO};">${time.jogadores
+                  .map((j) => escaparHtml(j.rotulo) + (j.isGoalkeeper ? " (goleiro)" : ""))
+                  .join(", ")}</span></p>`,
+            )
+            .join(""),
+        ].join("");
+
+  const html = moldura(
+    [
+      `<p style="margin:0 0 4px 0;font-size:18px;font-weight:bold;color:${FG};">Como foi o fut de ${escaparHtml(quando)}</p>`,
+      `<p style="margin:0 0 16px 0;font-size:13px;color:${FG_MUDO};">${escaparHtml(dados.fut.location)} · ${escaparHtml(placar)}</p>`,
+      jogosHtml,
+      artilhariaHtml,
+      timesHtml,
+      `<p style="margin:20px 0;">${botao(url, dados.podeAvaliar ? "Avaliar a rapaziada" : "Ver o fut")}</p>`,
+      dados.podeAvaliar
+        ? `<p style="margin:12px 0 0 0;font-size:12px;color:${FG_MUDO};">Você tem ${dados.prazoHoras} horas para avaliar quem dividiu o lado com você. Ninguém vê quem deu cada estrela.</p>`
+        : "",
+      `<p style="margin:12px 0 0 0;font-size:12px;color:${FG_MUDO};">O melhor em campo sai quando a avaliação fechar. O placar e os gols ainda podem ser corrigidos nas primeiras 24 horas — o que está aqui é como estava no encerramento.</p>`,
+      urlDeApoio(url),
+    ].join(""),
+    "Você recebeu este e-mail porque jogou este fut no FutZenha.",
+  );
+
+  // Dos valores CRUS, como todos os templates daqui: derivar do HTML deixaria
+  // `&#39;` visível em cliente de texto puro, e nome de time e apelido são texto
+  // livre de admin.
+  const texto = [
+    `Como foi o fut de ${quando}`,
+    `${dados.fut.location} · ${placar}`,
+    ``,
+    ...dados.resumo.jogos.flatMap((jogo) => [
+      `${jogo.timeA} ${jogo.placarA} x ${jogo.placarB} ${jogo.timeB}`,
+      ...jogo.gols.map(
+        (gol) =>
+          `  - ${gol.autor ?? "Gol contra / sem autor"}${gol.time ? ` (${gol.time})` : ""}: ${gol.quantidade}`,
+      ),
+      ``,
+    ]),
+    ...(dados.resumo.artilheiros.length > 0
+      ? [
+          `Artilharia do dia:`,
+          ...dados.resumo.artilheiros.map((a) => `  - ${a.rotulo}: ${a.gols}`),
+          ``,
+        ]
+      : []),
+    ...(dados.resumo.times.length > 0
+      ? [
+          `Os times:`,
+          ...dados.resumo.times.map(
+            (time) =>
+              `  ${time.nome}: ${time.jogadores
+                .map((j) => j.rotulo + (j.isGoalkeeper ? " (goleiro)" : ""))
+                .join(", ")}`,
+          ),
+          ``,
+        ]
+      : []),
+    dados.podeAvaliar
+      ? `Avalie quem dividiu o lado com você — você tem ${dados.prazoHoras} horas:`
+      : `Veja o fut:`,
+    url,
+    ``,
+    `O melhor em campo sai quando a avaliação fechar. O placar e os gols ainda podem ser corrigidos nas primeiras 24 horas.`,
+  ].join("\n");
+
+  return { assunto: `Como foi o fut de ${quando}`, html, texto };
 }

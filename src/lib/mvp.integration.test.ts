@@ -23,6 +23,7 @@ import {
 import { abrirRodada, fecharRodada } from "@/lib/ratings-engine";
 import { getMvpRanking } from "@/lib/stats";
 import { criarFut, criarJogador, criarJogadorComConta, logarComo } from "@/test/fixtures";
+import { esperaRedirect } from "@/test/navigation-fake";
 import { avaliarTrio, criarJogo, criarTrioComConta } from "@/test/fixtures-avaliacao";
 
 /** Dois trios com conta, um de cada lado — todo mundo avalia e vota. */
@@ -31,7 +32,7 @@ async function montarFutCompleto() {
   const timeA = await criarTrioComConta();
   const timeB = await criarTrioComConta();
   await criarJogo(fut, timeA.jogadores, timeB.jogadores);
-  const rodadaId = (await abrirRodada(db, fut.id))!;
+  const rodadaId = (await abrirRodada(db, fut.id))!.roundId;
   return { fut, timeA, timeB, rodadaId };
 }
 
@@ -144,20 +145,18 @@ describe("enviarAvaliacoes com o voto de MVP", () => {
     await logarComo(timeA.contas[0]);
     const companheiros = await getCompanheiros(fut.id, timeA.jogadores[0].id);
 
-    const primeiro = await enviarAvaliacoes(
-      rodadaId,
-      {},
-      formulario(companheiros, 8, timeB.jogadores[0].id),
+    const primeiro = await esperaRedirect(
+      enviarAvaliacoes(rodadaId, {}, formulario(companheiros, 8, timeB.jogadores[0].id)),
     );
-    expect(primeiro).toEqual({ success: true });
+    expect(primeiro).toBe(`/fut/${fut.id}`);
     expect(await votoGravado(rodadaId, timeA.jogadores[0])).toBe(timeB.jogadores[0].id);
 
-    const segundo = await enviarAvaliacoes(
-      rodadaId,
-      {},
-      formulario(companheiros, 8, timeB.jogadores[1].id),
+    // Reenviar troca o voto e cai na página do fut de novo — mesma saída do
+    // primeiro envio, de propósito.
+    const segundo = await esperaRedirect(
+      enviarAvaliacoes(rodadaId, {}, formulario(companheiros, 8, timeB.jogadores[1].id)),
     );
-    expect(segundo).toEqual({ success: true });
+    expect(segundo).toBe(`/fut/${fut.id}`);
     expect(await votoGravado(rodadaId, timeA.jogadores[0])).toBe(timeB.jogadores[1].id);
   });
 });
@@ -176,9 +175,9 @@ describe("apuração no fechamento", () => {
       const companheiros = await getCompanheiros(fut.id, jogador.id);
       // O eleito não vota em si: vota no primeiro do outro lado.
       const voto = jogador.id === eleito.id ? timeA.jogadores[0].id : eleito.id;
-      expect(await enviarAvaliacoes(rodadaId, {}, formulario(companheiros, 8, voto))).toEqual({
-        success: true,
-      });
+      expect(
+        await esperaRedirect(enviarAvaliacoes(rodadaId, {}, formulario(companheiros, 8, voto))),
+      ).toBe(`/fut/${fut.id}`);
     }
 
     const avisos = await avisosDeMvp(rodadaId);
@@ -270,7 +269,7 @@ describe("getMvpRanking", () => {
     ) => {
       const fut = await criarFut({ status: "finished", ...extra });
       await criarJogo(fut, timeA.jogadores, timeB.jogadores);
-      const rodadaId = (await abrirRodada(db, fut.id))!;
+      const rodadaId = (await abrirRodada(db, fut.id))!.roundId;
       await votar(rodadaId, votos);
       await db.transaction((tx) => fecharRodada(tx, rodadaId, "prazo"));
     };
@@ -312,7 +311,7 @@ describe("getMvpRanking", () => {
 
     const fut = await criarFut({ status: "finished", groupId: grupo.id, date: "2026-08-05" });
     await criarJogo(fut, timeA.jogadores, timeB.jogadores);
-    const rodadaId = (await abrirRodada(db, fut.id))!;
+    const rodadaId = (await abrirRodada(db, fut.id))!.roundId;
     // Um voto para cada, sem nenhuma avaliação: empate até na média (ambas
     // ausentes) — o título é dividido.
     await votar(rodadaId, [

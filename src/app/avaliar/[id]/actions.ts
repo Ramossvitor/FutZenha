@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { and, eq, gt, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
@@ -10,7 +11,9 @@ import { fecharSeTodosAvaliaram } from "@/lib/ratings-engine";
 import { esquecerStats } from "@/lib/stats";
 import { requirePlayer } from "@/lib/require-player";
 
-export type AvaliarState = { error?: string; success?: boolean };
+// Só o erro: o sucesso não volta como estado porque não volta nada — a action
+// termina em redirect() para a página do fut.
+export type AvaliarState = { error?: string };
 
 // O form fala meias-estrelas inteiras (1..10): 7 = 3,5★. Nenhum float
 // atravessa o FormData — é o que evita a armadilha "3,5" vs "3.5" de locale.
@@ -163,9 +166,22 @@ export async function enviarAvaliacoes(
   revalidatePath(`/avaliar/${roundId}`);
   revalidatePath("/perfil");
   revalidatePath("/rankings");
+  revalidatePath(`/fut/${rodada.matchDayId}`);
   // O memo de src/lib/stats.ts guarda os agregados por até MEMO_TTL_MS; sem
   // isto, o ranking e o perfil público ficariam com o número velho por esse
   // tempo depois de uma mudança que os afeta.
   esquecerStats();
-  return { success: true };
+
+  // Termina na página do fut, que é onde a pessoa queria chegar: ela veio da
+  // notificação de encerramento, viu o resumo aqui em cima e avaliou. Mudar a
+  // nota é voltar ao painel de avaliação (/avaliar), e o reenvio cai aqui de
+  // novo — a simetria é de propósito: um reenvio que ficasse na página seria
+  // uma regra a mais para adivinhar.
+  //
+  // `redirect()` na action, e não router.push num efeito sobre `state.success`:
+  // navegação em efeito é o anti-padrão que a doc do Next descreve, o banner de
+  // sucesso pisca antes de sair, e `success` continua true se a pessoa voltar —
+  // o efeito redispararia. FORA do try acima, como a doc pede: o redirect
+  // funciona lançando.
+  redirect(`/fut/${rodada.matchDayId}`);
 }

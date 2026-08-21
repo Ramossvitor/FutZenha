@@ -4,9 +4,11 @@ import {
   emailDeConvitePlataforma,
   emailDeEventoDeAgenda,
   emailDeResetDeAcesso,
+  emailDeResumoDoFut,
   escaparHtml,
   type TipoDeEventoDeAgenda,
 } from "./email-modelos";
+import { montarResumo } from "./resumo";
 
 describe("escaparHtml", () => {
   it("escapa os cinco caracteres com significado em HTML", () => {
@@ -278,5 +280,150 @@ describe("emailDeEventoDeAgenda", () => {
         expect(email.html).not.toContain("Retire seu nome");
       }
     });
+  });
+});
+
+describe("emailDeResumoDoFut", () => {
+  const resumo = montarResumo({
+    times: [
+      { id: 1, name: "Verde", sortOrder: 0 },
+      { id: 2, name: "Azul & Cia", sortOrder: 1 },
+    ],
+    jogos: [
+      {
+        id: 10,
+        teamAId: 1,
+        teamBId: 2,
+        scoreA: 2,
+        scoreB: 1,
+        sortOrder: 0,
+        startedAt: null,
+        finishedAt: null,
+      },
+    ],
+    gols: [
+      { gameId: 10, playerId: 5, playerName: "Zé D'Ávila", nickname: null, quantity: 2, side: null },
+      { gameId: 10, playerId: null, playerName: null, nickname: null, quantity: 1, side: "B" },
+    ],
+    escalacao: [
+      { gameId: 10, playerId: 5, side: "A" },
+      { gameId: 10, playerId: 6, side: "B" },
+    ],
+    elencos: [
+      { teamId: 1, playerId: 5, name: "Zé D'Ávila", nickname: null, isGoalkeeper: false },
+      { teamId: 2, playerId: 6, name: "Pedro <b>", nickname: null, isGoalkeeper: true },
+    ],
+  });
+
+  const dados = {
+    nome: "Zé",
+    fut: { id: 7, date: "2026-08-13", location: "Arena D'Oeste" },
+    resumo,
+    href: "/avaliar/12",
+    podeAvaliar: true,
+    prazoHoras: 36,
+  };
+
+  it("html e texto levam o placar de cada jogo", () => {
+    const email = emailDeResumoDoFut(dados);
+    expect(email.html).toContain("2 × 1");
+    expect(email.texto).toContain("Verde 2 x 1 Azul & Cia");
+  });
+
+  it("o assunto diz de que fut se trata", () => {
+    expect(emailDeResumoDoFut(dados).assunto).toContain("13/08");
+  });
+
+  // Nome de time e local são texto livre de admin, e apelido é texto livre da
+  // própria pessoa: sem escape, `<b>` viraria markup dentro do e-mail.
+  it("escapa nome de time, de jogador e local no html", () => {
+    const email = emailDeResumoDoFut(dados);
+    expect(email.html).toContain("Pedro &lt;b&gt;");
+    expect(email.html).toContain("Azul &amp; Cia");
+    expect(email.html).toContain("Arena D&#39;Oeste");
+    expect(email.html).not.toContain("Pedro <b>");
+  });
+
+  // A versão texto sai dos valores CRUS: derivá-la do html deixaria `&#39;` e
+  // `&amp;` visíveis em cliente de texto puro.
+  it("o texto leva os valores crus, sem entidade de html", () => {
+    const email = emailDeResumoDoFut(dados);
+    expect(email.texto).toContain("Zé D'Ávila");
+    expect(email.texto).toContain("Arena D'Oeste");
+    expect(email.texto).toContain("Pedro <b>");
+    expect(email.texto).not.toContain("&#39;");
+    expect(email.texto).not.toContain("&amp;");
+  });
+
+  it("o link vai no html e no texto", () => {
+    const email = emailDeResumoDoFut(dados);
+    expect(email.html).toContain("/avaliar/12");
+    expect(email.texto).toContain("/avaliar/12");
+  });
+
+  it("o botão e a chamada mudam com podeAvaliar", () => {
+    const avaliador = emailDeResumoDoFut(dados);
+    expect(avaliador.html).toContain("Avaliar a rapaziada");
+    expect(avaliador.html).toContain("36 horas");
+
+    const espectador = emailDeResumoDoFut({
+      ...dados,
+      href: "/fut/7",
+      podeAvaliar: false,
+    });
+    expect(espectador.html).toContain("Ver o fut");
+    expect(espectador.html).not.toContain("36 horas");
+    expect(espectador.texto).toContain("/fut/7");
+  });
+
+  it("gol sem autor aparece como tal, e fica fora da artilharia", () => {
+    const email = emailDeResumoDoFut(dados);
+    expect(email.texto).toContain("Gol contra / sem autor");
+    // Só o Zé pontuou: dois gols dele, e o gol contra sem dono.
+    expect(email.texto).toContain("Artilharia do dia:");
+    expect(email.texto).toContain("- Zé D'Ávila: 2");
+  });
+
+  it("marca o goleiro no elenco", () => {
+    expect(emailDeResumoDoFut(dados).texto).toContain("Pedro <b> (goleiro)");
+  });
+
+  // O que o resumo não tem, dito em vez de omitido.
+  it("avisa que o MVP ainda não saiu e que o placar é corrigível", () => {
+    const email = emailDeResumoDoFut(dados);
+    expect(email.html).toContain("melhor em campo sai quando a avaliação fechar");
+    expect(email.html).toContain("24 horas");
+  });
+
+  // A moldura tem o rodapé do convite cravado por padrão — este e-mail vai para
+  // quem jogou, e "alguém convidou você" seria mentira.
+  it("o rodapé é o de quem jogou, não o do convite", () => {
+    const email = emailDeResumoDoFut(dados);
+    expect(email.html).toContain("porque jogou este fut");
+    expect(email.html).not.toContain("convidou você");
+  });
+
+  it("fut sem times nem artilharia ainda monta o e-mail", () => {
+    const vazio = montarResumo({
+      times: [],
+      jogos: [
+        {
+          id: 1,
+          teamAId: 9,
+          teamBId: 8,
+          scoreA: 0,
+          scoreB: 0,
+          sortOrder: 0,
+          startedAt: null,
+          finishedAt: null,
+        },
+      ],
+      gols: [],
+      escalacao: [],
+      elencos: [],
+    });
+    const email = emailDeResumoDoFut({ ...dados, resumo: vazio });
+    expect(email.html).toContain("Sem gols lançados");
+    expect(email.texto).not.toContain("Artilharia do dia");
   });
 });
