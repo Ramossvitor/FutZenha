@@ -8,6 +8,7 @@ const adminLinks = [
   { href: "/admin/jogadores", label: "Jogadores" },
   { href: "/admin/futs", label: "Supervisão" },
   { href: "/admin/avaliacoes", label: "Avaliações" },
+  { href: "/admin/zenhas", label: "Zenhas" },
 ] as const;
 
 // O guard aqui é rede, não garantia: layout não re-renderiza a cada navegação

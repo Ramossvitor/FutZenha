@@ -29,6 +29,7 @@ import {
 } from "@/lib/skill";
 import { PRAZO_ABERTURA_EXCLUSAO_HORAS, PRAZO_VOTACAO_HORAS, QUORUM } from "@/lib/votacao";
 import type { IdDeCapitulo } from "./capitulos";
+import { ValoresDaZenha } from "./valores-da-zenha";
 
 // A nota é guardada em centésimos (500 = 5,0). Exibir sem dividir escreveria
 // "começa em 500".
@@ -208,6 +209,15 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         seguintes de uma vez só.
       </p>
       <p>
+        Há uma exceção à conta acima, e ela é sua: quem arma o{" "}
+        <strong className="text-fg">multiplicador</strong> num fut faz a nota daquele fut andar
+        mais — nos dois sentidos. O histórico marca quais futs foram assim. Ver{" "}
+        <a href="#o-multiplicador" className="text-accent-ink hover:underline">
+          O multiplicador
+        </a>
+        .
+      </p>
+      <p>
         <strong className="text-fg">A nota é sua, não do grupo.</strong> O ranking de um
         grupo mostra quem jogou ali, mas a nota que aparece é a mesma em todo lugar. Não
         existe “nota no grupo do sábado”.
@@ -329,6 +339,95 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
       <p>
         Instalando o FutZenha na tela de início do celular, os mesmos avisos chegam como
         notificação — dá para não depender de abrir o app para saber que a avaliação abriu.
+      </p>
+    </>
+  ),
+
+  "as-zenhas": (
+    <>
+      <p>
+        A <strong className="text-fg">zenha</strong> é a moeda do FutZenha. Ela se ganha
+        jogando e participando, e se gasta na loja — em selos para o seu perfil, em
+        personalização e no multiplicador.
+      </p>
+      <p>São quatro formas de ganhar, e só quatro:</p>
+      <ValoresDaZenha />
+      <p>
+        A <strong className="text-fg">participação</strong> é o pacote: entrar em campo,
+        avaliar os companheiros e votar no melhor em campo. As três coisas, uma zenha só. Se
+        não houver em quem votar, o voto é dispensado — e quem caiu num lado pequeno demais
+        para avaliar (menos de {MIN_GRUPO_AVALIACAO} com conta) recebe do mesmo jeito: o app
+        não convocou, então não cobra.
+      </p>
+      <p>
+        A <strong className="text-fg">nota</strong> paga quando sobe, e paga proporcional ao
+        quanto subiu. <strong className="text-fg">Nota que cai não tira zenha nenhuma</strong>{" "}
+        — ela só não rende essa parte. Nada aqui desconta do seu saldo: a única linha negativa
+        do extrato é uma compra sua.
+      </p>
+      <Banner tom="aviso">
+        Gol e vitória não pagam. Placar e gols continuam corrigíveis por{" "}
+        {JANELA_CORRECAO_HORAS}h depois do encerramento, e pagar por número que ainda muda
+        seria pagar por engano.
+      </Banner>
+      <p>
+        <strong className="text-fg">A zenha do fut não cai na hora.</strong> Ela entra quando o
+        fut amadurece: o placar trava, a avaliação fecha e o prazo de contestação das notas
+        passa — na prática, um a dois dias depois. É o que garante que ninguém receba por uma
+        nota que uma contestação ainda vai mudar. Quando cair, chega um aviso com o total.
+      </p>
+      <p>
+        Faltou? A sequência quebra e a contagem recomeça. Ficar na lista de espera{" "}
+        <strong className="text-fg">não</strong> quebra: você quis ir e não coube, e isso não
+        é falta sua.
+      </p>
+    </>
+  ),
+
+  "o-multiplicador": (
+    <>
+      <p>
+        O multiplicador é o único item da loja que mexe no jogo. Ele{" "}
+        <strong className="text-fg">amplia o movimento da sua nota num fut</strong> — para cima
+        e para baixo.
+      </p>
+      <Card>
+        <CardHeader>
+          <Eyebrow>o trato</Eyebrow>
+        </CardHeader>
+        <CardBody>
+          <p className="text-[13px] text-fg-3">
+            Jogou bem e a nota ia subir 0,3? Sobe mais. Jogou mal e ela ia cair? Cai mais
+            também.
+          </p>
+        </CardBody>
+      </Card>
+      <p>
+        Como a zenha da nota é proporcional ao quanto ela subiu, o ganho vem ampliado junto — e
+        é por isso que o item se paga nas noites boas. Nas ruins, você fica com a queda maior e
+        sem a zenha da nota. É uma aposta, e é para ser.
+      </p>
+      <Banner tom="aviso">
+        <strong className="text-fg">Só vale se você armar antes de a bola rolar.</strong> Depois
+        do horário de início o botão some — e desarmar também deixa de valer. Sem isso, daria
+        para esperar o fut acabar, ver como foi, e só então decidir se aposta.
+      </Banner>
+      <p>
+        Armar é escolher em qual fut o item vale, na página daquele fut. Um por fut, e ele não
+        empilha. Se o fut for adiado, seu arme continua de pé; se for antecipado para antes de
+        você ter armado, o item volta para o inventário.
+      </p>
+      <p>
+        O item também volta se você não entrar em campo, se o fut encerrar sem avaliação, se
+        ninguém te avaliar, ou se o fut for apagado. Você só gasta o multiplicador quando ele
+        realmente tem uma nota para multiplicar.
+      </p>
+      <p>
+        Enquanto a avaliação está aberta, <strong className="text-fg">ninguém vê</strong> que
+        você armou — nem quantas pessoas armaram. Saber de quem a nota vai andar mais rápido é
+        exatamente o tipo de pressão que a avaliação secreta existe para tirar da mesa. Depois
+        que a rodada fecha, o histórico da sua nota mostra o selo naquele fut: a nota é o que os
+        companheiros acharam de você, e acelerá-la com moeda não pode acontecer escondido.
       </p>
     </>
   ),

@@ -13,6 +13,7 @@ import {
   users,
 } from "@/db/schema";
 import { formatDate } from "./format";
+import { soltarMultiplicadoresDoFut } from "./multiplicador-engine";
 import { notificar } from "./notifications";
 import { prazoEmHoras } from "./ratings";
 import { PRAZO_AVALIACAO_HORAS, PRAZO_DENUNCIA_HORAS } from "./regras";
@@ -324,6 +325,10 @@ export async function apagarFut(
   matchDayId: number,
   dedupeKey: string,
 ): Promise<void> {
+  // Antes do delete: o cascade de `zenha_multiplicadores` apaga o fato do
+  // multiplicador mas não desfaz o carimbo de consumido no inventário, e depois
+  // do delete não há mais como saber quem foi consumido aqui.
+  await soltarMultiplicadoresDoFut(exec, matchDayId);
   await exec.delete(matchDays).where(eq(matchDays.id, matchDayId));
   await aplicarReplay(exec, { tipo: "revisao", dedupeKey });
 }

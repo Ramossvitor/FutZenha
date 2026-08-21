@@ -26,9 +26,59 @@ export const STATUS_FUT: Record<StatusFut, string> = {
 // quem cria, e `updateMatchDay` — que usa este mesmo parse — simplesmente não
 // tem como recebê-lo. Mover um fut encerrado entre grupos reescreveria dois
 // rankings de uma vez, sem replay nenhum.
-const matchDaySchema = z
+/**
+ * Até onde a data do fut pode recuar e avançar.
+ *
+ * O passado é o que importa: a ordem dos futs é a ordem do replay da nota
+ * (skill.ts ordena por `matchDayDate`) e é sobre ela que a sequência de
+ * presenças da zenha é contada. Sem teto, marcar um fut "de três meses atrás"
+ * reescreve as duas coisas de uma vez. Uma semana cobre o caso honesto — o
+ * organizador que lança o fut de sábado na segunda — e fecha o resto.
+ *
+ * O futuro tem teto só para o campo não virar porta de número absurdo.
+ */
+export const MAX_DIAS_RETROATIVOS_DO_FUT = 7;
+export const MAX_DIAS_FUTUROS_DO_FUT = 365;
+
+/**
+ * A data de hoje no fuso do fut, como "YYYY-MM-DD".
+ *
+ * Recebe o instante em vez de chamar `new Date()` lá dentro para o teste poder
+ * cravar o dia. Este `Date` só existe para COMPARAR com a string do formulário
+ * — nunca entra em template `sql` cru, onde o driver o rejeitaria.
+ */
+export function hojeNoFusoDoFut(agora: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(agora);
+}
+
+// Dias inteiros entre duas datas "YYYY-MM-DD", positivo quando `b` é depois.
+// Compara ao meio-dia UTC para o horário de verão nunca virar meio dia a mais.
+function diasEntre(a: string, b: string): number {
+  const meioDia = (d: string) => Date.parse(`${d}T12:00:00Z`);
+  return Math.round((meioDia(b) - meioDia(a)) / 86_400_000);
+}
+
+const criarMatchDaySchema = (hoje: string, dataAtual: string | null) =>
+  z
   .object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida")
+    // Os limites valem para REMARCAR, não para editar. Quando o formulário
+    // devolve exatamente a data que o fut já tem, eles não se aplicam: quem
+    // está corrigindo o local de um fut de mês passado não pode esbarrar num
+    // limite que existe para impedir mover o fut no tempo.
+    .refine((d) => d === dataAtual || diasEntre(d, hoje) <= MAX_DIAS_RETROATIVOS_DO_FUT, {
+      message: `A data não pode ser mais de ${MAX_DIAS_RETROATIVOS_DO_FUT} dias no passado.`,
+    })
+    .refine((d) => d === dataAtual || diasEntre(hoje, d) <= MAX_DIAS_FUTUROS_DO_FUT, {
+      message: "A data não pode ser mais de um ano à frente.",
+    }),
   startTime: z.string().transform((v) => (v === "" ? null : v)),
   // Vazio = 1h no evento de agenda (DURACAO_PADRAO_MIN), que é o que todo fut
   // anterior a este campo tinha. As regras de duração ficam no superRefine
@@ -76,8 +126,20 @@ const matchDaySchema = z
     }
   });
 
-export function parseMatchDayForm(formData: FormData) {
-  return matchDaySchema.safeParse({
+export type OpcoesDoParse = {
+  /** Hoje no fuso do fut, como "YYYY-MM-DD". Entra por fora para o teste cravar o dia. */
+  hoje?: string;
+  /**
+   * A data que o fut JÁ tem, quando se está editando. Devolver exatamente ela
+   * dispensa os limites de faixa — ver o comentário no schema. Nulo (o padrão)
+   * é o caso de criação, onde não há data anterior e os limites sempre valem.
+   */
+  dataAtual?: string | null;
+};
+
+export function parseMatchDayForm(formData: FormData, opcoes: OpcoesDoParse = {}) {
+  const { hoje = hojeNoFusoDoFut(), dataAtual = null } = opcoes;
+  return criarMatchDaySchema(hoje, dataAtual).safeParse({
     date: formData.get("date") ?? "",
     startTime: formData.get("startTime") ?? "",
     endTime: formData.get("endTime") ?? "",

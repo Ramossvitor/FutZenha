@@ -9,6 +9,7 @@ import {
   IconeSino,
   IconeCadeado,
   IconeBola,
+  IconeZenha,
 } from "@/components/ui/icons";
 
 export type ItemDeNavegacao = {
@@ -58,6 +59,11 @@ export function itensLaterais({
       { href: "/grupos", label: "Grupos", icone: <IconeGrupo /> },
       { href: "/avaliar", label: "Avaliar", icone: <IconeBola /> },
       { href: "/notificacoes", label: "Avisos", icone: <IconeSino /> },
+      // Só aqui, e não nas abas: `abas()` tem quatro itens e quatro é o teto.
+      // No celular a porta da loja é a lista "Sua conta" do /perfil — sem
+      // aquelas linhas ela ficaria inalcançável no aparelho que é o alvo do
+      // produto.
+      { href: "/loja", label: "Loja", icone: <IconeZenha /> },
     );
     if (isPlatformAdmin) {
       itens.push({ href: "/admin", label: "Plataforma", icone: <IconeCadeado /> });

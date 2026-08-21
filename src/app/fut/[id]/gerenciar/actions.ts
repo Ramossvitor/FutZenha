@@ -60,7 +60,10 @@ import { defaultTeamNames } from "@/lib/team-colors";
 
 export async function updateMatchDay(matchDayId: number, formData: FormData) {
   const { matchDay } = await requireFutAdmin(matchDayId);
-  const parsed = parseMatchDayForm(formData);
+  // `dataAtual` dispensa os limites de faixa quando a data não está mudando:
+  // sem isso, corrigir o local de um fut de mais de uma semana atrás seria
+  // recusado como "dados inválidos".
+  const parsed = parseMatchDayForm(formData, { dataAtual: matchDay.date });
   if (!parsed.success) redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
 
   // O form manda "HH:MM" e o banco guarda "HH:MM:SS" — compara nos 5 primeiros.
@@ -71,11 +74,19 @@ export async function updateMatchDay(matchDayId: number, formData: FormData) {
   // O término entra aqui junto com data/hora/local: sem ele, definir o fim de um
   // fut já marcado gravaria no banco e deixaria todo mundo com o bloco velho na
   // agenda, sem nunca ser avisado. É esta linha que faz a correção retroativa.
-  const eventoMudou =
-    parsed.data.date !== matchDay.date ||
-    horaNova !== horaAntiga ||
-    fimNovo !== fimAntigo ||
-    parsed.data.location !== matchDay.location;
+  const dataOuHorarioMudou =
+    parsed.data.date !== matchDay.date || horaNova !== horaAntiga || fimNovo !== fimAntigo;
+
+  // Fut encerrado tem a data travada. A ordem dos futs é a ordem do replay da
+  // nota — skill.ts ordena por `matchDayDate` — e é sobre ela que a sequência
+  // de presenças da zenha é contada. Mudar a data de um fut que já entrou
+  // nessas duas contas reescreve o passado de todo mundo, sem nenhum aviso.
+  // Local, vagas e notas continuam livres: não entram em ordem nenhuma.
+  if (matchDay.status === "finished" && dataOuHorarioMudou) {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=data-travada`);
+  }
+
+  const eventoMudou = dataOuHorarioMudou || parsed.data.location !== matchDay.location;
 
   let podeAvisar = true;
   const promovidos = await db.transaction(async (tx) => {

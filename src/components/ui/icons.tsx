@@ -175,3 +175,19 @@ export function IconeLivro(props: Icone) {
     </svg>
   );
 }
+
+/**
+ * A moeda: a zenha, a loja e o extrato.
+ *
+ * Um círculo com o "Z" dentro, e não um cifrão nem um carrinho de compras — a
+ * zenha não é dinheiro de verdade e não se compra com cartão. O traço é o mesmo
+ * dos outros ícones, então ela ainda lê como moeda a 16px no chip do cabeçalho.
+ */
+export function IconeZenha(props: Icone) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9.3 9h5.4l-5.4 6h5.4" />
+    </svg>
+  );
+}

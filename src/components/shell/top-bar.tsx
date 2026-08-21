@@ -4,6 +4,7 @@ import { IconeSino } from "@/components/ui/icons";
 import { WordmarkLink } from "@/components/ui/marca";
 import type { GrupoAtual } from "@/lib/grupo-atual";
 import type { Session } from "@/lib/session";
+import { ChipDeZenhas } from "./chip-de-zenhas";
 import { ChipDoGrupo } from "./chip-do-grupo";
 import { PuxarParaAtualizar } from "./puxar-para-atualizar";
 
@@ -26,11 +27,13 @@ export function TopBar({
   grupo,
   temSeletor,
   naoLidas,
+  saldo,
 }: {
   session: Session | null;
   grupo: GrupoAtual | null;
   temSeletor: boolean;
   naoLidas: number;
+  saldo: number;
 }) {
   return (
     // O `sticky` daqui já é posição, então serve de bloco contentor para o
@@ -51,6 +54,10 @@ export function TopBar({
 
       {session ? (
         <>
+          {/* Antes do sino: o saldo é informação, o sino é interrupção — e a
+              ordem de leitura da barra fica com o contexto (grupo, saldo) de um
+              lado e as portas (avisos, perfil) do outro. */}
+          <ChipDeZenhas saldo={saldo} forma="topo" />
           <Link
             href="/notificacoes"
             aria-label={naoLidas > 0 ? `Avisos: ${naoLidas} não lidos` : "Avisos"}

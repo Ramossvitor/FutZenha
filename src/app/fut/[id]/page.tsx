@@ -42,7 +42,9 @@ import { montarResumo } from "@/lib/resumo";
 import { recusouEsteFut } from "@/lib/presenca";
 import { temSumulaDelegada } from "@/lib/require-operador-sumula";
 import { sumulaDisponivel } from "@/lib/sumula";
+import { situacaoDoMultiplicador } from "@/lib/multiplicador-engine";
 import { getSession } from "@/lib/session";
+import { CardDoMultiplicador } from "./card-do-multiplicador";
 import { siteUrl } from "@/lib/site-url";
 import { textoDeConvocacao, textoDeTimes } from "@/lib/whatsapp";
 import { setMyAttendance } from "./actions";
@@ -135,31 +137,43 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
 
   const meuPlayerId = session?.player.id ?? null;
 
-  const [activePlayers, attendanceRows, teamList, gameList, papel, noCirculo, recusei] =
-    await Promise.all([
-      // Fut de grupo lista o grupo. Avulso lista só quem o organizador pode
-      // marcar de fato — sem conta, já no fut, ou ele mesmo —, que é o espelho de
-      // podeDefinirPresencaPor: oferecer mais seria enfileirar botões que só
-      // devolvem "precisa-confirmar". Ver src/lib/elegiveis.ts.
-      jogadoresElegiveis(matchDay, session?.player.id),
-      db.select().from(attendances).where(eq(attendances.matchDayId, id)),
-      db.select().from(teams).where(eq(teams.matchDayId, id)).orderBy(asc(teams.sortOrder)),
-      db.select().from(games).where(eq(games.matchDayId, id)).orderBy(asc(games.sortOrder), asc(games.id)),
-      // Em fut de grupo, o admin do grupo também gerencia — e o papel sai do
-      // groupId do próprio fut, nunca de um id vindo da URL.
-      session && matchDay.groupId !== null
-        ? papelNoGrupo(matchDay.groupId, session.player.id)
-        : null,
-      // Nesta onda, e não num await solto lá embaixo: só depende do fut e de
-      // quem pergunta, os dois já resolvidos — e esta é a página pública mais
-      // quente do app.
-      meuPlayerId === null ? false : estaNoCirculoDoFut(matchDay, meuPlayerId),
-      // Pelo mesmo motivo, e é o mesmo par de argumentos. Tentador pendurar num
-      // `||` depois de olhar `optedOutAt` na linha que já veio — só que o
-      // curto-circuito pouparia a consulta exatamente de quem JÁ recusou, o
-      // caso raro, e todo visitante normal pagaria o round-trip em série.
-      meuPlayerId === null ? false : recusouEsteFut(id, meuPlayerId),
-    ]);
+  const [
+    activePlayers,
+    attendanceRows,
+    teamList,
+    gameList,
+    papel,
+    noCirculo,
+    recusei,
+    situacaoMultiplicador,
+  ] = await Promise.all([
+    // Fut de grupo lista o grupo. Avulso lista só quem o organizador pode
+    // marcar de fato — sem conta, já no fut, ou ele mesmo —, que é o espelho de
+    // podeDefinirPresencaPor: oferecer mais seria enfileirar botões que só
+    // devolvem "precisa-confirmar". Ver src/lib/elegiveis.ts.
+    jogadoresElegiveis(matchDay, session?.player.id),
+    db.select().from(attendances).where(eq(attendances.matchDayId, id)),
+    db.select().from(teams).where(eq(teams.matchDayId, id)).orderBy(asc(teams.sortOrder)),
+    db.select().from(games).where(eq(games.matchDayId, id)).orderBy(asc(games.sortOrder), asc(games.id)),
+    // Em fut de grupo, o admin do grupo também gerencia — e o papel sai do
+    // groupId do próprio fut, nunca de um id vindo da URL.
+    session && matchDay.groupId !== null
+      ? papelNoGrupo(matchDay.groupId, session.player.id)
+      : null,
+    // Nesta onda, e não num await solto lá embaixo: só depende do fut e de
+    // quem pergunta, os dois já resolvidos — e esta é a página pública mais
+    // quente do app.
+    meuPlayerId === null ? false : estaNoCirculoDoFut(matchDay, meuPlayerId),
+    // Pelo mesmo motivo, e é o mesmo par de argumentos. Tentador pendurar num
+    // `||` depois de olhar `optedOutAt` na linha que já veio — só que o
+    // curto-circuito pouparia a consulta exatamente de quem JÁ recusou, o
+    // caso raro, e todo visitante normal pagaria o round-trip em série.
+    meuPlayerId === null ? false : recusouEsteFut(id, meuPlayerId),
+    // Na mesma onda, e não num await à parte: depende só do fut e de quem
+    // pergunta, e é a página mais quente do app. Deslogado nem consulta — o
+    // card do multiplicador é privado por construção.
+    meuPlayerId === null ? null : situacaoDoMultiplicador(db, meuPlayerId, id),
+  ]);
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
   const jogadorPorId = new Map(activePlayers.map((p) => [p.id, p]));
   // Quem tem linha mas não está elegível é jogador desativado: some da lista,
@@ -544,6 +558,12 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             que ele não pega sozinho: ele confere que o slug TEM texto, não que
             a tela o mostra. */}
         <BannerDaQuery ok={ok} erro={erro} />
+        {/* Antes da lista, e não depois: quem tem o item precisa decidir ANTES
+            de a bola rolar, e no fim da seção o card ficaria abaixo de vinte
+            nomes — visto pela primeira vez quando já não desse mais para armar. */}
+        {situacaoMultiplicador && (
+          <CardDoMultiplicador matchDayId={matchDay.id} situacao={situacaoMultiplicador} />
+        )}
         {matchDay.status === "teams_drawn" && (
           <Banner tom="info">
             <IconeCadeado className="mr-1.5 inline size-4 align-text-bottom" />

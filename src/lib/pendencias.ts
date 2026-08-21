@@ -9,11 +9,15 @@ import { condicaoDeAviso } from "./elegiveis";
 import { notificar } from "./notifications";
 import { fecharRodada, LOCK_NOTA } from "./ratings-engine";
 import { resolverDenunciasVencidas } from "./reports";
+import { soltarArmesDeFutsAbandonados } from "./multiplicador-engine";
+import { liquidarFutsMaduros } from "./zenha-engine";
 
 export type ResultadoVarredura = {
   rodadasFechadas: number;
   denunciasAceitas: number;
   votacoesResolvidas: number;
+  futsLiquidados: number;
+  multiplicadoresSoltos: number;
   // Candidatos varridos, não inserts: o dedupe (pelada:id:lembrete-vespera)
   // torna as passadas seguintes no-op, mas quem segue sem responder continua
   // contando até responder ou o dia virar.
@@ -50,6 +54,8 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
         rodadasFechadas: 0,
         denunciasAceitas: 0,
         votacoesResolvidas: 0,
+        futsLiquidados: 0,
+        multiplicadoresSoltos: 0,
         lembretesDeVespera: 0,
       };
     }
@@ -71,6 +77,21 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
     // Por último: uma votação aprovada apaga o fut inteiro, então rodar
     // depois evita fechar rodada de fut que vai deixar de existir.
     const votacoesResolvidas = await resolverVotacoesVencidas(tx);
+
+    // Depois da exclusão, e não antes: uma votação aprovada apaga o fut inteiro,
+    // e pagar zenha por um fut que deixa de existir dois statements adiante
+    // deixaria linhas no extrato de todo mundo apontando para o nada. É a mesma
+    // razão de `resolverVotacoesVencidas` vir depois de fechar as rodadas.
+    //
+    // Também depois das denúncias: um aceite recalcula a nota, e a nota é uma
+    // das quatro fontes. Nesta ordem, o que a liquidação lê já é o valor final.
+    const futsLiquidados = await liquidarFutsMaduros(tx);
+
+    // Depois da liquidação, e não antes: quem vai ser liquidado tem o arme
+    // resolvido lá (consumido ou devolvido), e soltar antes devolveria item que
+    // ia virar fato. O que sobra aqui é só o fut que passou da hora e ninguém
+    // encerrou — onde o arme ficaria preso para sempre.
+    const multiplicadoresSoltos = await soltarArmesDeFutsAbandonados(tx);
 
     // Lembrete de véspera: fut agendada para AMANHÃ, para quem é elegível,
     // tem conta ativa e ainda não disse "vou" nem "fora". Mora na varredura, e
@@ -117,7 +138,14 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
       lembretesDeVespera += semResposta.length;
     }
 
-    return { rodadasFechadas, denunciasAceitas, votacoesResolvidas, lembretesDeVespera };
+    return {
+      rodadasFechadas,
+      denunciasAceitas,
+      votacoesResolvidas,
+      futsLiquidados,
+      multiplicadoresSoltos,
+      lembretesDeVespera,
+    };
   });
 }
 
