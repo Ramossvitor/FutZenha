@@ -224,3 +224,111 @@ export function agendarResumoDoFut(matchDayId: number): void {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Retomada
+// ---------------------------------------------------------------------------
+//
+// O envio acima é o caminho principal, e ele pode não terminar: o `after` roda
+// sob o maxDuration de 60s, e um lote grande (ou um deploy no meio) o corta.
+// Quem já recebeu está carimbado; quem não recebeu, sem isto aqui, NUNCA mais
+// receberia — a action não repete (o fut já está `finished`) e não havia
+// varredura nenhuma olhando o resumo.
+//
+// A mesma varredura cobre o segundo caso definitivo: o lote recusado por cota.
+// O envio é tudo-ou-nada por fut, então uma noite com três futs cheios deixa o
+// terceiro sem e-mail — e a cota renova no dia seguinte, dentro da janela.
+
+/**
+ * Quantos futs uma passada resolve.
+ *
+ * Cada fut pode ser 20 e-mails a 500ms de intervalo, ~10s, e a rota tem 60s.
+ * Dois cabem com folga; o resto sai no tick seguinte, e o que ficou é
+ * registrado — teto invisível lê como "cobri tudo" quando não cobriu.
+ */
+const LIMITE_FUTS_POR_VARREDURA = 2;
+
+/**
+ * Completa o resumo dos futs encerrados que ainda devem e-mail.
+ *
+ * Só descobre QUAIS futs devem — quem envia continua sendo o
+ * `enviarResumoDoFut`, que já relê o estado, refiltra por
+ * `resumo_email_sent_at is null` e reconfere as duas cotas. Duplicar a lógica
+ * de envio aqui seria criar uma segunda definição de "quem recebe".
+ *
+ * **Janela de 24h**: é a mesma em que o placar ainda é corrigível (ver
+ * ./janela-correcao), depois dela o resumo deixou de ser notícia, e ela mantém
+ * o escaneamento em um punhado de linhas.
+ *
+ * **Sem claim e sem carimbar antes de enviar**, ao contrário do `despacharPush`.
+ * Lá o carimbo vem primeiro (at-most-once) porque push perdido é irrelevante;
+ * aqui o buraco que esta função existe para fechar É "não recebeu e nunca mais
+ * recebe", então carimbar antes o reintroduziria. A janela de duplicata é
+ * mínima: exige duas instâncias varrendo nos mesmos segundos, e o envio ainda
+ * refiltra `is null` na hora.
+ */
+export async function retomarResumosPendentes(): Promise<{ futs: number; adiados: number }> {
+  if (!emailConfigurado()) return { futs: 0, adiados: 0 };
+
+  const pendentes = await db
+    .selectDistinct({ id: matchDays.id })
+    .from(matchDays)
+    .innerJoin(games, eq(games.matchDayId, matchDays.id))
+    .innerJoin(gamePlayers, eq(gamePlayers.gameId, games.id))
+    .innerJoin(players, eq(players.id, gamePlayers.playerId))
+    .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
+    .innerJoin(
+      attendances,
+      and(
+        eq(attendances.matchDayId, matchDays.id),
+        eq(attendances.playerId, players.id),
+      ),
+    )
+    .where(
+      and(
+        eq(matchDays.status, "finished"),
+        sql`${matchDays.finishedAt} > now() - interval '24 hours'`,
+        eq(players.active, true),
+        isNull(attendances.resumoEmailSentAt),
+        // Sem esta linha, um fut cujo único não-carimbado é alguém sem endereço
+        // nenhum vira candidato ETERNO: a varredura o escolheria, o envio acharia
+        // a lista vazia e voltaria sem carimbar nada, a cada tick, por 24 horas.
+        sql`${emailDeDestino()} is not null`,
+      ),
+    )
+    .orderBy(matchDays.id);
+
+  const lote = pendentes.slice(0, LIMITE_FUTS_POR_VARREDURA);
+  const adiados = pendentes.length - lote.length;
+  if (adiados > 0) {
+    console.log(
+      `[email-resumo] ${adiados} fut(s) com resumo pendente ficaram para a próxima passada.`,
+    );
+  }
+
+  for (const fut of lote) {
+    await enviarResumoDoFut(fut.id);
+  }
+  return { futs: lote.length, adiados };
+}
+
+// Throttle por instância, no molde de ./pendencias e ./push-envio. Cinco
+// minutos, e não os 60s do push: isto é rede de segurança, não caminho
+// principal, e a consulta de candidatos é mais pesada que o claim de push.
+let ultimaRetomada = 0;
+const INTERVALO_RETOMADA_MS = 5 * 60_000;
+
+/** A retomada agendada para depois da resposta. Ver `agendarResumoDoFut`. */
+export function agendarRetomadaDeResumos(): void {
+  if (!emailConfigurado()) return;
+  const agora = Date.now();
+  if (agora - ultimaRetomada < INTERVALO_RETOMADA_MS) return;
+  ultimaRetomada = agora;
+  after(async () => {
+    try {
+      await retomarResumosPendentes();
+    } catch (erro) {
+      console.error("[email-resumo] retomada falhou:", erro);
+    }
+  });
+}

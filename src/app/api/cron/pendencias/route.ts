@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { retomarResumosPendentes } from "@/lib/email-resumo";
 import { processarPendencias } from "@/lib/pendencias";
 import { despacharPush } from "@/lib/push-envio";
 
@@ -46,5 +47,9 @@ export async function GET(request: NextRequest) {
   // Depois das pendências, de propósito: fechar rodada e resolver votação
   // geram notificações, e despachar em seguida as entrega no mesmo disparo.
   const push = await despacharPush();
-  return NextResponse.json({ ...resultado, push });
+  // A rede de segurança do e-mail de resumo: completa quem ficou de fora de um
+  // lote cortado no meio, e reaproveita a cota renovada para o fut que foi
+  // recusado inteiro ontem. Idempotente — quem já recebeu não recebe de novo.
+  const resumos = await retomarResumosPendentes();
+  return NextResponse.json({ ...resultado, push, resumos });
 }
