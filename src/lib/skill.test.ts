@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   centParaNota,
   diffNotas,
+  MEIAS_MAX,
+  MEIAS_MIN,
   notaParaCent,
   replaySkills,
   SKILL_INICIAL_CENT,
@@ -59,6 +61,7 @@ describe("replaySkills", () => {
         after: 6.7,
         ratingsCount: 3,
         averageReceived: 10,
+        multiplicado: false,
       },
     ]);
   });
@@ -424,5 +427,172 @@ describe("diffNotas", () => {
     const alvo = new Map([[1, 5.5]]);
     const depois = atuais.map((p) => ({ id: p.id, skill: alvo.get(p.id) ?? inicial }));
     expect(diffNotas(depois, alvo)).toEqual([]);
+  });
+});
+
+// ── O multiplicador ─────────────────────────────────────────────────────────
+//
+// Ele entra como PESO da rodada, e não como delta escalado depois do cálculo.
+// Os casos abaixo existem para provar duas coisas: que a forma nova é inerte com
+// o fator neutro (senão toda nota do banco mudaria de valor no deploy), e que o
+// movimento é simétrico para cima e para baixo (senão o item seria uma aposta
+// viciada).
+
+const UM_E_MEIO = { num: 3, den: 2 };
+
+function comMultiplicador(
+  r: RoundInput,
+  fatores: Record<number, { num: number; den: number }>,
+): RoundInput {
+  return {
+    ...r,
+    multiplicadores: new Map(Object.entries(fatores).map(([id, f]) => [Number(id), f])),
+  };
+}
+
+describe("multiplicador da rodada", () => {
+  // A prova de que o refactor é inerte, e a razão de ele poder entrar sem
+  // recalcular nada: passar o fator neutro EXPLICITAMENTE tem que dar o mesmo
+  // histórico, bit a bit, que não passar multiplicador nenhum. Se a forma-peso
+  // divergisse em um único centésimo, toda nota do banco mudaria de valor no
+  // primeiro replay depois do deploy.
+  //
+  // Varre a escala inteira de médias recebidas, em cadeias longas o bastante
+  // para a nota passar por quase toda a faixa de 1,0 a 10,0.
+  it("o fator neutro é indistinguível de não ter multiplicador", () => {
+    for (let meias = MEIAS_MIN; meias <= MEIAS_MAX; meias += 1) {
+      const rodadas = Array.from({ length: 12 }, (_, i) =>
+        rodada(i + 1, recebe(1, [meias, meias, meias], 1000 + i * 10)),
+      );
+      const sem = replaySkills(rodadas);
+      const neutro = replaySkills(rodadas.map((r) => comMultiplicador(r, { 1: { num: 1, den: 1 } })));
+
+      expect(neutro.history.map((h) => h.after)).toEqual(sem.history.map((h) => h.after));
+      expect([...neutro.skillByPlayer]).toEqual([...sem.skillByPlayer]);
+      // O neutro não é "multiplicado" — senão o histórico marcaria selo em
+      // rodada de gente que não comprou nada.
+      expect(neutro.history.every((h) => h.multiplicado === false)).toBe(true);
+    }
+  });
+
+  // 5,0 recebendo 8,0: sem multiplicador anda (2×5,0+8,0)/3 = 6,0; com 1,5× a
+  // fórmula vira (atual+média)/2 = 6,5. O movimento é exatamente uma vez e meia
+  // o que teria sido (1,0 → 1,5).
+  it("amplia a subida em uma vez e meia", () => {
+    const semMult = replaySkills([rodada(1, recebe(1, [8, 8, 8]))]);
+    expect(notaDe(semMult, 1)).toBe(6);
+
+    const comMult = replaySkills([comMultiplicador(rodada(1, recebe(1, [8, 8, 8])), { 1: UM_E_MEIO })]);
+    expect(notaDe(comMult, 1)).toBe(6.5);
+    expect(comMult.history[0].multiplicado).toBe(true);
+  });
+
+  // A outra metade do trato, e a razão de o item ser uma aposta de verdade: a
+  // queda também anda uma vez e meia. Partindo de 5,0 e recebendo média 2,0, a
+  // conta fecha redonda nos dois lados — (10+2)/3 = 4,0 sem, (5+2)/2 = 3,5 com
+  // —, então a proporção aparece limpa, sem o arredondamento para décimos no
+  // meio do caminho.
+  it("amplia a queda na mesma proporção", () => {
+    const semMult = replaySkills([rodada(1, recebe(1, [2, 2, 2]))]);
+    expect(notaDe(semMult, 1)).toBe(4);
+
+    const comMult = replaySkills([
+      comMultiplicador(rodada(1, recebe(1, [2, 2, 2])), { 1: UM_E_MEIO }),
+    ]);
+    expect(notaDe(comMult, 1)).toBe(3.5);
+
+    const quedaSem = 5 - 4;
+    const quedaCom = 5 - 3.5;
+    expect(quedaCom).toBe(quedaSem * 1.5);
+  });
+
+  // Fora das contas redondas o arredondamento para décimos entra, e a proporção
+  // exata vale sobre o valor NÃO arredondado — que é o comportamento correto e
+  // o que o resto do sistema já faz. Este caso existe para o teste acima não
+  // passar a impressão de que a razão é exata em toda combinação.
+  it("com arredondamento, a queda ampliada continua maior, sem ser 1,5x exato", () => {
+    const base = [rodada(1, recebe(1, [10, 10, 10])), rodada(2, recebe(1, [10, 10, 10]))];
+    const semMult = replaySkills([...base, rodada(3, recebe(1, [4, 4, 4]))]);
+    const comMult = replaySkills([
+      ...base,
+      comMultiplicador(rodada(3, recebe(1, [4, 4, 4])), { 1: UM_E_MEIO }),
+    ]);
+    // 7,8 → 6,5 sem (queda 1,3); 7,8 → 5,9 com (queda 1,9).
+    expect(semMult.history[2].after).toBe(6.5);
+    expect(comMult.history[2].after).toBe(5.9);
+  });
+
+  // O multiplicador é por (jogador, rodada). Se vazasse para o companheiro, uma
+  // pessoa estaria comprando movimento na nota de outra.
+  it("não contamina quem não armou", () => {
+    const r = replaySkills([
+      comMultiplicador(
+        { ...rodada(1, [...recebe(1, [8, 8, 8]), ...recebe(2, [8, 8, 8])]) },
+        { 1: UM_E_MEIO },
+      ),
+    ]);
+    expect(notaDe(r, 1)).toBe(6.5);
+    expect(notaDe(r, 2)).toBe(6);
+    expect(r.history.find((h) => h.playerId === 1)?.multiplicado).toBe(true);
+    expect(r.history.find((h) => h.playerId === 2)?.multiplicado).toBe(false);
+  });
+
+  // Régua legada e multiplicador são eixos ortogonais: a primeira decide quanto
+  // vale cada estrela, o segundo decide quanto pesa a rodada. Nenhum `if` liga
+  // os dois, e este teste é o que garante que continue assim.
+  it("vale também em rodada de régua legada", () => {
+    const sem = replaySkills([rodadaLegada(1, recebe(1, [8, 8, 8]))]);
+    const com = replaySkills([
+      comMultiplicador(rodadaLegada(1, recebe(1, [8, 8, 8])), { 1: UM_E_MEIO }),
+    ]);
+    expect(com.history[0].after).toBeGreaterThan(sem.history[0].after);
+  });
+
+  // O clamp e a destrava ficam fora da multiplicação, então a nota nunca sai da
+  // escala nem da grade de 0,1 — por mais rodadas multiplicadas que se empilhe.
+  // Quem está perto do teto pode "gastar" o item e subir menos que 1,5× o
+  // normal, porque a escala acaba: aceito de propósito, já que a alternativa
+  // seria deixar a nota passar de 10,0.
+  it("não empurra a nota para fora da escala nem para fora da grade", () => {
+    const r = replaySkills(
+      Array.from({ length: 20 }, (_, i) =>
+        comMultiplicador(rodada(i + 1, recebe(1, [10, 10, 10], 1000 + i * 10)), { 1: UM_E_MEIO }),
+      ),
+    );
+    expect(notaDe(r, 1)).toBe(10);
+    for (const h of r.history) {
+      expect(h.after).toBeLessThanOrEqual(10);
+      expect(h.after).toBeGreaterThanOrEqual(1);
+      // Sem sobra de centésimo: a nota tem uma casa decimal, sempre.
+      expect(notaParaCent(h.after) % 10).toBe(0);
+    }
+  });
+
+  // Multiplicado chega ao teto ANTES: é o que a pessoa está comprando. Quatro
+  // rodadas de 5★ unânime levam a 9,7 com o item e a 9,0 sem ele.
+  it("chega mais rápido ao topo da escala", () => {
+    const quatro = (comMult: boolean) =>
+      replaySkills(
+        Array.from({ length: 4 }, (_, i) => {
+          const r = rodada(i + 1, recebe(1, [10, 10, 10], 1000 + i * 10));
+          return comMult ? comMultiplicador(r, { 1: UM_E_MEIO }) : r;
+        }),
+      );
+    expect(notaDe(quatro(false), 1)).toBe(9);
+    expect(notaDe(quatro(true), 1)).toBe(9.7);
+  });
+
+  // Acima do teto o coeficiente da nota atual fica negativo e o arredondamento
+  // meio-para-cima deixa de ser simétrico. Falhar alto é o que impede isso de
+  // virar nota silenciosamente errada — o mesmo espírito das outras validações.
+  it("recusa fator que passa do teto ou é malformado", () => {
+    const roda = (f: { num: number; den: number }) =>
+      replaySkills([comMultiplicador(rodada(1, recebe(1, [8])), { 1: f })]);
+
+    expect(() => roda({ num: 4, den: 1 })).toThrow(/teto/);
+    expect(() => roda({ num: 1, den: 0 })).toThrow(/inválido/);
+    expect(() => roda({ num: 1.5, den: 1 })).toThrow(/inválido/);
+    // 3/1 é exatamente o teto com o peso atual — passa.
+    expect(() => roda({ num: 3, den: 1 })).not.toThrow();
   });
 });

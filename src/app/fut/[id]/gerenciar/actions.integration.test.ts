@@ -9,12 +9,27 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { db } from "@/db";
-import { gamePlayers, games, goals, matchDays } from "@/db/schema";
+import {
+  gamePlayers,
+  games,
+  goals,
+  matchDays,
+  notifications,
+  ratingRounds,
+} from "@/db/schema";
 import { JANELA_CORRECAO_HORAS } from "@/lib/regras";
 import { esperaRedirect } from "@/test/navigation-fake";
 import { golsDoJogo, montarSumula, type Sumula } from "@/test/fixtures-sumula";
+import { criarFut, criarJogadorComConta, logarComo } from "@/test/fixtures";
+import { criarJogo, criarTrioComConta } from "@/test/fixtures-avaliacao";
 import { confirmarEncerramento } from "./encerrar/actions";
-import { addGoal, createGame, definirAutorDoGol, updateGameScore } from "./actions";
+import {
+  addGoal,
+  createGame,
+  definirAutorDoGol,
+  updateGameScore,
+  updateMatchDay,
+} from "./actions";
 
 function formDeJogo(s: Sumula, scoreA: number, scoreB: number): FormData {
   const form = new FormData();
@@ -215,5 +230,139 @@ describe("definirAutorDoGol", () => {
 
     expect(url).toBe(`/fut/${s.fut.id}/gerenciar?erro=dados-invalidos`);
     expect((await golsDoJogo(jogo.id))[0].playerId).toBe(s.ladoA[0].id);
+  });
+});
+
+// A data de um fut encerrado é o passado de todo mundo: `skill.ts` ordena o
+// replay por `matchDayDate`, e a sequência de presenças da zenha conta sobre a
+// mesma ordem. Mudar a data de um fut que já entrou nessas duas contas reescreve
+// nota e streak sem aviso — e o replay é sempre do zero, então não há como
+// desfazer depois.
+describe("data travada do fut encerrado", () => {
+  const formDeFut = (campos: Partial<Record<string, string>> = {}) => {
+    const form = new FormData();
+    form.set("date", campos.date ?? "2026-08-22");
+    form.set("startTime", campos.startTime ?? "20:00");
+    form.set("endTime", campos.endTime ?? "");
+    form.set("location", campos.location ?? "Quadra de Teste");
+    form.set("notes", campos.notes ?? "");
+    return form;
+  };
+
+  /** Um fut encerrado, com o admin logado. */
+  async function futEncerrado() {
+    const s = await montarSumula();
+    await db
+      .update(matchDays)
+      .set({ date: "2026-08-22", startTime: "20:00", status: "finished" })
+      .where(eq(matchDays.id, s.fut.id));
+    return s;
+  }
+
+  it("recusa mudar a data, e não grava nada", async () => {
+    const s = await futEncerrado();
+
+    const url = await esperaRedirect(
+      updateMatchDay(s.fut.id, formDeFut({ date: "2026-08-29" })),
+    );
+
+    expect(url).toBe(`/fut/${s.fut.id}/gerenciar?erro=data-travada`);
+    const [linha] = await db.select().from(matchDays).where(eq(matchDays.id, s.fut.id));
+    expect(linha.date).toBe("2026-08-22");
+  });
+
+  it("recusa mudar o horário pelo mesmo motivo", async () => {
+    const s = await futEncerrado();
+
+    const url = await esperaRedirect(
+      updateMatchDay(s.fut.id, formDeFut({ startTime: "21:30" })),
+    );
+
+    expect(url).toBe(`/fut/${s.fut.id}/gerenciar?erro=data-travada`);
+    const [linha] = await db.select().from(matchDays).where(eq(matchDays.id, s.fut.id));
+    expect(linha.startTime).toBe("20:00:00");
+  });
+
+  // A trava é só sobre a ORDEM. Local não entra em ordem nenhuma, e corrigir o
+  // endereço de um fut passado tem que continuar possível.
+  it("deixa corrigir o local, que não entra em ordem nenhuma", async () => {
+    const s = await futEncerrado();
+
+    // Sem `esperaRedirect`: o caminho de sucesso do `updateMatchDay` revalida e
+    // volta, quem redireciona é só a recusa.
+    await updateMatchDay(s.fut.id, formDeFut({ location: "Quadra Nova" }));
+
+    const [linha] = await db.select().from(matchDays).where(eq(matchDays.id, s.fut.id));
+    expect(linha.location).toBe("Quadra Nova");
+    expect(linha.date).toBe("2026-08-22");
+  });
+
+  // O escape do `dataAtual`: reenviar a MESMA data de um fut antigo não pode
+  // esbarrar no limite de faixa do formulário, senão corrigir o local de um fut
+  // de mais de uma semana atrás viraria "dados inválidos".
+  it("fut aberto e antigo aceita o local novo com a data velha", async () => {
+    const s = await montarSumula();
+    await db
+      .update(matchDays)
+      .set({ date: sql`((now() at time zone 'America/Sao_Paulo')::date - 30)` })
+      .where(eq(matchDays.id, s.fut.id));
+    const [antes] = await db.select().from(matchDays).where(eq(matchDays.id, s.fut.id));
+
+    await updateMatchDay(s.fut.id, formDeFut({ date: antes.date, location: "Quadra Nova" }));
+
+    const [depois] = await db.select().from(matchDays).where(eq(matchDays.id, s.fut.id));
+    expect(depois.location).toBe("Quadra Nova");
+    expect(depois.date).toBe(antes.date);
+  });
+});
+
+// Dois cliques simultâneos em "encerrar". A checagem de `status === 'finished'`
+// lá em cima roda ANTES da transação, então os dois passam por ela e chegam
+// juntos no lock — quem decide é o `UPDATE ... WHERE status <> 'finished'
+// RETURNING`. Sem ele o segundo commit re-notificaria todo mundo e mandaria o
+// congelamento consumir multiplicador de novo.
+//
+// Os testes que já existiam chamavam o encerramento em SEQUÊNCIA, e aí o
+// primeiro `redirect` sai antes da transação: a guarda nunca era exercitada.
+describe("encerramento concorrente", () => {
+  it("dois encerramentos simultâneos produzem UM encerramento só", async () => {
+    // Trios dos dois lados, e não a súmula de 2×2: a rodada de avaliação só
+    // abre com MIN_GRUPO_AVALIACAO companheiros de lado, e sem rodada o teste
+    // não veria a metade mais cara do encerramento.
+    const { jogador: admin, conta } = await criarJogadorComConta();
+    await logarComo(conta);
+    const fut = await criarFut({ createdByPlayerId: admin.id, status: "teams_drawn" });
+    const timeA = await criarTrioComConta();
+    const timeB = await criarTrioComConta();
+    await criarJogo(fut, timeA.jogadores, timeB.jogadores);
+    const s = { fut };
+
+    const resultados = await Promise.allSettled([
+      confirmarEncerramento(s.fut.id),
+      confirmarEncerramento(s.fut.id),
+    ]);
+
+    // As duas "terminam" — uma encerrando, a outra saindo pela guarda ou pelo
+    // redirect. O que importa é o estado que sobra.
+    expect(resultados).toHaveLength(2);
+
+    const [linha] = await db.select().from(matchDays).where(eq(matchDays.id, s.fut.id));
+    expect(linha.status).toBe("finished");
+
+    // Uma rodada só: duas reabririam a avaliação e duplicariam o eleitorado.
+    const rodadas = await db
+      .select()
+      .from(ratingRounds)
+      .where(eq(ratingRounds.matchDayId, s.fut.id));
+    expect(rodadas).toHaveLength(1);
+
+    // E um aviso de encerramento por pessoa, não dois.
+    const avisos = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.type, "fut_encerrado"));
+    const porJogador = new Map<number, number>();
+    for (const a of avisos) porJogador.set(a.playerId, (porJogador.get(a.playerId) ?? 0) + 1);
+    for (const total of porJogador.values()) expect(total).toBe(1);
   });
 });

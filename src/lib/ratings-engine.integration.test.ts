@@ -20,11 +20,14 @@ import {
   ratings,
   skillHistory,
   users,
+  zenhaInventario,
+  zenhaMultiplicadores,
   type MatchDay,
   type Player,
 } from "@/db/schema";
 import { quemViraFalta } from "@/lib/encerramento";
 import { getAvaliadoresDaRodada, getCompanheiros } from "@/lib/ratings";
+import { ID_DO_MULTIPLICADOR } from "@/lib/loja-catalogo";
 import { abrirRodada, fecharRodada } from "@/lib/ratings-engine";
 import { getAttendanceStats } from "@/lib/stats";
 import {
@@ -604,5 +607,80 @@ describe("getAttendanceStats", () => {
     expect(stats.perPlayer).toEqual([
       expect.objectContaining({ playerId: assidua.jogador.id, attended: 1 }),
     ]);
+  });
+});
+
+// O multiplicador é a única coisa no app que muda a NOTA de alguém por dinheiro
+// gasto, e o caminho dele atravessa três módulos: `zenha_multiplicadores` →
+// `lerMultiplicadoresPorRodada` → `replaySkills` → `skill_history`. Cada ponta
+// tem teste próprio; a EMENDA não tinha nenhum, e é onde uma chave trocada
+// (roundId no lugar de matchDayId) desligaria o item pago sem quebrar um teste
+// sequer.
+describe("aplicarReplay com multiplicador", () => {
+  it("a nota de quem armou se move mais que a do controle, e fica marcada", async () => {
+    const fut = await criarFut();
+    const timeA = await criarTrioComConta();
+    const timeB = await criarTrioComConta();
+    await criarJogo(fut, timeA.jogadores, timeB.jogadores);
+    const aberta = await abrirRodada(db, fut.id);
+    const roundId = aberta!.roundId;
+
+    // Todo mundo recebe a MESMA nota de todo mundo: sem o multiplicador, os
+    // seis teriam exatamente o mesmo skill_after. É isso que torna a diferença
+    // atribuível só ao item.
+    const todos = [...timeA.jogadores, ...timeB.jogadores];
+    await avaliarTrio(roundId, todos, 10);
+
+    // Um item comprado e consumido neste fut, a 150%.
+    const comprador = timeA.jogadores[0];
+    const [item] = await db
+      .insert(zenhaInventario)
+      .values({
+        playerId: comprador.id,
+        itemId: ID_DO_MULTIPLICADOR,
+        precoPago: 120,
+        consumivel: true,
+        fatorPercent: 150,
+        consumidoEm: sql`now()`,
+      })
+      .returning({ id: zenhaInventario.id });
+    await db.insert(zenhaMultiplicadores).values({
+      matchDayId: fut.id,
+      playerId: comprador.id,
+      inventarioId: item.id,
+      fatorNum: 3,
+      fatorDen: 2,
+    });
+
+    await db.transaction((tx) => fecharRodada(tx, roundId, "prazo"));
+
+    const historico = await db
+      .select()
+      .from(skillHistory)
+      .where(eq(skillHistory.roundId, roundId));
+    const doComprador = historico.find((h) => h.playerId === comprador.id)!;
+    const controle = historico.find((h) => h.playerId === timeA.jogadores[1].id)!;
+
+    // Mesma nota recebida, mesma nota de partida — só o fator difere.
+    expect(doComprador.skillBefore).toBe(controle.skillBefore);
+    expect(doComprador.averageReceived).toBe(controle.averageReceived);
+
+    const moveuComprador = doComprador.skillAfter - doComprador.skillBefore;
+    const moveuControle = controle.skillAfter - controle.skillBefore;
+    expect(moveuControle).toBeGreaterThan(0);
+    // 1,5× o movimento — é o que a pessoa comprou.
+    //
+    // A razão não bate em 1,5 EXATO de propósito: cada nota é arredondada para
+    // um decimal por conta própria (ver `arredondar` em skill.ts), então o
+    // controle vira 1,7 quando o valor cru era ~1,667. A tolerância é de um
+    // passo de arredondamento — apertar mais seria testar o arredondamento, que
+    // já tem teste próprio, em vez do multiplicador.
+    expect(moveuComprador).toBeGreaterThan(moveuControle);
+    expect(Math.abs(moveuComprador - moveuControle * 1.5)).toBeLessThanOrEqual(0.1);
+
+    // A marca pública: sem ela a tela não teria como dizer que aquela subida
+    // veio multiplicada.
+    expect(doComprador.multiplicado).toBe(true);
+    expect(historico.filter((h) => h.multiplicado)).toHaveLength(1);
   });
 });
