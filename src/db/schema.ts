@@ -318,6 +318,14 @@ export const matchDays = pgTable("match_days", {
   // src/lib/agenda-freio.ts.
   calendarPushes: integer("calendar_pushes").notNull().default(0),
   calendarPushesSince: timestamp("calendar_pushes_since"),
+  // Quando a zenha deste fut foi paga. Nulo = ainda não foi.
+  //
+  // Faz duas coisas. A primeira é ser a trava do exatamente-uma-vez: a
+  // liquidação abre com `UPDATE ... SET liquidado_em = now() WHERE id = $1 AND
+  // liquidado_em IS NULL RETURNING`, e zero linhas quer dizer que outra
+  // execução já pagou. A segunda é limitar a varredura — sem ela, o varredor
+  // reexaminaria todo fut encerrado da história a cada passada.
+  liquidadoEm: timestamp("liquidado_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 },
 (t) => [
@@ -894,6 +902,16 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // remove valor de enum.
   "fut_encerrado",
   "fut_encerrado_no_grupo",
+  // A zenha creditada por um fut, num aviso só. O crédito não sai no
+  // encerramento — sai na liquidação, um a dois dias depois, quando placar e
+  // notas param de mudar (ver src/lib/zenha-engine.ts) —, então ele não tinha
+  // como pegar carona no `fut_encerrado`, que já foi embora.
+  //
+  // O consumo do multiplicador NÃO tem tipo próprio: vai no corpo deste
+  // mesmo aviso. Já a devolução tem, porque contraria a expectativa de quem
+  // armou e não tem irmão em que pegar carona.
+  "zenha_creditada",
+  "multiplicador_devolvido",
 ]);
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
@@ -1044,6 +1062,18 @@ export const skillHistory = pgTable(
       mode: "number",
     }).notNull(),
     computedAt: timestamp("computed_at").notNull().defaultNow(),
+    // A nota desta rodada andou multiplicada.
+    //
+    // O multiplicador é a única coisa no sistema que faz a nota — o número que
+    // diz o que os companheiros acharam de você — se mover mais rápido por
+    // dinheiro. Deixar isso sem marca seria pior que a própria regra: quando
+    // alguém notasse, a DESCOBERTA é que viraria o problema. Com a coluna, o
+    // histórico mostra o selo e a coisa vira parte da graça.
+    //
+    // Como todo o resto de skill_history, é projeção do replay: reescrita
+    // inteira a cada recálculo, a partir do fato durável em
+    // `zenha_multiplicadores`.
+    multiplicado: boolean("multiplicado").notNull().default(false),
   },
   (t) => [unique().on(t.playerId, t.roundId)],
 );
@@ -1160,6 +1190,329 @@ export const matchDayDeletionVoters = pgTable(
   (t) => [primaryKey({ columns: [t.voteId, t.playerId] })],
 );
 
+// ---------------------------------------------------------------------------
+// A zenha: a moeda do FutZenha.
+//
+// Ganha-se por participar do fut, por ver a nota subir, por ser eleito o melhor
+// em campo e por não faltar; gasta-se na loja. Quatro decisões moldam tudo o
+// que está abaixo:
+//
+// 1. O ledger é APPEND-ONLY e nunca é recalculado. A nota é o oposto — ela é
+//    replay completo desde 5,0 a cada denúncia aceita (ver src/lib/skill.ts) —,
+//    mas dinheiro já pode ter virado item, e não existe replay de um gasto. Por
+//    isso o crédito só sai quando o fut amadurece: placar travado, prazo de
+//    contestação vencido, nenhuma denúncia aberta. Sem estorno, sem
+//    complemento, sem ratchet.
+// 2. O saldo é MATERIALIZADO em `zenha_carteiras`, e não derivado de
+//    `sum(amount)`. Duas coisas que a soma não dá: uma linha para o UPDATE
+//    condicional travar (é ele que serializa a compra concorrente, sem lock
+//    nenhum) e o `check (saldo >= 0)`, que é a garantia de banco de que
+//    nenhum caminho gasta o que não existe.
+// 3. Os VALORES não moram aqui nem no código: moram em `zenha_config`, que
+//    guarda só as sobrescritas do admin. Chave ausente vale o padrão de
+//    src/lib/zenha.ts. Mudar um valor vale dali para frente — o que já foi
+//    pago está no ledger e ninguém recalcula.
+// 4. O catálogo da loja é CÓDIGO (src/lib/loja-catalogo.ts), não linha de
+//    tabela: cada item precisa de SVG próprio e de token de cor, que migration
+//    nenhuma carrega. Daí `item_id` ser text sem FK.
+// ---------------------------------------------------------------------------
+
+// Por que a zenha entrou na carteira. É o que o extrato lê para escrever a
+// linha e o que a chave de deduplicação prefixa.
+export const zenhaMotivoEnum = pgEnum("zenha_motivo", [
+  // Foi ao fut e cumpriu o ritual da avaliação — o pacote que o produto trata
+  // como uma coisa só.
+  "participacao",
+  // A nota subiu no fechamento da rodada (ou se manteve em 10,0, que é o único
+  // lugar de onde não há para onde subir).
+  "nota",
+  "mvp",
+  // Fechou a sequência de presenças seguidas no grupo.
+  "streak",
+  // O saldo de estreia, igual para todo mundo.
+  "boas_vindas",
+  // A única linha negativa do ledger. Não existe motivo de estorno: quando um
+  // multiplicador não vale, o que volta é o ITEM, nunca o dinheiro.
+  "compra",
+]);
+
+// Onde um item comprado aparece. Um por vez em cada lugar — quem garante isso é
+// a PK composta de `zenha_equipados`, não a aplicação.
+export const zenhaSlotEnum = pgEnum("zenha_slot", [
+  "badge",
+  "moldura",
+  "cor_do_nome",
+  "titulo",
+]);
+
+/**
+ * As sobrescritas do admin sobre os valores da economia.
+ *
+ * Guarda SÓ o que foi mudado: chave ausente vale o padrão declarado em
+ * src/lib/zenha.ts (ganhos, fator e preço-base do multiplicador) e em
+ * src/lib/loja-catalogo.ts (preço de cada item, na chave `preco:{itemId}`).
+ * Uma tabela que espelhasse todos os valores precisaria de migration a cada
+ * item novo do catálogo, e nasceria desatualizada no dia do deploy.
+ *
+ * `valor` é integer porque toda grandeza da economia é inteira: zenha não tem
+ * centavo, e o fator do multiplicador entra como percentual (150 = 1,5×) em vez
+ * de fração, justamente para não abrir a porta do ponto flutuante no meio do
+ * cálculo da nota.
+ *
+ * Mudar um valor aqui vale DALI PARA FRENTE. Nada é recalculado — o que já foi
+ * pago está no ledger, o preço pago está no inventário e o fator do
+ * multiplicador é congelado na compra. É o append-only que dá essa garantia de
+ * graça; não existe código de reprocessamento a escrever.
+ */
+export const zenhaConfig = pgTable("zenha_config", {
+  chave: text("chave").primaryKey(),
+  valor: integer("valor").notNull(),
+  atualizadoEm: timestamp("atualizado_em").notNull().defaultNow(),
+  // Quem mexeu. `set null` porque apagar o admin não pode apagar o ajuste que
+  // está valendo para todo mundo.
+  atualizadoPorPlayerId: integer("atualizado_por_player_id").references(() => players.id, {
+    onDelete: "set null",
+  }),
+});
+
+/**
+ * O saldo de cada jogador.
+ *
+ * Materializado, e não `sum(zenha_ledger.amount)`, por duas coisas que a soma
+ * não dá:
+ *
+ * 1. **Uma linha para travar.** O débito é
+ *    `UPDATE ... SET saldo = saldo - $2 WHERE player_id = $1 AND saldo >= $2
+ *    RETURNING` — zero linhas devolvidas é compra recusada. É o mesmo idioma do
+ *    `UPDATE ... WHERE status = 'open' RETURNING` de fecharRodada, e é o que faz
+ *    duas compras simultâneas se serializarem **sem advisory lock e sem
+ *    FOR UPDATE**. Com saldo derivado não haveria o que travar: as duas
+ *    transações leriam a mesma soma e as duas passariam.
+ * 2. **O `check (saldo >= 0)`.** A garantia de que nenhum caminho — action
+ *    nova, script na mão, bug de arredondamento — gasta o que não existe.
+ *
+ * O preço é a duplicação, e o teste de integração cobra o fecho: ao fim de cada
+ * cenário, `saldo` tem que bater com `sum(amount)` do ledger daquele jogador.
+ */
+export const zenhaCarteiras = pgTable(
+  "zenha_carteiras",
+  {
+    playerId: integer("player_id")
+      .primaryKey()
+      .references(() => players.id, { onDelete: "cascade" }),
+    saldo: integer("saldo").notNull().default(0),
+    atualizadoEm: timestamp("atualizado_em").notNull().defaultNow(),
+  },
+  (t) => [check("zenha_carteiras_saldo_nao_negativo", sql`${t.saldo} >= 0`)],
+);
+
+/**
+ * O extrato: uma linha por movimento, para sempre.
+ *
+ * **Append-only.** Nada aqui é reescrito, revisado ou estornado — e é essa
+ * promessa que sustenta o resto do desenho. A nota faz o oposto (replay
+ * completo desde 5,0 a cada denúncia aceita, ver src/lib/skill.ts), mas a nota
+ * é um número; zenha vira badge, e não existe replay de um gasto. Por isso o
+ * crédito espera o fut amadurecer — placar travado, prazo de contestação
+ * vencido, nenhuma denúncia aberta — e sai UMA vez, já sobre fato congelado.
+ *
+ * `unique(player_id, dedupe_key)` é a idempotência: o varredor pode passar duas
+ * vezes pelo mesmo fut que o segundo insert não faz nada. As chaves são
+ * `{motivo}:fut:{matchDayId}` para o automático e `compra:{inventarioId}` para a
+ * loja. (`boas-vindas` sobrevive só como saldo de fixture do seed: no app
+ * ninguém ganha zenha por existir.)
+ *
+ * A chave da compra usa o id da linha do INVENTÁRIO, e não o do item: o
+ * multiplicador é comprável várias vezes, e `compra:{itemId}` daria o segundo
+ * de graça. Um timestamp na chave resolveria isso e quebraria a idempotência do
+ * retry, que é o que ela existe para dar.
+ *
+ * As três FKs são `set null`, NUNCA cascade: apagar um fut não pode evaporar
+ * dinheiro que já virou item. É também por isso que `descricao` é congelada na
+ * gravação em vez de montada por join na leitura — quando o fut morre, o texto
+ * do extrato continua fazendo sentido.
+ */
+export const zenhaLedger = pgTable(
+  "zenha_ledger",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    motivo: zenhaMotivoEnum("motivo").notNull(),
+    // Positivo credita, negativo debita. Zero nunca: linha que não move saldo é
+    // ruído no extrato de quem abriu para entender de onde veio a zenha.
+    amount: integer("amount").notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    roundId: integer("round_id").references(() => ratingRounds.id, { onDelete: "set null" }),
+    matchDayId: integer("match_day_id").references(() => matchDays.id, { onDelete: "set null" }),
+    inventarioId: integer("inventario_id").references((): AnyPgColumn => zenhaInventario.id, {
+      onDelete: "set null",
+    }),
+    descricao: text("descricao").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("zenha_ledger_dedupe_unq").on(t.playerId, t.dedupeKey),
+    // O extrato é sempre "as últimas linhas deste jogador". Sem `desc` na
+    // definição de propósito: o Postgres varre índice de trás para frente sem
+    // custo, e a forma simples é a que sobrevive a upgrade do drizzle.
+    index("zenha_ledger_extrato_idx").on(t.playerId, t.createdAt),
+    check("zenha_ledger_amount_nao_zero", sql`${t.amount} <> 0`),
+  ],
+);
+
+/**
+ * O que cada um comprou.
+ *
+ * `item_id` é text **sem FK**: o catálogo é código (src/lib/loja-catalogo.ts),
+ * não linha de tabela. Cada item precisa de SVG próprio e de token de cor, que
+ * migration nenhuma carrega — uma tabela guardaria metade da verdade e pediria
+ * migration por badge novo. É o mesmo precedente de corpos.tsx e nav-items.tsx.
+ * O preço da regra do catálogo: **nunca apagar entrada — marcar `aposentado`**,
+ * senão a linha aqui aponta para o vazio.
+ *
+ * `preco_pago` e `fator_percent` são congelados na compra. O admin pode mexer
+ * nos valores amanhã; o que a pessoa comprou continua valendo o que valia.
+ *
+ * As duas uniques parciais são as duas regras do produto garantidas pelo banco:
+ * cosmético não se compra duas vezes, e não se arma dois multiplicadores no
+ * mesmo fut.
+ */
+export const zenhaInventario = pgTable(
+  "zenha_inventario",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    itemId: text("item_id").notNull(),
+    precoPago: integer("preco_pago").notNull(),
+    // Consumível some ao ser usado (o multiplicador); o resto fica para sempre.
+    consumivel: boolean("consumivel").notNull().default(false),
+    // Só para o multiplicador: o percentual vigente no dia da compra (150 =
+    // 1,5×). Nulo nos cosméticos.
+    fatorPercent: integer("fator_percent"),
+    adquiridoEm: timestamp("adquirido_em").notNull().defaultNow(),
+    // Quando o consumível foi GASTO. Nulo = ainda disponível.
+    //
+    // A linha não é apagada, e não pode ser: `zenha_multiplicadores.inventario_id`
+    // aponta para cá com `cascade`, e apagar aqui evaporaria o fato que o replay
+    // da nota consome. A marca é o que separa "usado" de "livre" sem quebrar
+    // essa cadeia — e de quebra deixa o inventário contar a história ("este você
+    // gastou no fut de 12/08").
+    //
+    // Sem ela, limpar só as colunas do arme no encerramento devolveria o item à
+    // prateleira depois de consumido: uma compra viraria multiplicador infinito.
+    consumidoEm: timestamp("consumido_em", { withTimezone: true }),
+    // O arme: em qual fut este consumível vale, quando foi armado, e até quando
+    // valeria armar. `corte_previsto` é congelado no arme para que adiar o fut
+    // depois não abra janela nenhuma — ver src/lib/multiplicador-engine.ts.
+    armadoMatchDayId: integer("armado_match_day_id").references(() => matchDays.id, {
+      onDelete: "set null",
+    }),
+    armadoEm: timestamp("armado_em", { withTimezone: true }),
+    cortePrevisto: timestamp("corte_previsto", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("zenha_inventario_unico_idx")
+      .on(t.playerId, t.itemId)
+      .where(sql`${t.consumivel} = false`),
+    uniqueIndex("zenha_inventario_arme_unico_idx")
+      .on(t.playerId, t.armadoMatchDayId)
+      .where(sql`${t.armadoMatchDayId} is not null`),
+    index("zenha_inventario_jogador_idx").on(t.playerId),
+  ],
+);
+
+/**
+ * O que está aparecendo no perfil.
+ *
+ * A PK composta `(player_id, slot)` é o "um por slot" garantido pelo BANCO, no
+ * mesmo espírito do group_members_admin_unico_idx: equipar é
+ * `onConflictDoUpdate` na PK, e não "apaga o antigo, insere o novo" — que teria
+ * uma janela entre as duas escritas.
+ *
+ * `inventario_id` é unique para o mesmo item não ocupar dois slots.
+ */
+export const zenhaEquipados = pgTable(
+  "zenha_equipados",
+  {
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    slot: zenhaSlotEnum("slot").notNull(),
+    inventarioId: integer("inventario_id")
+      .notNull()
+      .unique()
+      .references(() => zenhaInventario.id, { onDelete: "cascade" }),
+    equipadoEm: timestamp("equipado_em").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.playerId, t.slot] })],
+);
+
+/**
+ * Quem armou multiplicador em qual fut, e com que força.
+ *
+ * É um FATO DURÁVEL, e é isso que o torna compatível com o replay. A nota é
+ * recalculada do zero a cada denúncia aceita e a cada fut apagado (ver
+ * src/lib/skill.ts); reproduzir a nota de uma rodada antiga exige reproduzir
+ * também o multiplicador que valia nela. Guardar o efeito — "esta nota já veio
+ * multiplicada" — não daria: o replay reescreve a nota inteira.
+ *
+ * `fator_num`/`fator_den` são CONGELADOS aqui a partir do que estava congelado
+ * no inventário na hora da compra. Se a loja um dia vender 2×, a rodada de dois
+ * meses atrás continua replaiando a 1,5× — para sempre, e sem que ninguém
+ * precise lembrar disso.
+ *
+ * `match_day_id` com **cascade**, e isso não é estilo: `apagarFut`
+ * (src/lib/deletion.ts) é hard delete, e um estouro de FK dentro de
+ * `processarPendencias` — cujo `.catch` só escreve no log — pararia a varredura
+ * INTEIRA em silêncio: rodada nunca mais fecha por prazo, denúncia nunca mais
+ * resolve, lembrete nunca mais sai.
+ *
+ * O cascade some com o FATO, e só com ele — devolver o item é outra escrita.
+ * `zenha_inventario.consumido_em` é coluna do inventário e o cascade não a
+ * alcança, então quem conta com "o banco desfaz sozinho" prende um item pago num
+ * fut que não existe mais. Quem devolve é `soltarMultiplicadoresDoFut`
+ * (src/lib/multiplicador-engine.ts), chamada por `apagarFut` ANTES do delete —
+ * depois dele não há mais como saber quais itens foram consumidos aqui.
+ */
+export const zenhaMultiplicadores = pgTable(
+  "zenha_multiplicadores",
+  {
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    // A linha do inventário que foi consumida. Unique porque um item só se
+    // gasta uma vez; cascade porque item apagado não deixa fato órfão.
+    inventarioId: integer("inventario_id")
+      .notNull()
+      .unique()
+      .references((): AnyPgColumn => zenhaInventario.id, { onDelete: "cascade" }),
+    fatorNum: integer("fator_num").notNull(),
+    fatorDen: integer("fator_den").notNull(),
+    aplicadoEm: timestamp("aplicado_em").notNull().defaultNow(),
+  },
+  (t) => [
+    // Um por (fut, jogador): o multiplicador NÃO empilha. Quem garante é a PK,
+    // não a aplicação — e é por isso que o replay pode ler o fator como um
+    // valor, em vez de contar quantas linhas existem.
+    primaryKey({ columns: [t.matchDayId, t.playerId] }),
+    // Fator sempre maior que 1 e denominador positivo. Um fator neutro gravado
+    // aqui seria uma linha que promete movimento e não entrega; um denominador
+    // zero seria divisão por zero no meio do cálculo da nota.
+    check(
+      "zenha_multiplicadores_fator_valido",
+      sql`${t.fatorNum} > ${t.fatorDen} and ${t.fatorDen} > 0`,
+    ),
+    index("zenha_multiplicadores_jogador_idx").on(t.playerId),
+  ],
+);
+
 export type Player = typeof players.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type GroupMember = typeof groupMembers.$inferSelect;
@@ -1190,3 +1543,11 @@ export type Notification = typeof notifications.$inferSelect;
 export type MatchDayDeletionVote = typeof matchDayDeletionVotes.$inferSelect;
 export type MatchDayDeletionVoter = typeof matchDayDeletionVoters.$inferSelect;
 export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
+export type ZenhaConfig = typeof zenhaConfig.$inferSelect;
+export type ZenhaCarteira = typeof zenhaCarteiras.$inferSelect;
+export type ZenhaLedgerEntry = typeof zenhaLedger.$inferSelect;
+export type ZenhaInventarioItem = typeof zenhaInventario.$inferSelect;
+export type ZenhaEquipado = typeof zenhaEquipados.$inferSelect;
+export type ZenhaMultiplicador = typeof zenhaMultiplicadores.$inferSelect;
+export type ZenhaMotivo = (typeof zenhaMotivoEnum.enumValues)[number];
+export type ZenhaSlot = (typeof zenhaSlotEnum.enumValues)[number];

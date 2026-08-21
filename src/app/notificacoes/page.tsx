@@ -16,7 +16,7 @@ import type { notificationTypeEnum } from "@/db/schema";
 type TipoDeAviso = (typeof notificationTypeEnum.enumValues)[number];
 
 /**
- * O ícone por família de aviso. São 21 tipos e cinco famílias — o que importa
+ * O ícone por família de aviso. São 23 tipos e seis famílias — o que importa
  * de relance é a natureza do aviso, não o tipo exato.
  *
  * `rating_round_closed` está declarado no enum mas nunca é emitido: o
@@ -52,6 +52,11 @@ const ICONE: Record<TipoDeAviso, { icone: React.ReactNode; cor: string }> = {
   // ele; quem só é do grupo vem apagado, que é o peso da notícia para ele.
   fut_encerrado: { icone: <IconeBola />, cor: "text-accent-ink" },
   fut_encerrado_no_grupo: { icone: <IconeBola />, cor: "text-fg-3" },
+  // A zenha. O crédito é notícia boa e chega dias depois do fut, quando ninguém
+  // está esperando — vem em accent. A devolução do multiplicador contraria o
+  // que a pessoa combinou ao armar, e é o único aviso da moeda em warn.
+  zenha_creditada: { icone: <IconeGrafico />, cor: "text-accent-ink" },
+  multiplicador_devolvido: { icone: <IconeAlerta />, cor: "text-warn-ink" },
 };
 
 export const metadata: Metadata = { title: "Avisos" };

@@ -30,6 +30,8 @@ export const CAPITULOS = [
   { id: "os-rankings", titulo: "Os rankings", resumo: "O que cada uma das cinco abas mede.", camada: "no-fut" },
   { id: "sua-conta", titulo: "Sua conta", resumo: "Por que sem conta você joga mas não pontua.", camada: "no-fut" },
   { id: "os-avisos", titulo: "Os avisos", resumo: "O que o app te avisa e quando.", camada: "no-fut" },
+  { id: "as-zenhas", titulo: "As zenhas", resumo: "Como se ganha a moeda do fut e onde ela se gasta.", camada: "no-fut" },
+  { id: "o-multiplicador", titulo: "O multiplicador", resumo: "A aposta que acelera sua nota — e o prazo para armá-la.", camada: "no-fut" },
   { id: "marcar-um-fut", titulo: "Marcar um fut", resumo: "Criar, definir vagas e cuidar da lista.", camada: "organiza" },
   { id: "a-sumula", titulo: "A súmula ao vivo", resumo: "Lançar gol em campo e passar a súmula.", camada: "organiza" },
   { id: "encerrar", titulo: "Encerrar o fut", resumo: "O que trava para sempre e o que ainda dá para corrigir.", camada: "organiza" },

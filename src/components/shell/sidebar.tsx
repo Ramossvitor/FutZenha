@@ -7,6 +7,7 @@ import { papelLabel } from "@/lib/grupos-permissions";
 import { WordmarkLink } from "@/components/ui/marca";
 import type { Session } from "@/lib/session";
 import { BotaoAtualizar } from "./botao-atualizar";
+import { ChipDeZenhas } from "./chip-de-zenhas";
 import { ChipDoGrupo } from "./chip-do-grupo";
 import { itensLaterais } from "./nav-items";
 import { NavLink } from "./nav-link";
@@ -23,12 +24,14 @@ export function Sidebar({
   grupo,
   temSeletor,
   naoLidas,
+  saldo,
   aoSair,
 }: {
   session: Session | null;
   grupo: GrupoAtual | null;
   temSeletor: boolean;
   naoLidas: number;
+  saldo: number;
   /**
    * A Server Action do Sair, injetada pelo layout.
    *
@@ -59,7 +62,15 @@ export function Sidebar({
         <BotaoAtualizar />
       </div>
 
-      {session && <ChipDoGrupo forma="lateral" grupo={grupo} temSeletor={temSeletor} />}
+      {session && (
+        <div className="flex flex-col gap-2">
+          <ChipDoGrupo forma="lateral" grupo={grupo} temSeletor={temSeletor} />
+          {/* Colado no chip do grupo, e não perdido no meio dos links: os dois
+              respondem "onde eu estou e com o que eu conto", e a navegação
+              começa depois disso. */}
+          <ChipDeZenhas saldo={saldo} forma="lateral" />
+        </div>
+      )}
 
       {/* Rótulo diferente do da tab bar: as duas ficam no DOM ao mesmo tempo, e
           só o `display:none` do breakpoint separa uma da outra. Dois marcos de

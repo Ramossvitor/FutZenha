@@ -39,6 +39,10 @@ export const MENSAGENS: Record<string, string> = {
   "email-contato-invalido": "E-mail de contato inválido — confira o endereço.",
   "auto-rebaixamento":
     "Você não pode tirar o próprio papel de admin da plataforma — peça a outro admin.",
+  // Painel da economia. O texto é genérico porque a tela destaca o campo
+  // recusado e diz ali o que ele aceita — o slug carrega o "nada foi salvo",
+  // que é a parte que o admin não teria como deduzir olhando os campos.
+  "ajuste-recusado": "Valor recusado — nada foi salvo. Confira o campo destacado.",
 
   // fut
   "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
@@ -60,6 +64,8 @@ export const MENSAGENS: Record<string, string> = {
   "lista-aberta": "Isso só vale depois de fechar a lista — sorteie os times primeiro.",
   "escalacao-travada":
     "O fut já foi encerrado e a escalação não muda mais. Para corrigir, é preciso excluir o fut — o que exige votação dos jogadores.",
+  "data-travada":
+    "O fut já foi encerrado e a data e o horário não mudam mais — é a ordem dos futs que define o cálculo das notas. Local, vagas e observações você ainda pode ajustar.",
   "janela-encerrada": `As ${JANELA_CORRECAO_HORAS}h para corrigir placar e gols já passaram. Para alterar, é preciso excluir o fut — o que exige votação dos jogadores.`,
   "precisa-votacao":
     "Fut encerrado não se apaga direto — abra a votação de exclusão para o grupo decidir.",
@@ -77,7 +83,28 @@ export const MENSAGENS: Record<string, string> = {
   "operador-invalido":
     "Só quem está na lista deste fut e tem conta ativa pode receber a súmula.",
   "fut-encerrado": "Este fut já foi encerrado — a súmula ao vivo não está mais disponível.",
+
+  // Multiplicador. Os dois textos explicam o PRAZO, e não o botão, porque é o
+  // prazo que a pessoa não vê: o corte é o horário de início do fut, e não o
+  // encerramento — que costuma acontecer horas depois de a bola parar. Sem
+  // dizer isso, "não deu" vira "o app está quebrado".
+  "multiplicador-indisponivel":
+    "Não deu para armar o multiplicador. Ele só vale até o horário de início do fut — depois disso, fica para o próximo.",
+  "multiplicador-travado":
+    "O fut já começou, então o multiplicador não sai mais. Desarmar depois de jogar seria desfazer a aposta já sabendo o resultado.",
   "sumula-indisponivel": "A súmula ao vivo só abre depois do sorteio dos times.",
+
+  // Loja e inventário. Os três primeiros são as três recusas de `comprar`, e os
+  // três dizem o que NÃO aconteceu com o saldo — porque é a primeira pergunta de
+  // quem clicou em comprar e voltou para a mesma tela.
+  "sem-saldo":
+    "Zenha insuficiente para este item. Nada foi cobrado — o saldo sobe sozinho a cada fut apurado.",
+  "ja-possui": "Você já tem esse item, e ele não foi cobrado de novo. Ele está no seu inventário.",
+  "item-indisponivel":
+    "Esse item não está mais à venda. Quem já comprou continua com ele — itens não são apagados.",
+  // A mesma resposta para "não é seu", "não existe" e "é o consumível": separar
+  // os casos transformaria o formulário num oráculo do inventário alheio.
+  "item-nao-e-seu": "Esse item não está no seu inventário.",
 
   // grupo
   "entrada-fechada": "Este grupo não está aceitando entradas agora.",
@@ -111,6 +138,14 @@ export const MENSAGENS: Record<string, string> = {
     "Esse convite não está mais pendente ou não tem e-mail. Gere um convite novo.",
 
   // ----- confirmações -----
+  "multiplicador-armado":
+    "Multiplicador armado. Ele vale neste fut e some do inventário quando o fut for encerrado.",
+  "multiplicador-desarmado": "Multiplicador desarmado — ele voltou para o seu inventário.",
+  // A compra cai no inventário, e é lá que ela vira alguma coisa: cosmético
+  // precisa ser equipado, multiplicador precisa ser armado num fut.
+  "compra-feita": "Comprado. Está no seu inventário — falta só escolher onde ele vai aparecer.",
+  "item-equipado": "Pronto, ele já aparece no seu perfil.",
+  "item-desequipado": "Item guardado. Ele continua seu — só saiu do perfil.",
   entrou: "Pronto, você está no grupo.",
   saiu: "Você saiu do grupo.",
   "pedido-enviado": "Pedido enviado. O administrador vai decidir.",
@@ -156,6 +191,7 @@ export const MENSAGENS: Record<string, string> = {
   "muitos-grupos": "Você criou muitos grupos hoje. Espere algumas horas para criar outro.",
   "muitos-jogadores":
     "Você cadastrou muitos jogadores hoje. Espere algumas horas para cadastrar outro.",
+  "ajustes-salvos": "Ajustes salvos. Valem daqui para frente — nada do que já foi pago mudou.",
   "link-gerado": "Link novo gerado — o anterior deixou de valer.",
   "link-revogado": "Link revogado.",
   // Salvou, mas o aviso de agenda ficou retido pelo freio de

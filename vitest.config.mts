@@ -39,13 +39,18 @@ export default defineConfig({
         "src/db/preparar-e2e.ts",
       ],
       reporter: ["text-summary", "json-summary", "html"],
-      // Baseline medida em 2026-08-09 (unit + integração, 460 testes): 53,9% de
-      // linhas, 52,3% de statements. O threshold trava ~5 pontos abaixo:
+      // Baseline medida em 2026-08-21 (unit + integração, 1367 testes): 76,3%
+      // de linhas, 74,1% de statements. O threshold trava ~5 pontos abaixo:
       // regressão de cobertura quebra o CI, flutuação normal não. Suba os
       // números conforme a cobertura crescer — nunca abaixe sem conversa.
+      //
+      // A medida anterior (2026-08-09, 460 testes) era 53,9% / 52,3%, com o
+      // threshold em 48/47. O salto veio da zenha: a loja, a carteira e o
+      // multiplicador chegaram com suíte própria, e as actions da economia
+      // ganharam teste de fronteira.
       thresholds: {
-        lines: 48,
-        statements: 47,
+        lines: 71,
+        statements: 69,
       },
     },
     projects: [

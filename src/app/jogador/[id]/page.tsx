@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
 import { LinkButton } from "@/components/ui/button";
-import { Eyebrow, Section } from "@/components/ui/card";
+import { CabecalhoDoJogador } from "@/components/ui/cabecalho-do-jogador";
+import { Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
 import { IconeLuva, IconeSeta } from "@/components/ui/icons";
-import { Nota } from "@/components/ui/nota";
 import { Pilula } from "@/components/ui/pilula";
+import { Selo } from "@/components/ui/selo";
 import { StatGrid, StatTile } from "@/components/ui/stat";
 import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
 import { papelLabel } from "@/lib/grupos-permissions";
@@ -68,24 +68,24 @@ export default async function JogadorPage({ params, searchParams }: PageProps<"/
   );
   if (!dados) notFound();
 
-  const { jogador, gruposVisiveis, gruposFiltraveis, grupoSelecionado, numeros } = dados;
+  const { jogador, gruposVisiveis, gruposFiltraveis, grupoSelecionado, numeros, vitrine } = dados;
   const comoChamam = jogador.nickname ?? jogador.name;
   const souEu = session.player.id === jogador.id;
 
   return (
     <div className="flex flex-col gap-7">
-      <header className="flex items-start gap-3.5">
-        {/* O avatar é de iniciais porque não existe foto no banco — e é aqui
-            que a foto entra quando existir, sem mexer no resto da página. */}
-        <Avatar nome={jogador.name} tamanho="lg" className="mt-1" />
-        <div className="min-w-0 flex-1">
-          <h1 className="font-display text-[28px] leading-none font-black font-stretch-125% tracking-[-.015em] text-fg uppercase">
-            {jogador.nickname ?? jogador.name.split(" ")[0]}
-          </h1>
-          {/* Sem o @username do /perfil: usuário é credencial de login, não
-              cartão de visita. */}
-          <p className="mt-1.5 text-[14px] text-fg-2">{jogador.name}</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
+      {/* O subtítulo sai sem o @username do /perfil: usuário é credencial de
+          login, não cartão de visita. E o rótulo da nota é "nota", e não "sua
+          nota" — a mesma nota, vista por outra pessoa. */}
+      <CabecalhoDoJogador
+        nome={jogador.name}
+        apelido={jogador.nickname}
+        nota={jogador.skill}
+        moldura={vitrine.moldura?.tokenId}
+        corDoNome={vitrine.corDoNome?.tokenId}
+        titulo={vitrine.titulo}
+        badges={
+          <>
             {jogador.isGoalkeeper ? (
               <Badge tom="warn">
                 <IconeLuva className="size-3" />
@@ -97,14 +97,24 @@ export default async function JogadorPage({ params, searchParams }: PageProps<"/
             {souEu && <Badge tom="accent">você</Badge>}
             {!jogador.active && <Badge tom="danger">fora das listas</Badge>}
             {!jogador.temConta && <Badge tom="dashed">sem conta</Badge>}
+          </>
+        }
+      />
+
+      {/* Linha própria, e não junto dos badges do cabeçalho: os de cima são o
+          que o app afirma sobre o jogador (goleiro, sem conta) e estes são o
+          que ele comprou. Misturar as duas fileiras faria a loja parecer que
+          concede status — e o eyebrow é quem diz, em uma palavra, de onde eles
+          vêm. A seção some inteira para quem não comprou nada. */}
+      {vitrine.selos.length > 0 && (
+        <Section titulo="Da loja">
+          <div className="flex flex-wrap gap-1.5">
+            {vitrine.selos.map((item) => (
+              <Selo key={item.id} item={item} />
+            ))}
           </div>
-        </div>
-        <div className="shrink-0 text-right">
-          {/* "nota", e não "sua nota": a mesma nota, vista por outra pessoa. */}
-          <Eyebrow>nota</Eyebrow>
-          <Nota valor={jogador.skill} tamanho="hero" className="mt-1 block" />
-        </div>
-      </header>
+        </Section>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <WhatsAppShareButton

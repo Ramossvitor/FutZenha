@@ -29,6 +29,12 @@ export default async function AdminDashboardPage() {
       texto: "Acompanhar as rodadas e decidir as denúncias de nota injusta.",
       selo: denuncias > 0 ? `${denuncias} para julgar` : null,
     },
+    {
+      href: "/admin/zenhas",
+      titulo: "Zenhas",
+      texto: "Ajustar quanto cada coisa paga e quanto cada item da loja custa.",
+      selo: null,
+    },
   ] as const;
 
   return (

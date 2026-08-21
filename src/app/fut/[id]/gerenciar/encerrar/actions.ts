@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, isNotNull, isNull, notExists, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, ne, notExists, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
 import { attendances, gamePlayers, games, matchDays } from "@/db/schema";
 import { formatDate } from "@/lib/format";
 import { revalidateMatchDay } from "../../revalidate";
 import { agendarResumoDoFut } from "@/lib/email-resumo";
 import { notificarEncerramento } from "@/lib/encerramento-avisos";
+import { congelarMultiplicadores } from "@/lib/multiplicador-engine";
 import { notificar } from "@/lib/notifications";
 import { avaliarMarcacao, entrarNaLista, mereceAviso, travarFut } from "@/lib/presenca";
 import { agendarDespachoDePush } from "@/lib/push-envio";
@@ -245,10 +246,18 @@ export async function confirmarEncerramento(matchDayId: number) {
     }
     await marcarFaltasAutomaticas(tx, matchDayId, lados.length);
 
-    await tx
+    // A transição é `UPDATE ... WHERE status <> 'finished' RETURNING`, e não um
+    // update pelo id: a checagem lá de cima roda ANTES da transação, então dois
+    // cliques simultâneos passam os dois por ela e chegam aqui em fila no lock.
+    // Zero linhas = o outro já encerrou, e sair aqui é o que impede o segundo
+    // commit de re-notificar todo mundo e de reabrir a contagem do que vier
+    // depender do encerramento.
+    const encerrados = await tx
       .update(matchDays)
       .set({ status: "finished", finishedAt: sql`now()` })
-      .where(eq(matchDays.id, matchDayId));
+      .where(and(eq(matchDays.id, matchDayId), ne(matchDays.status, "finished")))
+      .returning({ id: matchDays.id });
+    if (encerrados.length === 0) return;
 
     // O aviso do encerramento é UM só por pessoa, e por isso ele sai daqui e
     // não de dentro do abrirRodada: quem monta precisa saber tanto de quem
@@ -256,6 +265,12 @@ export async function confirmarEncerramento(matchDayId: number) {
     // jogou. O `abrirRodada` devolve o eleitorado justamente para isso.
     const rodada = await abrirRodada(tx, matchDayId);
     await notificarEncerramento(tx, matchDay, rodada, session.player.id);
+
+    // No MESMO commit do encerramento: é aqui que os multiplicadores armados
+    // viram fato durável (ou voltam para o inventário de quem não jogou). Um
+    // fut que ficasse `finished` com armes pendurados deixaria a pessoa sem o
+    // item e sem o efeito, e não existe "reabrir fut" para consertar.
+    await congelarMultiplicadores(tx, matchDayId, rodada?.roundId ?? null);
   });
 
   // Fura o throttle: "acabou o fut, vem ver como foi" perde o sentido se chegar

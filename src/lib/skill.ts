@@ -31,6 +31,18 @@ const LEGADO_EM_CENTESIMOS = [null, 100, 325, 550, 775, 1000] as const;
 export const PESO_RODADA_NUM = 1;
 export const PESO_RODADA_DEN = 3;
 
+/**
+ * O multiplicador de um jogador numa rodada, como fração exata.
+ *
+ * Fração, e não `1.5`: o cálculo inteiro desta casa é aritmética de inteiros com
+ * UM arredondamento no fim, e um float no meio traria de volta exatamente a
+ * ambiguidade que o comentário de `arredondar` existe para afastar.
+ */
+export type FatorDaRodada = { num: number; den: number };
+
+/** Sem multiplicador. A identidade da fórmula abaixo. */
+export const FATOR_NEUTRO: FatorDaRodada = { num: 1, den: 1 };
+
 const UM_DECIMO_EM_CENT = 10;
 
 /**
@@ -101,6 +113,18 @@ export type RoundInput = {
   legacyScale: boolean;
   /** Só as avaliações válidas. Filtrar as descartadas é do chamador. */
   ratings: RatingInput[];
+  /**
+   * Quem armou multiplicador NESTE fut, e com que fator.
+   *
+   * Entra como fato durável (tabela `zenha_multiplicadores`) e não como estado
+   * calculado: o replay roda inteiro a cada denúncia aceita e a cada fut
+   * apagado, e reproduzir a nota exige reproduzir também o multiplicador que
+   * valia na época. O fator é congelado na compra pelo mesmo motivo — se a loja
+   * um dia vender 2×, a rodada antiga continua replaiando a 1,5×.
+   *
+   * Ausente é o caso normal: rodada sem ninguém multiplicado.
+   */
+  multiplicadores?: ReadonlyMap<number, FatorDaRodada>;
 };
 
 export type SkillChange = {
@@ -111,6 +135,16 @@ export type SkillChange = {
   after: number;
   ratingsCount: number;
   averageReceived: number;
+  /**
+   * A nota desta rodada andou multiplicada.
+   *
+   * Vai para `skill_history` e aparece no histórico do jogador. Multiplicador é
+   * a única coisa no sistema que faz a nota — o número que diz o que os
+   * companheiros acharam — se mover mais rápido por dinheiro. Deixar isso sem
+   * marca seria pior que a regra: quando alguém notasse, a descoberta é que
+   * seria o problema.
+   */
+  multiplicado: boolean;
 };
 
 export type ReplayResult = {
@@ -145,6 +179,27 @@ function ordenar(rounds: RoundInput[]): RoundInput[] {
 // corrompido em vez de deixá-lo virar nota silenciosamente errada. A paridade
 // em rodada legada é só daqui: o banco não sabe a régua de cada rodada.
 function validar(round: RoundInput): void {
+  // A trava do multiplicador. Acima deste teto o coeficiente de `atual` na
+  // fórmula fica NEGATIVO, o dividendo do `arredondar` pode ficar negativo, e
+  // ele é meio-para-cima — a conta deixaria de ser simétrica sem que nada
+  // acusasse. Na prática o limite é fator ≤ 3 com o peso atual, e a loja só
+  // vende 1,25×, 1,5× e 2×; falhar alto aqui é o que garante que continue
+  // assim mesmo se alguém gravar outra coisa no banco.
+  for (const [playerId, fator] of round.multiplicadores ?? []) {
+    if (!Number.isInteger(fator.num) || !Number.isInteger(fator.den) || fator.den <= 0) {
+      throw new Error(
+        `Rodada ${round.roundId}: fator inválido para o jogador ${playerId} ` +
+          `(${fator.num}/${fator.den})`,
+      );
+    }
+    if (fator.num * PESO_RODADA_NUM > fator.den * PESO_RODADA_DEN) {
+      throw new Error(
+        `Rodada ${round.roundId}: fator ${fator.num}/${fator.den} passa do teto ` +
+          `(${PESO_RODADA_DEN}/${PESO_RODADA_NUM}) e inverteria o peso da nota atual`,
+      );
+    }
+  }
+
   const vistos = new Set<string>();
   for (const r of round.ratings) {
     if (!Number.isInteger(r.halfStars) || r.halfStars < MEIAS_MIN || r.halfStars > MEIAS_MAX) {
@@ -190,13 +245,31 @@ export function replaySkills(rounds: RoundInput[]): ReplayResult {
       const { somaCent, total } = recebidas.get(playerId)!;
       const atualCent = notaCent.get(playerId) ?? SKILL_INICIAL_CENT;
       const mediaCent = arredondar(somaCent, total);
+      const fator = round.multiplicadores?.get(playerId) ?? FATOR_NEUTRO;
 
-      // nova = (2 × atual + recebida) / 3, arredondada direto para décimos —
-      // um arredondamento só, na casa que a nota realmente tem.
+      // nova = atual + fator × (média − atual) × PESO_RODADA, arredondada direto
+      // para décimos — um arredondamento só, na casa que a nota realmente tem.
+      //
+      // Escrita como PESO, e não como delta escalado depois do cálculo. A
+      // diferença não é estética: `arredondar` é meio-para-CIMA e só recebe
+      // dividendo positivo aqui. Escalar `(nova − atual)` depois exigiria
+      // arredondar um número negativo quando a nota cai, e meio-para-cima sobre
+      // negativo é assimétrico — quem cai cairia sistematicamente menos que
+      // quem sobe pela mesma distância. Nesta forma o coeficiente de `atual` é
+      // (den × 3 − num × 1), positivo para todo fator que `validar` aceita, e o
+      // dividendo inteiro nunca fica negativo.
+      //
+      // Com o fator neutro isto se reduz LITERALMENTE à expressão de sempre,
+      // `arredondar(2 × atual + média, 30)` — o refactor é inerte, e é por isso
+      // que os casos antigos de skill.test.ts continuam valendo sem edição.
       const decimos = arredondar(
-        (PESO_RODADA_DEN - PESO_RODADA_NUM) * atualCent + PESO_RODADA_NUM * mediaCent,
-        PESO_RODADA_DEN * UM_DECIMO_EM_CENT,
+        (fator.den * PESO_RODADA_DEN - fator.num * PESO_RODADA_NUM) * atualCent +
+          fator.num * PESO_RODADA_NUM * mediaCent,
+        fator.den * PESO_RODADA_DEN * UM_DECIMO_EM_CENT,
       );
+      // `destravarExtremo` e `clamp` ficam exatamente onde estavam, e NÃO são
+      // multiplicados: o empurrão de 0,1 é mecanismo de alcançabilidade do topo
+      // e do fundo da escala, não movimento da rodada.
       const novaCent = clamp(
         destravarExtremo(decimos * UM_DECIMO_EM_CENT, atualCent, mediaCent),
       );
@@ -209,6 +282,11 @@ export function replaySkills(rounds: RoundInput[]): ReplayResult {
         after: centParaNota(novaCent),
         ratingsCount: total,
         averageReceived: centParaNota(mediaCent),
+        // Por VALOR, não por identidade: o fator que vem do banco é um objeto
+        // novo a cada leitura, e comparar com o singleton neutro marcaria como
+        // multiplicada uma rodada que não andou nada. Fração é neutra quando
+        // numerador e denominador são iguais.
+        multiplicado: fator.num !== fator.den,
       });
     }
   }

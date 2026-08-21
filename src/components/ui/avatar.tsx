@@ -1,5 +1,7 @@
 import { cx } from "@/lib/cx";
 import { iniciais } from "@/lib/iniciais";
+import type { TokenDeItem } from "@/lib/loja-catalogo";
+import { CLASSES_DO_TOKEN } from "./tokens-de-item";
 
 export type TamanhoAvatar = "sm" | "md" | "lg";
 
@@ -20,10 +22,20 @@ const tamanhos: Record<TamanhoAvatar, string> = {
 export function Avatar({
   nome,
   tamanho = "md",
+  moldura,
   className,
 }: {
   nome: string;
   tamanho?: TamanhoAvatar;
+  /**
+   * O token da moldura comprada na loja, quando existe uma equipada.
+   *
+   * Opcional e sem valor padrão para que os ~15 avatares que já existem no app
+   * saiam byte a byte como saíam: sem a prop, nem `ring-2` nem cor entram na
+   * string de classes. Aceita `null` porque quem chama lê o slot do banco, e
+   * `equipados.moldura?.tokenId ?? null` é mais honesto que um ternário.
+   */
+  moldura?: TokenDeItem | null;
   className?: string;
 }) {
   return (
@@ -32,6 +44,11 @@ export function Avatar({
       className={cx(
         "inline-flex shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 font-display font-bold text-fg-3",
         tamanhos[tamanho],
+        // Anel sem `ring-offset`: o offset precisa saber a cor do que está ATRÁS
+        // do avatar para desenhar o vão, e o mesmo avatar aparece sobre canvas,
+        // surface e surface-2. Chutar uma delas desenha um halo errado nas
+        // outras duas; encostado na borda o anel lê como aro em qualquer fundo.
+        moldura && cx("ring-2", CLASSES_DO_TOKEN[moldura].anel),
         className,
       )}
     >

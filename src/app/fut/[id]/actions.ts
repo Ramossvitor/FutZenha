@@ -11,6 +11,7 @@ import { ehElegivel } from "@/lib/elegiveis";
 import { comoEntraNoFut } from "@/lib/fut-entrada";
 import { estaNaLista, estaNoCirculoDoFut } from "@/lib/fut-entrada-db";
 import { podeMexerNoProprioNome } from "@/lib/lista-presenca";
+import { armar, desarmar } from "@/lib/multiplicador-engine";
 import { notificar } from "@/lib/notifications";
 import {
   avisoDePromocao,
@@ -119,4 +120,64 @@ export async function setMyAttendance(matchDayId: number, status: "in" | "out") 
   revalidatePath("/");
   revalidatePath(`/fut/${parsedId}`);
   revalidatePath(`/fut/${parsedId}/gerenciar`);
+}
+
+/** Os dois ids que armar e desarmar recebem do cliente. */
+const idsDoArme = z.object({
+  matchDayId: z.number().int().positive(),
+  inventarioId: z.number().int().positive(),
+});
+
+/**
+ * Arma o multiplicador neste fut.
+ *
+ * O prazo NÃO é conferido aqui: quem confere é o `UPDATE ... WHERE` de
+ * `armar()`, avaliado pelo próprio Postgres no mesmo instante da escrita. Ler o
+ * horário aqui e gravar depois abriria uma janela entre as duas coisas — e o
+ * corte deste item existe justamente para não haver janela.
+ *
+ * `inventarioId` vem do cliente e é só uma REFERÊNCIA: a posse é reconferida no
+ * `WHERE` contra `player_id` da sessão. Server Action é endpoint público, e id
+ * de item alheio no corpo do POST é o primeiro lugar onde alguém tenta.
+ */
+export async function armarMultiplicador(matchDayId: number, inventarioId: number) {
+  const session = await requirePlayer();
+  // `safeParse`, e não `parse`: os dois números vêm do corpo do POST, e um id
+  // negativo num payload forjado tem que virar o banner de sempre — `parse`
+  // lançaria, e o que a pessoa veria é a página de erro do Next.
+  const parsed = idsDoArme.safeParse({ matchDayId, inventarioId });
+  if (!parsed.success) redirect(`/fut/${matchDayId}?erro=dados-invalidos`);
+  const { matchDayId: parsedFut, inventarioId: parsedItem } = parsed.data;
+
+  const erro = await db.transaction((tx) =>
+    armar(tx, session.player.id, parsedFut, parsedItem),
+  );
+  if (erro) redirect(`/fut/${parsedFut}?erro=multiplicador-indisponivel`);
+
+  revalidatePath(`/fut/${parsedFut}`);
+  revalidatePath("/perfil/inventario");
+  redirect(`/fut/${parsedFut}?ok=multiplicador-armado`);
+}
+
+/**
+ * Desarma, devolvendo o item ao inventário.
+ *
+ * A MESMA guarda de prazo do armar, dentro de `desarmar()`. Sem ela o antiabuso
+ * seria decorativo: arma na véspera, joga mal, desarma antes de o admin
+ * encerrar — desfazendo a aposta já sabendo o resultado.
+ */
+export async function desarmarMultiplicador(matchDayId: number, inventarioId: number) {
+  const session = await requirePlayer();
+  const parsed = idsDoArme.safeParse({ matchDayId, inventarioId });
+  if (!parsed.success) redirect(`/fut/${matchDayId}?erro=dados-invalidos`);
+  const { matchDayId: parsedFut, inventarioId: parsedItem } = parsed.data;
+
+  const erro = await db.transaction((tx) =>
+    desarmar(tx, session.player.id, parsedItem),
+  );
+  if (erro) redirect(`/fut/${parsedFut}?erro=multiplicador-travado`);
+
+  revalidatePath(`/fut/${parsedFut}`);
+  revalidatePath("/perfil/inventario");
+  redirect(`/fut/${parsedFut}?ok=multiplicador-desarmado`);
 }

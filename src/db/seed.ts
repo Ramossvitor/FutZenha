@@ -241,10 +241,37 @@ async function main() {
   await db.delete(schema.teams);
   await db.delete(schema.attendances);
   await db.delete(schema.matchDays);
+  // Carteira, extrato, inventário e equipados caem por cascata junto dos
+  // jogadores. `zenha_config` não cai — ela não tem FK para player —, e é
+  // justamente por isso que precisa ser apagada à mão: um ajuste do admin
+  // sobrevivendo ao seed faria o banco de desenvolvimento nascer com uma
+  // economia diferente da que o código descreve.
+  await db.delete(schema.zenhaConfig);
   await db.delete(schema.players);
 
   console.log(`Inserindo ${seedPlayers.length} jogadores...`);
   const inserted = await db.insert(schema.players).values(seedPlayers).returning();
+
+  // Saldo de FIXTURE, e só isso: no app ninguém ganha zenha por existir, e a
+  // única porta de entrada é a liquidação do fut. Mas o seed insere jogador
+  // direto na tabela e os futs que ele cria já nascem encerrados, sem passar
+  // pela liquidação — sem este crédito o banco de desenvolvimento e o de E2E
+  // nasceriam com a loja inalcançável para todo mundo, e `e2e/loja.spec.ts`
+  // não teria como comprar nada.
+  const SALDO_DE_FIXTURE = 320;
+  console.log(`Creditando ${SALDO_DE_FIXTURE} zenhas de fixture...`);
+  await db
+    .insert(schema.zenhaCarteiras)
+    .values(inserted.map((p) => ({ playerId: p.id, saldo: SALDO_DE_FIXTURE })));
+  await db.insert(schema.zenhaLedger).values(
+    inserted.map((p) => ({
+      playerId: p.id,
+      motivo: "boas_vindas" as const,
+      amount: SALDO_DE_FIXTURE,
+      dedupeKey: "boas-vindas",
+      descricao: "Saldo inicial de fixture",
+    })),
+  );
 
   console.log("Criando 3 futs passados encerrados...");
   await seedPastMatchDay(inserted, wednesdayShift(-3), 0);

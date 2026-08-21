@@ -213,6 +213,29 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
               <IconeSeta className="size-4 text-fg-dim" />
             </HairlineRowLink>
           </li>
+          {/* As três portas da zenha. Elas moram AQUI, e não numa aba: `abas()`
+              tem quatro itens e quatro é o teto, então no desktop a loja entra
+              na barra lateral e no celular entra nesta lista. Sem estas linhas a
+              loja seria inalcançável justamente no aparelho que é o alvo do
+              produto. */}
+          <li>
+            <HairlineRowLink href="/loja">
+              <span className="flex-1">Loja</span>
+              <IconeSeta className="size-4 text-fg-dim" />
+            </HairlineRowLink>
+          </li>
+          <li>
+            <HairlineRowLink href="/zenhas">
+              <span className="flex-1">Minhas zenhas</span>
+              <IconeSeta className="size-4 text-fg-dim" />
+            </HairlineRowLink>
+          </li>
+          <li>
+            <HairlineRowLink href="/perfil/inventario">
+              <span className="flex-1">Inventário</span>
+              <IconeSeta className="size-4 text-fg-dim" />
+            </HairlineRowLink>
+          </li>
           <li>
             {/* O outro lado desta página: o que a rapaziada vê quando abre o
                 seu nome num ranking ou na lista do grupo. */}

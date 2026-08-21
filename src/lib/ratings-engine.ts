@@ -19,6 +19,7 @@ import {
   type RaterElegivel,
 } from "./ratings";
 import { PRAZO_AVALIACAO_HORAS, PRAZO_DENUNCIA_HORAS } from "./regras";
+import { lerMultiplicadoresPorRodada } from "./multiplicador-engine";
 import { diffNotas, replaySkills, type RatingInput, type SkillChange } from "./skill";
 
 /**
@@ -166,8 +167,22 @@ export async function aplicarReplay(exec: Executor, motivo: MotivoReplay): Promi
     else porRodada.set(r.roundId, [item]);
   }
 
+  // Os multiplicadores entram como INSUMO do replay, e não como efeito já
+  // aplicado. O replay reconstrói a nota desde 5,0 a cada denúncia aceita e a
+  // cada fut apagado; reconstruir uma rodada antiga exige o fator que valia
+  // nela — que vem congelado de `zenha_multiplicadores`, nunca do ajuste atual.
+  // Continua sendo só nota aqui: dinheiro não entra em aplicarReplay.
+  const multiplicadores = await lerMultiplicadoresPorRodada(
+    exec,
+    rodadas.map((r) => r.roundId),
+  );
+
   const { skillByPlayer, history } = replaySkills(
-    rodadas.map((r) => ({ ...r, ratings: porRodada.get(r.roundId) ?? [] })),
+    rodadas.map((r) => ({
+      ...r,
+      ratings: porRodada.get(r.roundId) ?? [],
+      multiplicadores: multiplicadores.get(r.roundId),
+    })),
   );
 
   // Notas atuais para descobrir quem de fato mudou — só quem mudou recebe
@@ -191,6 +206,7 @@ export async function aplicarReplay(exec: Executor, motivo: MotivoReplay): Promi
         skillAfter: h.after,
         ratingsCount: h.ratingsCount,
         averageReceived: h.averageReceived,
+        multiplicado: h.multiplicado,
       })),
     );
   }

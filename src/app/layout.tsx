@@ -12,6 +12,7 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { TopBar } from "@/components/shell/top-bar";
 import { CamadaDeComemoracao } from "@/components/ui/comemoracao";
+import { getSaldo } from "@/lib/carteira";
 import { getGrupoAtual } from "@/lib/grupo-atual";
 import { listarGruposDoSeletor } from "@/lib/grupos";
 import { getMovimento } from "@/lib/movimento";
@@ -76,11 +77,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // A lista do seletor entra aqui porque é aqui que o painel dela mora, e em
   // paralelo com o resto porque isto roda em TODA navegação: em série somaria
   // um round-trip ao caminho crítico de cada uma.
-  const [grupo, naoLidas, grupos, movimento] = await Promise.all([
+  const [grupo, naoLidas, grupos, movimento, saldo] = await Promise.all([
     getGrupoAtual(),
     session ? contarNaoLidas(session.player.id) : Promise.resolve(0),
     session ? listarGruposDoSeletor(session.player.id) : Promise.resolve([]),
     getMovimento(),
+    // O saldo do chip, no MESMO lote e pela mesma razão. `getSaldo` é memoizado
+    // por request, então a loja e o extrato pedem o mesmo número mais adiante
+    // sem uma segunda ida ao banco.
+    session ? getSaldo(session.player.id) : Promise.resolve(0),
   ]);
   const temSeletor = grupos.length > 0;
 
@@ -132,6 +137,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             grupo={grupo}
             temSeletor={temSeletor}
             naoLidas={naoLidas}
+            saldo={saldo}
             aoSair={logout}
           />
 
@@ -141,6 +147,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               grupo={grupo}
               temSeletor={temSeletor}
               naoLidas={naoLidas}
+              saldo={saldo}
             />
             {/* 3xl no celular e no tablet, 5xl a partir do desktop: a tela de
                 encerrar tem um trilho de 20rem ao lado do conteúdo, e em 768px

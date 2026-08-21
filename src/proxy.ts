@@ -28,6 +28,11 @@ export default async function proxy(request: NextRequest) {
     "/avaliar",
     "/notificacoes",
     "/votacao",
+    // A loja e o extrato saem no chip do topo, que aparece em toda tela. Sem os
+    // prefixos, tocar no saldo deslogado leva ao login e depois à home — longe
+    // do que a pessoa foi ver.
+    "/loja",
+    "/zenhas",
     "/futs/novo",
     "/grupos",
     // O link do grupo é o caso mais dependente daqui: ele corre no WhatsApp e
@@ -76,6 +81,12 @@ export const config = {
     // proxy que monta o ?next=: sem ele, quem abre o link da notificação
     // deslogado cai na home depois do login, e não na votação que tem 48h.
     "/votacao/:path*",
+    // Os dois padrões em cada, como no /fut/:id/gerenciar logo abaixo:
+    // ":path*" não casa o caminho sem sufixo, e /loja e /zenhas são justamente
+    // os alvos do chip de saldo.
+    "/loja",
+    "/loja/:path*",
+    "/zenhas",
     "/futs/novo",
     // /grupos inteiro exige login: a lista mistura os grupos de que a pessoa
     // participa com os convites pendentes dela. A página pública de um grupo
