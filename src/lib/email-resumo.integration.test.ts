@@ -9,7 +9,9 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { confirmarEncerramento } from "@/app/fut/[id]/gerenciar/encerrar/actions";
 import { db } from "@/db";
-import { attendances, players, users, type Player } from "@/db/schema";
+import { attendances, matchDays, players, users, type Player } from "@/db/schema";
+import { retomarResumosPendentes } from "@/lib/email-resumo";
+import { TETO_RESUMO_DIA } from "@/lib/freios-de-envio";
 import { criarFut, criarJogadorComConta, criarJogador, logarComo } from "@/test/fixtures";
 import {
   criarJogoComPresenca,
@@ -311,5 +313,169 @@ describe("o ledger do resumo", () => {
     await encerrar(fut, admin);
 
     expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe("retomada do resumo", () => {
+  /** Carimba à mão, simulando quem JÁ recebeu antes do corte da invocação. */
+  async function carimbar(fut: { id: number }, jogadores: Player[]): Promise<void> {
+    for (const j of jogadores) {
+      await db
+        .update(attendances)
+        .set({ resumoEmailSentAt: sql`now()` })
+        .where(and(eq(attendances.matchDayId, fut.id), eq(attendances.playerId, j.id)));
+    }
+  }
+
+  /** Encerra com o envio desligado: o fut fica `finished` sem nenhum carimbo. */
+  async function encerrarSemEnviar(
+    fut: { id: number },
+    admin: { conta: Parameters<typeof logarComo>[0] },
+  ): Promise<void> {
+    const semKey = vi.fn();
+    vi.stubGlobal("fetch", semKey);
+    await encerrar(fut, admin);
+    expect(semKey).not.toHaveBeenCalled();
+  }
+
+  // O caso central: a invocação morreu depois de cinco dos seis.
+  it("completa quem ficou de fora do lote cortado no meio", async () => {
+    const { fut, admin, timeA, timeB } = await montarFutComPlacar();
+    await encerrarSemEnviar(fut, admin);
+    const [faltando, ...jaReceberam] = [...timeA.jogadores, ...timeB.jogadores];
+    await carimbar(fut, jaReceberam);
+
+    const fetchMock = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 1, adiados: 0 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(payloadDoEnvio(fetchMock).to[0]).toBe(`jogador${faltando.id}@example.com`);
+    expect(await carimboDe(fut, faltando)).not.toBeNull();
+  });
+
+  it("uma segunda passada não manda nada", async () => {
+    const { fut, admin, timeA, timeB } = await montarFutComPlacar();
+    await encerrarSemEnviar(fut, admin);
+    await carimbar(fut, [...timeA.jogadores, ...timeB.jogadores].slice(1));
+
+    stubResend();
+    await retomarResumosPendentes();
+    const segunda = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 0, adiados: 0 });
+    expect(segunda).not.toHaveBeenCalled();
+  });
+
+  it("fut com todo mundo carimbado nem é candidato", async () => {
+    const { fut, admin, timeA, timeB } = await montarFutComPlacar();
+    await encerrarSemEnviar(fut, admin);
+    await carimbar(fut, [...timeA.jogadores, ...timeB.jogadores]);
+
+    const fetchMock = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 0, adiados: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // A prova de que o `emailDeDestino() is not null` está na consulta de
+  // CANDIDATOS, e não só no envio: sem ele este fut giraria a cada tick por 24h.
+  it("quem não tem endereço não faz o fut virar candidato eterno", async () => {
+    const { fut, admin, timeA, timeB } = await montarFutComPlacar();
+    await encerrarSemEnviar(fut, admin);
+    const todos = [...timeA.jogadores, ...timeB.jogadores];
+    const semEmail = todos[0];
+    await db.update(users).set({ email: null }).where(eq(users.playerId, semEmail.id));
+    await carimbar(fut, todos.slice(1));
+
+    const fetchMock = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 0, adiados: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fut encerrado há mais de 24h sai da janela", async () => {
+    const { fut, admin, timeA, timeB } = await montarFutComPlacar();
+    await encerrarSemEnviar(fut, admin);
+    await carimbar(fut, [...timeA.jogadores, ...timeB.jogadores].slice(1));
+    await db
+      .update(matchDays)
+      .set({ finishedAt: sql`now() - interval '25 hours'` })
+      .where(eq(matchDays.id, fut.id));
+
+    const fetchMock = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 0, adiados: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fut que ainda não encerrou não é candidato", async () => {
+    // Montado e deixado `scheduled` de propósito — ninguém chamou o encerrar.
+    await montarFutComPlacar();
+
+    const fetchMock = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 0, adiados: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // O segundo caso definitivo que a retomada cobre: o lote recusado inteiro pela
+  // cota de ontem sai quando a cota renova.
+  it("o lote recusado pela cota sai quando a cota renova", async () => {
+    const { fut, admin } = await montarFutComPlacar();
+    // Enche a cota do resumo antes do encerramento: o lote não cabe e nada sai.
+    const enchendo = await criarFut();
+    const volume = [];
+    for (let i = 0; i < TETO_RESUMO_DIA; i += 1) volume.push(await criarJogador());
+    await db.insert(attendances).values(
+      volume.map((p) => ({
+        matchDayId: enchendo.id,
+        playerId: p.id,
+        status: "in" as const,
+        resumoEmailSentAt: sql`now() - interval '1 hour'`,
+      })),
+    );
+
+    const recusado = stubResend();
+    await encerrar(fut, admin);
+    expect(recusado).not.toHaveBeenCalled();
+
+    // A cota "renova": os carimbos velhos saem da janela de 24h.
+    await db
+      .update(attendances)
+      .set({ resumoEmailSentAt: sql`now() - interval '25 hours'` })
+      .where(eq(attendances.matchDayId, enchendo.id));
+
+    const depois = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 1, adiados: 0 });
+    expect(depois).toHaveBeenCalledTimes(6);
+  });
+
+  it("mais futs que o teto por varredura: o resto fica para o próximo tick", async () => {
+    const pendentes = [];
+    for (let i = 0; i < 3; i += 1) {
+      const { fut, admin, timeA, timeB } = await montarFutComPlacar();
+      await encerrarSemEnviar(fut, admin);
+      await carimbar(fut, [...timeA.jogadores, ...timeB.jogadores].slice(1));
+      pendentes.push(fut);
+    }
+
+    const primeira = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 2, adiados: 1 });
+    expect(primeira).toHaveBeenCalledTimes(2);
+
+    const segunda = stubResend();
+    expect(await retomarResumosPendentes()).toEqual({ futs: 1, adiados: 0 });
+    expect(segunda).toHaveBeenCalledTimes(1);
+  });
+
+  it("sem RESEND_API_KEY não varre nem consulta", async () => {
+    const { fut, admin, timeA, timeB } = await montarFutComPlacar();
+    await encerrarSemEnviar(fut, admin);
+    await carimbar(fut, [...timeA.jogadores, ...timeB.jogadores].slice(1));
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const selectSpy = vi.spyOn(db, "selectDistinct");
+
+    expect(await retomarResumosPendentes()).toEqual({ futs: 0, adiados: 0 });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(selectSpy).not.toHaveBeenCalled();
+    selectSpy.mockRestore();
   });
 });

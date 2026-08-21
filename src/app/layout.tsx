@@ -16,6 +16,7 @@ import { getGrupoAtual } from "@/lib/grupo-atual";
 import { listarGruposDoSeletor } from "@/lib/grupos";
 import { getMovimento } from "@/lib/movimento";
 import { contarNaoLidas } from "@/lib/notifications";
+import { agendarRetomadaDeResumos } from "@/lib/email-resumo";
 import { agendarProcessamento } from "@/lib/pendencias";
 import { agendarDespachoDePush } from "@/lib/push-envio";
 import { getSession } from "@/lib/session";
@@ -102,6 +103,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     // Push pendente sai no mesmo esquema — e as actions sensíveis a tempo furam
     // o throttle com agendarDespachoDePush(true).
     agendarDespachoDePush();
+    // E o resumo que ficou faltando: lote cortado no meio, ou fut recusado
+    // inteiro pela cota de ontem. Throttle próprio de 5 minutos (lá dentro),
+    // porque é rede de segurança e não caminho principal. O cron sozinho não
+    // bastaria — ele roda 1×/dia, e um fut encerrado de manhã esperaria quase
+    // 24h, encostando no fim da janela em que a retomada ainda vale.
+    agendarRetomadaDeResumos();
   }
 
   return (
