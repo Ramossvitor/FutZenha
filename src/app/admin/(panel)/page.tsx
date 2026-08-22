@@ -32,7 +32,13 @@ export default async function AdminDashboardPage() {
     {
       href: "/admin/zenhas",
       titulo: "Zenhas",
-      texto: "Ajustar quanto cada coisa paga e quanto cada item da loja custa.",
+      texto: "Ajustar quanto cada coisa paga.",
+      selo: null,
+    },
+    {
+      href: "/admin/loja",
+      titulo: "Loja",
+      texto: "Cadastrar itens, preços e o que está à venda.",
       selo: null,
     },
   ] as const;

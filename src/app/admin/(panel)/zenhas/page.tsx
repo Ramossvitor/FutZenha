@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { desc, eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { Banner, BannerDaQuery } from "@/components/ui/banner";
-import { SubmitButton } from "@/components/ui/button";
+import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { Card, CardBody, PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Checkbox, Field, Input, MensagemDeCampo, Select } from "@/components/ui/field";
@@ -10,14 +10,7 @@ import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { db } from "@/db";
 import { players, zenhaConfig } from "@/db/schema";
-import {
-  CATALOGO,
-  ID_DO_MULTIPLICADOR,
-  chaveDePreco,
-  itemDaChaveDePreco,
-  itensAVenda,
-  precoVigente,
-} from "@/lib/loja-catalogo";
+import { lerConsumivel } from "@/lib/loja-admin";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import { AJUSTES, CHAVES_DE_AJUSTE, comSobrescritas, ehChaveDeAjuste } from "@/lib/zenha";
 import { lerSobrescritas } from "@/lib/zenha-config";
@@ -30,14 +23,6 @@ const LOCAIS = {
     "Um dos valores não foi aceito e NADA foi salvo — nem os outros campos da seção. Confira o campo destacado e envie de novo.",
 };
 
-/** Como cada prateleira se chama no campo de preço. */
-const ROTULO_DO_SLOT = {
-  badge: "Badge",
-  moldura: "Moldura",
-  cor_do_nome: "Cor do nome",
-  titulo: "Título",
-} as const;
-
 export default async function AdminZenhasPage({ searchParams }: PageProps<"/admin/zenhas">) {
   await requirePlatformAdmin();
   const { erro, ok, campo } = await searchParams;
@@ -45,7 +30,7 @@ export default async function AdminZenhasPage({ searchParams }: PageProps<"/admi
   // texto do erro NÃO volta por lá: mensagem é sempre slug (ver mensagens.ts).
   const recusado = typeof campo === "string" ? campo : null;
 
-  const [sobrescritas, auditoria] = await Promise.all([
+  const [sobrescritas, auditoria, consumivel] = await Promise.all([
     lerSobrescritas(db),
     // A segunda consulta existe porque `lerSobrescritas` devolve só chave e
     // valor — que é tudo de que a economia precisa. Quem alterou e quando é
@@ -61,15 +46,20 @@ export default async function AdminZenhasPage({ searchParams }: PageProps<"/admi
       .from(zenhaConfig)
       .leftJoin(players, eq(zenhaConfig.atualizadoPorPlayerId, players.id))
       .orderBy(desc(zenhaConfig.atualizadoEm)),
+    lerConsumivel(),
   ]);
   const ajustes = comSobrescritas(sobrescritas);
-  const aVenda = itensAVenda().filter((item) => item.id !== ID_DO_MULTIPLICADOR);
 
   return (
     <div className="flex flex-col gap-7">
       <PageHeader
         titulo="Zenhas"
-        descricao="Quanto cada coisa paga e quanto cada item custa. Os valores valem para a plataforma inteira."
+        descricao="Quanto cada coisa PAGA. Os valores valem para a plataforma inteira."
+        acao={
+          <LinkButton href="/admin/loja" variante="secondary" tamanho="sm">
+            Loja
+          </LinkButton>
+        }
       />
 
       <BannerDaQuery erro={erro} ok={ok} locais={LOCAIS} />
@@ -124,45 +114,29 @@ export default async function AdminZenhasPage({ searchParams }: PageProps<"/admi
         </Section>
       </form>
 
-      {/* Formulário separado, e não um só para a tela inteira: cada botão salva
-          o que está à vista dele. Com um formulário único, mexer num prêmio
-          reenviaria de quebra os vinte e quatro preços da loja — e um valor
-          recusado lá embaixo derrubaria a alteração que o admin veio fazer. */}
-      <form action={salvarAjustes}>
-        <Section titulo="Preços da loja">
-          <Card>
-            <CardBody className="flex flex-col gap-5">
-              <p className="text-[13px] leading-[1.5] text-fg-3">
-                O multiplicador de nota não está nesta lista: o preço dele é o primeiro degrau da
-                escada sobre <strong className="text-fg">Preço do multiplicador</strong>, ali em
-                cima. Um campo aqui seria um segundo lugar para o mesmo número — e o daqui não
-                cobraria nada.
-              </p>
-              {/* Coluna única, e não duas: cada CampoDeNumero é a sua própria
-                  LinhaDeCampos, e duas linhas lado a lado não compartilham
-                  faixa — bastava um rótulo quebrar em duas linhas para os
-                  campos vizinhos ficarem em alturas diferentes. A largura
-                  que sobrava já é usada pela caixa "voltar ao padrão". */}
-              <div className="flex flex-col gap-4">
-                {aVenda.map((item) => (
-                  <CampoDeNumero
-                    key={item.id}
-                    chave={chaveDePreco(item.id)}
-                    rotulo={item.nome}
-                    ajuda={item.slot ? ROTULO_DO_SLOT[item.slot] : "Consumível"}
-                    vigente={precoVigente(item.id, sobrescritas)}
-                    padrao={item.preco}
-                    recusado={recusado === chaveDePreco(item.id)}
-                  />
-                ))}
-              </div>
-              <SubmitButton className="self-start" labelPending="Salvando…">
-                Salvar preços
-              </SubmitButton>
-            </CardBody>
-          </Card>
-        </Section>
-      </form>
+      {/* Preço não mora nesta tela, e o admin precisa saber para onde ir — ele
+          chega aqui procurando "quanto custa o multiplicador" justamente porque
+          esse número já foi um ajuste da economia, num formulário que ficava
+          aqui embaixo com os vinte e quatro preços do catálogo em código. */}
+      <Section titulo="Preços">
+        <Card>
+          <CardBody className="flex flex-col gap-3">
+            <p className="text-[13px] leading-[1.5] text-fg-3">
+              O preço de cada item é editado na <strong className="text-fg">Loja</strong>, junto com
+              o resto do cadastro dele. Inclusive o do multiplicador de nota: o preço da linha dele
+              é o primeiro degrau da escada do mês — os degraus seguintes saem dele.
+            </p>
+            <LinkButton
+              href={consumivel ? `/admin/loja/${consumivel.id}` : "/admin/loja"}
+              variante="secondary"
+              tamanho="sm"
+              className="self-start"
+            >
+              {consumivel ? `Editar ${consumivel.nome}` : "Ir à loja"}
+            </LinkButton>
+          </CardBody>
+        </Card>
+      </Section>
 
       <Section
         titulo="Sobrescrito hoje"
@@ -307,18 +281,14 @@ function CampoDeNumero({
  * O nome de uma chave gravada.
  *
  * Devolve a chave crua no caso que não deveria existir e existe: a linha órfã de
- * um ajuste que saiu do código ou de um preço reorganizado. `salvarAjuste` já
- * ignora chave desconhecida na escrita e a leitura descarta o valor — mostrá-la
- * aqui é o que dá ao admin como perceber a sujeira e limpá-la.
+ * um ajuste que saiu do código. `salvarAjuste` já ignora chave desconhecida na
+ * escrita e a leitura descarta o valor — mostrá-la aqui é o que dá ao admin como
+ * perceber a sujeira e limpá-la.
  */
 function rotuloDaChave(chave: string): string {
-  if (ehChaveDeAjuste(chave)) return AJUSTES[chave].rotulo;
-  const item = itemDaChaveDePreco(chave);
-  return item ? `Preço · ${CATALOGO[item].nome}` : chave;
+  return ehChaveDeAjuste(chave) ? AJUSTES[chave].rotulo : chave;
 }
 
 function padraoDaChave(chave: string): number | null {
-  if (ehChaveDeAjuste(chave)) return AJUSTES[chave].padrao;
-  const item = itemDaChaveDePreco(chave);
-  return item ? CATALOGO[item].preco : null;
+  return ehChaveDeAjuste(chave) ? AJUSTES[chave].padrao : null;
 }

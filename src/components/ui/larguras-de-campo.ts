@@ -7,7 +7,7 @@
 // "Término" ocupando 100% da tela, "Time B" caindo sozinho com outra largura.
 // Ninguém tinha desenhado o mobile; o algoritmo de wrap improvisava.
 //
-// Irmã do CLASSES_DO_TOKEN em tokens-de-item.ts pela mesma razão dura: o
+// Irmã das classes de previa-do-item.tsx pela mesma razão dura: o
 // Tailwind gera utilitário VARRENDO O FONTE, então `sm:max-w-${largura}` nunca
 // existiria na folha final. A trilha é valor de CSS (vai num custom property) e
 // a classe é literal — as duas coisas escritas à mão, de propósito.

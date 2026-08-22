@@ -383,7 +383,7 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
  * efeito.
  */
 export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
-  const { matchDay, pedidosDeEntrada, convitesDeFut, linkDoFut } = fut;
+  const { matchDay, pedidosDeEntrada, convitesDeFut, linkDoFut, destaques } = fut;
   if (!futAceitaEntrada(matchDay)) return null;
 
   const url = linkDoFut ? urlDoLinkDoFut(linkDoFut.token) : null;
@@ -403,7 +403,11 @@ export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
                 key={p.id}
                 className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3 last:border-0"
               >
-                <NomeJogador apelido={p.nickname} nome={p.name} />
+                <NomeJogador
+                  apelido={p.nickname}
+                  nome={p.name}
+                  destaque={destaques.get(p.playerId)}
+                />
                 {p.isGoalkeeper && <Badge tom="warn">goleiro</Badge>}
                 <Nota valor={p.skill} />
                 <form action={decidirPedidoDeFut.bind(null, matchDay.id, p.id, true)}>
@@ -433,7 +437,11 @@ export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
                 key={c.id}
                 className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3 last:border-0"
               >
-                <NomeJogador apelido={c.nickname} nome={c.name} />
+                <NomeJogador
+                  apelido={c.nickname}
+                  nome={c.name}
+                  destaque={destaques.get(c.playerId)}
+                />
                 <Badge tom="dashed">aguardando</Badge>
               </li>
             ))}

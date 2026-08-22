@@ -347,8 +347,10 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
     <>
       <p>
         A <strong className="text-fg">zenha</strong> é a moeda do FutZenha. Ela se ganha
-        jogando e participando, e se gasta na loja — em selos para o seu perfil, em
-        personalização e no multiplicador.
+        jogando e participando, e se gasta na loja — em{" "}
+        <strong className="text-fg">badges</strong> para a sua vitrine (cabem cinco no perfil, e
+        um deles anda junto do seu nome no ranking e na escalação), na moldura do seu avatar, na
+        cor do seu nome, num título e no multiplicador.
       </p>
       <p>São quatro formas de ganhar, e só quatro:</p>
       <ValoresDaZenha />

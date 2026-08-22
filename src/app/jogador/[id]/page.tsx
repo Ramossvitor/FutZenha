@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
 import { IconeLuva, IconeSeta } from "@/components/ui/icons";
 import { Pilula } from "@/components/ui/pilula";
-import { Selo } from "@/components/ui/selo";
+import { ImagemDoItem } from "@/components/ui/imagem-do-item";
 import { StatGrid, StatTile } from "@/components/ui/stat";
 import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
 import { papelLabel } from "@/lib/grupos-permissions";
@@ -81,8 +81,8 @@ export default async function JogadorPage({ params, searchParams }: PageProps<"/
         nome={jogador.name}
         apelido={jogador.nickname}
         nota={jogador.skill}
-        moldura={vitrine.moldura?.tokenId}
-        corDoNome={vitrine.corDoNome?.tokenId}
+        moldura={vitrine.moldura?.cor}
+        corDoNome={vitrine.corDoNome?.cor}
         titulo={vitrine.titulo}
         badges={
           <>
@@ -105,12 +105,29 @@ export default async function JogadorPage({ params, searchParams }: PageProps<"/
           que o app afirma sobre o jogador (goleiro, sem conta) e estes são o
           que ele comprou. Misturar as duas fileiras faria a loja parecer que
           concede status — e o eyebrow é quem diz, em uma palavra, de onde eles
-          vêm. A seção some inteira para quem não comprou nada. */}
-      {vitrine.selos.length > 0 && (
-        <Section titulo="Da loja">
-          <div className="flex flex-wrap gap-1.5">
-            {vitrine.selos.map((item) => (
-              <Selo key={item.id} item={item} />
+          vêm. A seção some inteira para quem não comprou nada.
+
+          A ordem é a das VAGAS, escolhida por quem montou a vitrine, e não a de
+          compra nem a de preço: a curadoria é o produto aqui. */}
+      {vitrine.badges.length > 0 && (
+        <Section titulo="Vitrine">
+          <div className="flex flex-wrap gap-2">
+            {vitrine.badges.map(({ item, destaque }) => (
+              <span key={item.id} className="flex flex-col items-center gap-1">
+                <ImagemDoItem
+                  item={item}
+                  tamanho="lg"
+                  // O destaque ganha o anel de acento e, para quem não enxerga o
+                  // anel, o texto só de leitor de tela: cor sozinha não conta
+                  // história em print preto e branco nem para daltônico.
+                  className={destaque ? "ring-2 ring-accent-edge" : undefined}
+                />
+                {destaque && (
+                  <span className="eyebrow text-accent-ink">
+                    destaque<span className="sr-only"> — aparece ao lado do nome nas listas</span>
+                  </span>
+                )}
+              </span>
             ))}
           </div>
         </Section>

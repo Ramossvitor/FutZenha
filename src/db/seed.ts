@@ -3,8 +3,10 @@ import { randomBytes } from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { hashDaImagem } from "../lib/imagem-de-item";
 import { companheirosPorJogador, gruposElegiveis } from "../lib/lineup";
 import { hashPassword } from "../lib/password";
+import { pngDeUmaCor } from "../test/fixtures-imagem";
 // Relativo e não "@/": o seed roda sob tsx, fora do Next. `regras.ts` é puro
 // justamente para servir também a estes scripts.
 import { PRAZO_AVALIACAO_HORAS } from "../lib/regras";
@@ -53,6 +55,157 @@ const seedPlayers: Array<{
   { name: "Rafael Torres", nickname: "Rafa" },
   { name: "Thiago Barbosa" },
 ];
+
+/**
+ * O catálogo de desenvolvimento.
+ *
+ * O único item que o CÓDIGO exige é o consumível (a migration 0033 o semeia em
+ * produção; aqui ele é recriado porque o seed apaga a tabela). O resto existe
+ * para o banco local ter loja: em produção quem cadastra é o admin, pela tela,
+ * com as imagens que ele escolher.
+ *
+ * As artes são quadrados de cor sólida gerados na hora (ver
+ * src/test/fixtures-imagem.ts), e não logos de verdade: o que se está montando
+ * aqui é o ambiente de desenvolvimento, e um repositório público não carrega
+ * escudo de clube. As cores fazem a piada — quem cadastrar o Avaí de verdade vai
+ * subir a imagem dele.
+ */
+const seedLoja: Array<{
+  tipo: schema.LojaTipo;
+  nome: string;
+  descricao: string;
+  preco: number;
+  cor?: string;
+  efeito?: string;
+  ativo?: boolean;
+}> = [
+  {
+    tipo: "consumivel",
+    nome: "Multiplicador de nota",
+    descricao:
+      "Arma num fut e amplia o movimento da sua nota. Nos dois sentidos — é aposta, não presente.",
+    preco: 120,
+    efeito: "multiplicador",
+  },
+  // Badges a 250: o saldo de fixture é 320, então dá para comprar um — que é o
+  // que o e2e/loja.spec.ts faz.
+  { tipo: "badge", nome: "Avaí", descricao: "O Leão da Ilha.", preco: 250, cor: "#0a2f7a" },
+  {
+    tipo: "badge",
+    nome: "Figueirense",
+    descricao: "O Furacão do Estreito.",
+    preco: 250,
+    cor: "#1b1b1b",
+  },
+  {
+    tipo: "badge",
+    nome: "Chapéu do ano",
+    descricao: "Um chapéu só. O grupo comenta até hoje.",
+    preco: 250,
+    cor: "#6f37b0",
+  },
+  {
+    tipo: "badge",
+    nome: "Bola de ouro do fut",
+    descricao: "O item mais caro da loja não te faz jogar melhor. Nunca fez.",
+    preco: 300,
+    cor: "#c8a51a",
+  },
+  {
+    tipo: "badge",
+    nome: "Perna de pau",
+    descricao: "Assumido e com orgulho. Ninguém te chama do que você já se chamou.",
+    preco: 250,
+    cor: "#7a5230",
+  },
+  // Um fora de venda, para o ambiente local ter o caso: ele some da vitrine e
+  // continua desenhável no perfil de quem comprou.
+  {
+    tipo: "badge",
+    nome: "Bicicleta",
+    descricao: "Aconteceu uma vez na vida. Uma vez basta.",
+    preco: 250,
+    cor: "#b03c0f",
+    ativo: false,
+  },
+  // As cores dos cosméticos são de tom MÉDIO de propósito: elas são um valor só
+  // para os dois temas (a paleta fechada de sete tokens, que flipava entre claro
+  // e escuro, saiu junto com o catálogo em código). Um dourado escuro some no
+  // tema escuro; um pastel some no claro. Quem cadastra escolhe — e é a prévia
+  // da tela de edição que mostra o resultado.
+  {
+    tipo: "moldura",
+    nome: "Moldura de ouro",
+    descricao: "Cara, brilhosa e absolutamente inútil em campo. Perfeita.",
+    preco: 300,
+    cor: "#c8a51a",
+  },
+  {
+    tipo: "moldura",
+    nome: "Moldura de rede",
+    descricao: "A do fundo do gol. Todo chute quer chegar nela.",
+    preco: 300,
+    cor: "#8a9a92",
+  },
+  {
+    tipo: "cor_do_nome",
+    nome: "Nome brasa",
+    descricao: "Para quem chega quente e sai fumaçando.",
+    preco: 200,
+    cor: "#b03c0f",
+  },
+  {
+    tipo: "cor_do_nome",
+    nome: "Nome céu",
+    descricao: "Azul de fim de tarde, que é quando o fut fica bom.",
+    preco: 200,
+    cor: "#2f6fe0",
+  },
+  {
+    tipo: "titulo",
+    nome: "Camisa 10",
+    descricao: "Anda pouco e decide muito. Pelo menos é o que ele conta.",
+    preco: 300,
+  },
+  {
+    tipo: "titulo",
+    nome: "Muralha",
+    descricao: "Passar por ele dá cansaço só de pensar.",
+    preco: 300,
+  },
+];
+
+async function seedCatalogoDaLoja(): Promise<void> {
+  for (const entrada of seedLoja) {
+    const arte = entrada.tipo === "badge" ? pngDeUmaCor(entrada.cor ?? "#147044") : null;
+    const [item] = await db
+      .insert(schema.lojaItens)
+      .values({
+        tipo: entrada.tipo,
+        nome: entrada.nome,
+        descricao: entrada.descricao,
+        preco: entrada.preco,
+        // A cor só entra onde o check do banco a aceita.
+        cor:
+          entrada.tipo === "moldura" || entrada.tipo === "cor_do_nome"
+            ? (entrada.cor ?? null)
+            : null,
+        efeito: entrada.efeito ?? null,
+        ativo: entrada.ativo ?? true,
+        imagemHash: arte ? hashDaImagem(arte) : null,
+      })
+      .returning({ id: schema.lojaItens.id });
+
+    if (arte) {
+      await db.insert(schema.lojaImagens).values({
+        itemId: item.id,
+        hash: hashDaImagem(arte),
+        mime: "image/png",
+        bytes: arte,
+      });
+    }
+  }
+}
 
 function isoDate(d: Date): string {
   const offset = d.getTimezoneOffset() * 60000;
@@ -248,6 +401,13 @@ async function main() {
   // economia diferente da que o código descreve.
   await db.delete(schema.zenhaConfig);
   await db.delete(schema.players);
+  // DEPOIS dos jogadores: `zenha_inventario.item_id` é FK `restrict`, então
+  // apagar o catálogo antes de o inventário cair por cascata seria recusado pelo
+  // banco — que é exatamente a garantia de que item vendido não some.
+  await db.delete(schema.lojaItens);
+
+  console.log(`Montando a loja com ${seedLoja.length} itens...`);
+  await seedCatalogoDaLoja();
 
   console.log(`Inserindo ${seedPlayers.length} jogadores...`);
   const inserted = await db.insert(schema.players).values(seedPlayers).returning();

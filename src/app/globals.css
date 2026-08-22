@@ -81,31 +81,17 @@
   --vest-vermelho: #D9342A;  --vest-vermelho-line: #D9342A;
   --vest-amarelo:  #F5C518;  --vest-amarelo-line:  #B08800;
 
-  /* itens da loja — a cor do que a pessoa COMPROU (ver src/lib/loja-catalogo.ts,
-     onde cada item guarda o `tokenId` que aponta para cá).
+  /* Aqui moraram sete tokens --zenha-*, a paleta fechada dos itens da loja.
+     Eles sumiram junto com o catálogo em código: a cor de uma moldura e de uma
+     cor do nome agora é uma coluna hexadecimal que o admin escolhe (`loja_itens.cor`),
+     e vai à tela por custom property no `style` — `ring-(--cor-do-item)` —, que
+     é o mesmo recurso que a LinhaDeCampos usa para as trilhas da grade.
 
-     Parente dos --vest-* logo acima, mas com uma diferença que manda no valor:
-     no colete o preenchimento É a camisa e só a borda troca de tema; aqui o
-     token é TINTA — vira texto do selo, cor do nome e anel da moldura. Um valor
-     só para os dois temas deixaria o item comprado ilegível em metade deles, e
-     é por isso que os sete flipam inteiros lá embaixo. Todos passam de 4,5:1
-     contra as três superfícies onde um item pode cair (surface, canvas e
-     surface-2), que é o piso de texto e não o de 3:1 de componente — o nome do
-     jogador é o maior uso do token, e ele é texto.
-
-     `cal` e `carvao` são os dois neutros e o par mais fácil de estragar: cal é
-     linha de cal (clara) e carvao é colete lavado (escuro), e nenhum dos dois
-     pode ser desenhado na sua cor literal em ambos os temas — cal sumiria no
-     branco, carvao sumiria no preto. O que se preserva é a DISTÂNCIA entre eles
-     dentro do eixo neutro: em cada tema um é o neutro cheio e o outro é o
-     apagado, nunca os dois no mesmo lugar. */
-  --zenha-grama:  #147044;
-  --zenha-cal:    #59675F;
-  --zenha-brasa:  #B03C0F;
-  --zenha-ouro:   #7C5900;
-  --zenha-ceu:    #1A59B5;
-  --zenha-uva:    #6F37B0;
-  --zenha-carvao: #2C3733;
+     A troca tem um custo declarado: cor livre é UM valor para os dois temas, e
+     os sete tokens flipavam inteiros entre claro e escuro justamente porque o
+     token é TINTA (texto do nome, anel do avatar). Quem escolhe a cor passa a
+     responder pelo contraste — e a prévia na tela de edição é onde isso se vê.
+     Foi decisão de produto: sem cor livre não existe "azul do Avaí". */
 
   /* raios */
   --r-selo:  3px;
@@ -166,15 +152,6 @@
     --vest-azul-line:     #4E8CF5;
     --vest-vermelho-line: #F2564A;
     --vest-amarelo-line:  #FFD84D;
-
-    /* Os sete inteiros, e não só uma borda: ver o comentário do tema claro. */
-    --zenha-grama:  #48D68C;
-    --zenha-cal:    #E4EBE7;
-    --zenha-brasa:  #FF8A4C;
-    --zenha-ouro:   #F3C64A;
-    --zenha-ceu:    #6FA8FF;
-    --zenha-uva:    #C193FF;
-    --zenha-carvao: #93A39C;
   }
 }
 
@@ -200,8 +177,6 @@
   --vest-preto-line:#4A5257; --vest-branco-line:#849089; --vest-verde-line:#0E8E56;
   --vest-laranja-line:#D8600A; --vest-azul-line:#2F6FE0; --vest-vermelho-line:#D9342A;
   --vest-amarelo-line:#B08800;
-  --zenha-grama:#147044; --zenha-cal:#59675F; --zenha-brasa:#B03C0F; --zenha-ouro:#7C5900;
-  --zenha-ceu:#1A59B5; --zenha-uva:#6F37B0; --zenha-carvao:#2C3733;
 }
 
 :root[data-theme="dark"] {
@@ -218,8 +193,6 @@
   --vest-preto-line:#5C666B; --vest-branco-line:#E8EDEA; --vest-verde-line:#1FD183;
   --vest-laranja-line:#FF9038; --vest-azul-line:#4E8CF5; --vest-vermelho-line:#F2564A;
   --vest-amarelo-line:#FFD84D;
-  --zenha-grama:#48D68C; --zenha-cal:#E4EBE7; --zenha-brasa:#FF8A4C; --zenha-ouro:#F3C64A;
-  --zenha-ceu:#6FA8FF; --zenha-uva:#C193FF; --zenha-carvao:#93A39C;
 }
 
 /* --------------------------------------------------------------------------
@@ -294,19 +267,6 @@
   --color-vest-vermelho-line: var(--vest-vermelho-line);
   --color-vest-amarelo:       var(--vest-amarelo);
   --color-vest-amarelo-line:  var(--vest-amarelo-line);
-
-  /* O sufixo daqui é, LETRA POR LETRA, o `tokenId` do item no catálogo: um item
-     com `tokenId: "zenha-ouro"` vira `text-zenha-ouro`. A tradução id → classe
-     é literal em src/components/ui/tokens-de-item.ts (o Tailwind varre o fonte,
-     e `text-${tokenId}` nunca existiria no CSS final), e o teste do Selo cobra
-     que os dois lados continuem falando o mesmo nome. */
-  --color-zenha-grama:  var(--zenha-grama);
-  --color-zenha-cal:    var(--zenha-cal);
-  --color-zenha-brasa:  var(--zenha-brasa);
-  --color-zenha-ouro:   var(--zenha-ouro);
-  --color-zenha-ceu:    var(--zenha-ceu);
-  --color-zenha-uva:    var(--zenha-uva);
-  --color-zenha-carvao: var(--zenha-carvao);
 
   /* rounded-selo / rounded-ctl / rounded-card */
   --radius-selo:  var(--r-selo);

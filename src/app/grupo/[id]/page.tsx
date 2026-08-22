@@ -7,6 +7,7 @@ import { PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
 import { NomeJogador } from "@/components/ui/nome-jogador";
+import { lerDestaques } from "@/lib/loja";
 import { VestChip } from "@/components/ui/vest";
 import { STATUS_FUT } from "@/lib/match-day-form";
 import { db } from "@/db";
@@ -91,6 +92,10 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
       .orderBy(desc(matchDays.date), desc(matchDays.id)),
     session && papel === null ? temPedidoPendente(groupId, session.player.id) : Promise.resolve(false),
   ]);
+
+  // Os badges em destaque dos membros, numa consulta só — uma por linha da lista
+  // seria N idas ao banco para enfeitar a lista de quem joga no grupo.
+  const destaques = await lerDestaques(db, membros.map((m) => m.playerId));
 
   const dayIds = days.map((d) => d.id);
   const gameRows = dayIds.length
@@ -249,7 +254,11 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
               {/* A linha inteira é o link: aqui ela não carrega mais nada além
                   da pessoa, e é daqui que se conhece quem joga no grupo. */}
               <HairlineRowLink href={`/jogador/${m.playerId}`}>
-                <NomeJogador apelido={m.nickname} nome={m.name} />
+                <NomeJogador
+                  apelido={m.nickname}
+                  nome={m.name}
+                  destaque={destaques.get(m.playerId)}
+                />
                 {!m.temConta && <Badge tom="dashed">sem conta</Badge>}
                 {m.papel !== "member" && <Badge tom="accent">{papelLabel[m.papel]}</Badge>}
               </HairlineRowLink>

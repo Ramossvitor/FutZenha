@@ -1,11 +1,12 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { zenhaEquipados, zenhaInventario } from "@/db/schema";
+import { lojaItens, zenhaEquipados, zenhaInventario } from "@/db/schema";
 import { listarGruposDoSeletor, listarMeusGrupos, type MeuGrupo } from "@/lib/grupos";
 import { gruposVisiveisNoPerfil, podeFiltrarPerfilPorGrupo } from "@/lib/grupos-permissions";
 import { getJogador, type PerfilJogador } from "@/lib/jogadores";
-import { CATALOGO, ehIdDeItem, type ItemDaLoja } from "@/lib/loja-catalogo";
+import type { ItemDaLoja } from "@/lib/item-da-loja";
+import { lerVitrine, type BadgeNaVitrine } from "@/lib/loja";
 import type { Ator } from "@/lib/permissions";
 import { posicoes } from "@/lib/posicao";
 import { getAttendanceStats, getMvpRanking, getPlayerRecords, getTopScorers } from "@/lib/stats";
@@ -27,23 +28,21 @@ export type NumerosDoPerfil = {
 };
 
 /**
- * O que a pessoa comprou e deixou equipado, já traduzido de `item_id` para a
- * entrada do catálogo.
+ * O que a pessoa comprou e escolheu mostrar.
  *
- * Um campo por slot, e não uma lista solta, porque cada slot tem um lugar
- * diferente no cabeçalho — o `zenhaSlotEnum` do banco é o mesmo `SlotDeExibicao`
- * do catálogo justamente para essa tradução não ter que adivinhar nada.
+ * Um campo por slot para os três de vaga única, porque cada um tem um lugar
+ * diferente no cabeçalho — o `zenhaSlotEnum` do banco é o mesmo
+ * `SlotDeExibicao` do módulo puro justamente para essa tradução não ter que
+ * adivinhar nada.
  *
- * `selos` é lista mesmo com a PK composta `(player_id, slot)` limitando a UM
- * badge equipado: quem varre as linhas do banco já as recebe em array, e é o
- * formato que a tela aceita sem mudar de forma se o dia do segundo badge
- * chegar.
+ * `badges` é lista porque badge é COLEÇÃO: até cinco, na ordem das vagas que a
+ * pessoa montou, com no máximo um marcado como destaque.
  */
 export type VitrineDoJogador = {
   moldura: ItemDaLoja | null;
   corDoNome: ItemDaLoja | null;
   titulo: ItemDaLoja | null;
-  selos: ItemDaLoja[];
+  badges: BadgeNaVitrine[];
 };
 
 export type DadosDoPerfil = {
@@ -58,37 +57,53 @@ export type DadosDoPerfil = {
 };
 
 /**
- * Os cosméticos equipados do jogador.
+ * Os cosméticos que o jogador está mostrando.
  *
- * Sem filtro de privacidade nenhum, e é uma decisão: item comprado é vitrine —
- * a pessoa pagou zenha para que os outros vejam. O que continua protegido é o
- * que sempre foi (as estrelas recebidas, os grupos privados alheios); nada aqui
- * conta quanto ela pagou nem o que ela tem guardado no inventário.
+ * Sem filtro de privacidade nenhum, e é uma decisão: item exibido é vitrine —
+ * a pessoa pagou zenha para que os outros vejam, e escolheu, item por item, o
+ * que deixar à mostra. O que continua protegido é o que sempre foi (as estrelas
+ * recebidas, os grupos privados alheios); nada aqui conta quanto ela pagou nem o
+ * que ela tem guardado no inventário.
  *
- * O `item_id` é text SEM FK de propósito (o catálogo é código — ver
- * src/lib/loja-catalogo.ts), então esta é a fronteira onde um id que o catálogo
- * não conhece precisa morrer CALADO. A regra da casa é nunca apagar entrada, só
- * aposentar; se ela for quebrada um dia, o preço tem que ser um badge que
- * sumiu, e não o perfil inteiro em 500.
+ * Duas consultas em paralelo porque são duas tabelas diferentes com regras
+ * diferentes — slot único em `zenha_equipados`, coleção ordenada em
+ * `zenha_vitrine` — e nenhuma depende da outra.
  *
- * O slot vem da linha de `zenha_equipados`, e não de `item.slot`: é a coluna da
- * PK, e é ela que garante um item por slot. Se um item mudar de slot no
- * catálogo depois de equipado, obedecer a linha mantém a promessa "um título,
- * uma moldura" — obedecer o catálogo abriria a porta para dois títulos.
+ * O slot vem da linha de `zenha_equipados`, e não do tipo do item: é a coluna da
+ * PK, e é ela que garante um item por slot. Se um item mudar de tipo no catálogo
+ * depois de equipado, obedecer a linha mantém a promessa "um título, uma
+ * moldura" — obedecer o catálogo abriria a porta para dois títulos. (O painel do
+ * admin não deixa trocar o tipo justamente por isso; a defesa aqui é a segunda.)
+ *
+ * O item fora de venda continua sendo desenhado: quem comprou continua exibindo.
+ * É a contrapartida de o admin poder retirar da vitrine sem apagar nada.
  */
 async function carregarVitrine(playerId: number): Promise<VitrineDoJogador> {
-  const linhas = await db
-    .select({ slot: zenhaEquipados.slot, itemId: zenhaInventario.itemId })
-    .from(zenhaEquipados)
-    .innerJoin(zenhaInventario, eq(zenhaInventario.id, zenhaEquipados.inventarioId))
-    .where(eq(zenhaEquipados.playerId, playerId));
+  const [equipados, badges] = await Promise.all([
+    db
+      .select({
+        slot: zenhaEquipados.slot,
+        id: lojaItens.id,
+        tipo: lojaItens.tipo,
+        nome: lojaItens.nome,
+        descricao: lojaItens.descricao,
+        preco: lojaItens.preco,
+        cor: lojaItens.cor,
+        imagemHash: lojaItens.imagemHash,
+        ativo: lojaItens.ativo,
+      })
+      .from(zenhaEquipados)
+      .innerJoin(zenhaInventario, eq(zenhaInventario.id, zenhaEquipados.inventarioId))
+      .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
+      .where(eq(zenhaEquipados.playerId, playerId)),
+    lerVitrine(db, playerId),
+  ]);
 
-  const vitrine: VitrineDoJogador = { moldura: null, corDoNome: null, titulo: null, selos: [] };
-  for (const linha of linhas) {
-    // O id que o catálogo não conhece morre aqui, sem log e sem erro — é a
-    // decisão explicada acima, e ela precisa ser visível na linha que a executa.
-    if (!ehIdDeItem(linha.itemId)) continue;
-    const item = CATALOGO[linha.itemId];
+  const vitrine: VitrineDoJogador = { moldura: null, corDoNome: null, titulo: null, badges };
+  for (const linha of equipados) {
+    // Nenhum dos três cosméticos de slot tem efeito — o check
+    // `(tipo = 'consumivel') = (efeito is not null)` responde por isso.
+    const item: ItemDaLoja = { ...linha, efeito: null };
     switch (linha.slot) {
       case "moldura":
         vitrine.moldura = item;
@@ -98,9 +113,6 @@ async function carregarVitrine(playerId: number): Promise<VitrineDoJogador> {
         break;
       case "titulo":
         vitrine.titulo = item;
-        break;
-      case "badge":
-        vitrine.selos.push(item);
         break;
       default:
         // Slot novo no enum sem lugar no cabeçalho não compila: aqui o tipo de
