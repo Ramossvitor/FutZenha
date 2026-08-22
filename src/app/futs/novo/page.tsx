@@ -2,6 +2,7 @@ import { BannerDaQuery } from "@/components/ui/banner";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { Card, CardBody, PageHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
+import { LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { todayISO } from "@/lib/format";
 import { getGroupIdAtual } from "@/lib/grupo-atual";
 import { listarMeusGrupos } from "@/lib/grupos";
@@ -47,33 +48,23 @@ export default async function NovoFutPage({ searchParams }: PageProps<"/futs/nov
       <form action={createMatchDay}>
         <Card>
           <CardBody className="flex flex-col gap-5">
-            <div className="flex flex-wrap gap-4">
-              <Field htmlFor="date" label="Data" obrigatorio className="min-w-[10rem] flex-1">
+            <LinhaDeCampos colunas={["curto", "curto", "curto"]}>
+              <Field htmlFor="date" label="Data" obrigatorio>
                 <Input id="date" name="date" type="date" required defaultValue={todayISO()} />
               </Field>
-              <Field htmlFor="startTime" label="Horário" className="min-w-[8rem] flex-1">
+              <Field htmlFor="startTime" label="Horário">
                 <Input id="startTime" name="startTime" type="time" />
               </Field>
-              <Field
-                htmlFor="endTime"
-                label="Término"
-                ajuda="Vazio = 1h."
-                className="min-w-[8rem] flex-1"
-              >
+              <Field htmlFor="endTime" label="Término" ajuda="Vazio = 1h.">
                 <Input id="endTime" name="endTime" type="time" />
               </Field>
-            </div>
+            </LinhaDeCampos>
 
-            <div className="flex flex-wrap gap-4">
-              <Field htmlFor="location" label="Local" obrigatorio className="min-w-[12rem] flex-1">
+            <LinhaDeCampos colunas={["cheio", "curto"]}>
+              <Field htmlFor="location" label="Local" obrigatorio>
                 <Input id="location" name="location" required placeholder="Quadra do clube" />
               </Field>
-              <Field
-                htmlFor="maxPlayers"
-                label="Vagas"
-                ajuda="Deixe vazio para não limitar."
-                className="sm:w-28"
-              >
+              <Field htmlFor="maxPlayers" label="Vagas" ajuda="Deixe vazio para não limitar.">
                 <Input
                   id="maxPlayers"
                   name="maxPlayers"
@@ -84,12 +75,13 @@ export default async function NovoFutPage({ searchParams }: PageProps<"/futs/nov
                   placeholder="20"
                 />
               </Field>
-            </div>
+            </LinhaDeCampos>
 
             <Field
               htmlFor="notes"
               label="Observações"
               ajuda="Opcional. Ex.: leva colete branco e preto."
+              largura="longo"
             >
               <Input id="notes" name="notes" placeholder="Society 2, quadra do fundo" />
             </Field>
@@ -98,6 +90,7 @@ export default async function NovoFutPage({ searchParams }: PageProps<"/futs/nov
               <Field
                 htmlFor="groupId"
                 label="Grupo"
+                largura="longo"
                 ajuda="Fut de grupo entra no ranking do grupo. Você continua podendo convidar gente de fora — inclusive quem não tem conta."
               >
                 <Select id="groupId" name="groupId" defaultValue={preSelecionado}>

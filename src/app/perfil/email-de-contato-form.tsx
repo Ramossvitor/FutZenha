@@ -28,6 +28,7 @@ export function EmailDeContatoForm({ atual }: { atual: string | null }) {
           htmlFor="contactEmail"
           label="Seu e-mail"
           obrigatorio
+          largura="medio"
           ajuda="Só para receber avisos do fut — não é por ele que você entra."
         >
           <Input

@@ -18,7 +18,7 @@ export function ChangePasswordForm() {
         Trocar senha
       </summary>
       <form action={formAction} className="mt-3 flex flex-col gap-4">
-        <Field htmlFor="currentPassword" label="Senha atual" obrigatorio>
+        <Field htmlFor="currentPassword" label="Senha atual" obrigatorio largura="medio">
           <Input
             id="currentPassword"
             name="currentPassword"
@@ -31,6 +31,7 @@ export function ChangePasswordForm() {
           htmlFor="newPassword"
           label="Nova senha"
           obrigatorio
+          largura="medio"
           ajuda={`Pelo menos ${MIN_SENHA} caracteres.`}
         >
           <Input
@@ -42,7 +43,7 @@ export function ChangePasswordForm() {
             minLength={MIN_SENHA}
           />
         </Field>
-        <Field htmlFor="confirm" label="Confirmar nova senha" obrigatorio>
+        <Field htmlFor="confirm" label="Confirmar nova senha" obrigatorio largura="medio">
           <Input
             id="confirm"
             name="confirm"

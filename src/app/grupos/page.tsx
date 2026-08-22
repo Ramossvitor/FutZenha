@@ -5,6 +5,7 @@ import { Button, LinkButton, SubmitButton } from "@/components/ui/button";
 import { Card, Eyebrow, PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/field";
+import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRowLink } from "@/components/ui/hairline-list";
 import { IconeCheck, IconeSeta } from "@/components/ui/icons";
 import { Nota } from "@/components/ui/nota";
@@ -134,13 +135,19 @@ export default async function GruposPage({ searchParams }: PageProps<"/grupos">)
       </Section>
 
       <Section titulo="Descobrir">
-        <form action="/grupos" className="flex items-end gap-2">
-          <Field htmlFor="busca" label="Procurar grupo público" className="flex-1">
-            <Input id="busca" name="busca" defaultValue={termo} placeholder="Nome do grupo" />
-          </Field>
-          <Button type="submit" variante="secondary">
-            Buscar
-          </Button>
+        <form action="/grupos">
+          {/* Sem empilhar: campo de busca com o botão embaixo, e não ao lado,
+              lê como formulário de cadastro em vez de barra de busca. */}
+          <LinhaDeCampos colunas={["cheio", "acao"]} empilhaNoCelular={false}>
+            <Field htmlFor="busca" label="Procurar grupo público">
+              <Input id="busca" name="busca" defaultValue={termo} placeholder="Nome do grupo" />
+            </Field>
+            <AcaoDaLinha>
+              <Button type="submit" variante="secondary">
+                Buscar
+              </Button>
+            </AcaoDaLinha>
+          </LinhaDeCampos>
         </form>
 
         <HairlineList

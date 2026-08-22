@@ -5,7 +5,8 @@ import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader, Eyebrow, Section } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Checkbox, Field, Input, Select } from "@/components/ui/field";
+import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeLuva } from "@/components/ui/icons";
 import { NomeJogador } from "@/components/ui/nome-jogador";
@@ -57,47 +58,60 @@ export function SecaoDados({ fut }: { fut: PainelDoFut }) {
     <Section titulo="Dados do fut">
       <Card>
         <CardBody>
+          {/* Seis campos e um botão não cabem numa linha só em 640px: as
+              trilhas ficariam menores que o conteúdo. Três linhas, como
+              /futs/novo já fazia. */}
           <form
             action={updateMatchDay.bind(null, matchDay.id)}
-            className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end"
+            className="flex flex-col gap-4"
           >
-            <Field htmlFor="g-date" label="Data" obrigatorio className="sm:w-40">
-              <Input id="g-date" name="date" type="date" required defaultValue={matchDay.date} />
-            </Field>
-            <Field htmlFor="g-time" label="Horário" className="sm:w-32">
-              <Input
-                id="g-time"
-                name="startTime"
-                type="time"
-                defaultValue={formatTime(matchDay.startTime) ?? ""}
-              />
-            </Field>
-            <Field htmlFor="g-end" label="Término" className="sm:w-32" ajuda="Vazio = 1h.">
-              <Input
-                id="g-end"
-                name="endTime"
-                type="time"
-                defaultValue={formatTime(matchDay.endTime) ?? ""}
-              />
-            </Field>
-            <Field htmlFor="g-local" label="Local" obrigatorio className="sm:min-w-48 sm:flex-1">
-              <Input id="g-local" name="location" required defaultValue={matchDay.location} />
-            </Field>
-            <Field htmlFor="g-vagas" label="Vagas" className="sm:w-24" ajuda="Vazio = sem limite.">
-              <Input
-                id="g-vagas"
-                name="maxPlayers"
-                type="number"
-                min={2}
-                max={60}
-                inputMode="numeric"
-                defaultValue={matchDay.maxPlayers ?? ""}
-              />
-            </Field>
-            <Field htmlFor="g-notes" label="Observações" className="sm:min-w-48 sm:flex-1">
-              <Input id="g-notes" name="notes" defaultValue={matchDay.notes ?? ""} />
-            </Field>
-            <SubmitButton>Salvar</SubmitButton>
+            <LinhaDeCampos colunas={["curto", "curto", "curto"]}>
+              <Field htmlFor="g-date" label="Data" obrigatorio>
+                <Input id="g-date" name="date" type="date" required defaultValue={matchDay.date} />
+              </Field>
+              <Field htmlFor="g-time" label="Horário">
+                <Input
+                  id="g-time"
+                  name="startTime"
+                  type="time"
+                  defaultValue={formatTime(matchDay.startTime) ?? ""}
+                />
+              </Field>
+              <Field htmlFor="g-end" label="Término" ajuda="Vazio = 1h.">
+                <Input
+                  id="g-end"
+                  name="endTime"
+                  type="time"
+                  defaultValue={formatTime(matchDay.endTime) ?? ""}
+                />
+              </Field>
+            </LinhaDeCampos>
+
+            <LinhaDeCampos colunas={["cheio", "curto"]}>
+              <Field htmlFor="g-local" label="Local" obrigatorio>
+                <Input id="g-local" name="location" required defaultValue={matchDay.location} />
+              </Field>
+              <Field htmlFor="g-vagas" label="Vagas" ajuda="Vazio = sem limite.">
+                <Input
+                  id="g-vagas"
+                  name="maxPlayers"
+                  type="number"
+                  min={2}
+                  max={60}
+                  inputMode="numeric"
+                  defaultValue={matchDay.maxPlayers ?? ""}
+                />
+              </Field>
+            </LinhaDeCampos>
+
+            <LinhaDeCampos colunas={["cheio", "acao"]}>
+              <Field htmlFor="g-notes" label="Observações">
+                <Input id="g-notes" name="notes" defaultValue={matchDay.notes ?? ""} />
+              </Field>
+              <AcaoDaLinha>
+                <SubmitButton>Salvar</SubmitButton>
+              </AcaoDaLinha>
+            </LinhaDeCampos>
           </form>
         </CardBody>
       </Card>
@@ -273,8 +287,8 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
               action={convidarParaFut.bind(null, matchDay.id)}
               className="flex flex-col gap-4"
             >
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                <Field htmlFor="novo-nome" label="Nome" obrigatorio className="flex-1">
+              <LinhaDeCampos colunas={["medio", "medio"]}>
+                <Field htmlFor="novo-nome" label="Nome" obrigatorio>
                   <Input
                     id="novo-nome"
                     name="name"
@@ -283,12 +297,7 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
                     placeholder="Nome do jogador"
                   />
                 </Field>
-                <Field
-                  htmlFor="novo-email"
-                  label="E-mail (conta Google)"
-                  className="flex-1"
-                  ajuda="Opcional."
-                >
+                <Field htmlFor="novo-email" label="E-mail (conta Google)" ajuda="Opcional.">
                   <Input
                     id="novo-email"
                     name="email"
@@ -297,15 +306,8 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
                     placeholder="fulano@gmail.com"
                   />
                 </Field>
-              </div>
-              <label className="flex items-center gap-2 text-[13px] text-fg-2">
-                <input
-                  type="checkbox"
-                  name="isGoalkeeper"
-                  className="size-4 accent-[var(--accent)]"
-                />
-                É goleiro
-              </label>
+              </LinhaDeCampos>
+              <Checkbox name="isGoalkeeper" label="É goleiro" />
               <SubmitButton className="self-start">Cadastrar e confirmar</SubmitButton>
               <p className="text-[12px] leading-[1.45] text-fg-4">
                 Cria o jogador, já marca a presença e gera o convite de acesso — o link aparece
@@ -468,12 +470,16 @@ export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
               <p className="text-[12.5px] text-fg-2">
                 Para chamar quem ainda não jogou com você: manda o link, e quem abrir entra.
               </p>
-              <div className="flex flex-wrap items-end gap-2">
+              <LinhaDeCampos colunas={["curto", "acao"]}>
                 <Field htmlFor="maxUses" label="Limite de usos" ajuda="Vazio = sem limite.">
                   <Input id="maxUses" name="maxUses" type="number" min={1} max={60} />
                 </Field>
-                <SubmitButton tamanho="sm">Gerar link</SubmitButton>
-              </div>
+                <AcaoDaLinha>
+                  {/* Tamanho md, não sm: h-8 ao lado de um input h-10 é o
+                      degrau que a linha existe para não ter. */}
+                  <SubmitButton>Gerar link</SubmitButton>
+                </AcaoDaLinha>
+              </LinhaDeCampos>
             </form>
           )}
         </CardBody>
@@ -492,24 +498,31 @@ export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
           <CardBody>
             <form
               action={drawTeamsAction.bind(null, matchDay.id)}
-              className="flex flex-wrap items-end gap-3"
+              className="flex flex-col gap-2"
             >
-              <Field htmlFor="teamCount" label="Nº de times" className="w-28">
-                <Select
-                  id="teamCount"
-                  name="teamCount"
-                  defaultValue={confirmed.length >= 15 ? 3 : 2}
-                >
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                  <option value={4}>4</option>
-                </Select>
-              </Field>
-              {/* Re-sortear apaga o sorteio inteiro: um duplo clique
-                  atrapalhado refaz os times sem querer. */}
-              <SubmitButton labelPending="Sorteando…">
-                {teamList.length > 0 ? "Re-sortear" : "Fechar lista e sortear"}
-              </SubmitButton>
+              <LinhaDeCampos colunas={["curto", "acao"]}>
+                <Field htmlFor="teamCount" label="Nº de times">
+                  <Select
+                    id="teamCount"
+                    name="teamCount"
+                    defaultValue={confirmed.length >= 15 ? 3 : 2}
+                  >
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={4}>4</option>
+                  </Select>
+                </Field>
+                <AcaoDaLinha>
+                  {/* Re-sortear apaga o sorteio inteiro: um duplo clique
+                      atrapalhado refaz os times sem querer. */}
+                  <SubmitButton labelPending="Sorteando…">
+                    {teamList.length > 0 ? "Re-sortear" : "Fechar lista e sortear"}
+                  </SubmitButton>
+                </AcaoDaLinha>
+              </LinhaDeCampos>
+              {/* Abaixo da linha, e não como terceira coluna: é aviso do form
+                  inteiro, e num celular uma coluna de texto ao lado do botão
+                  ficaria com duas palavras por linha. */}
               <span className="text-[12px] text-fg-4">
                 {confirmed.length} confirmados
                 {teamList.length === 0 && " · sortear trava a lista: daqui em diante quem inclui é você"}
@@ -580,34 +593,39 @@ export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
               <CardBody>
                 <form
                   action={swapPlayersAction.bind(null, matchDay.id)}
-                  className="flex flex-wrap items-end gap-3"
+                  className="flex flex-col gap-3"
                 >
-                  <span className="w-full font-display text-[13px] font-bold text-fg">
+                  {/* Título acima da linha, não dentro dela: era um `w-full`
+                      dentro do flex-wrap para forçar a própria linha. */}
+                  <span className="font-display text-[13px] font-bold text-fg">
                     Trocar jogadores de time
                   </span>
-                  {(["playerA", "playerB"] as const).map((field, i) => (
-                    <Field
-                      key={field}
-                      htmlFor={field}
-                      label={i === 0 ? "Sai daqui" : "Vai para cá"}
-                      className="min-w-36 flex-1"
-                    >
-                      <Select id={field} name={field}>
-                        {teamList.map((team) => (
-                          <optgroup key={team.id} label={team.name}>
-                            {teamMembers
-                              .filter((m) => m.teamId === team.id)
-                              .map((m) => (
-                                <option key={m.playerId} value={m.playerId}>
-                                  {m.nickname ?? m.playerName}
-                                </option>
-                              ))}
-                          </optgroup>
-                        ))}
-                      </Select>
-                    </Field>
-                  ))}
-                  <SubmitButton variante="secondary">Trocar</SubmitButton>
+                  <LinhaDeCampos colunas={["cheio", "cheio", "acao"]}>
+                    {(["playerA", "playerB"] as const).map((field, i) => (
+                      <Field
+                        key={field}
+                        htmlFor={field}
+                        label={i === 0 ? "Sai daqui" : "Vai para cá"}
+                      >
+                        <Select id={field} name={field}>
+                          {teamList.map((team) => (
+                            <optgroup key={team.id} label={team.name}>
+                              {teamMembers
+                                .filter((m) => m.teamId === team.id)
+                                .map((m) => (
+                                  <option key={m.playerId} value={m.playerId}>
+                                    {m.nickname ?? m.playerName}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          ))}
+                        </Select>
+                      </Field>
+                    ))}
+                    <AcaoDaLinha>
+                      <SubmitButton variante="secondary">Trocar</SubmitButton>
+                    </AcaoDaLinha>
+                  </LinhaDeCampos>
                 </form>
               </CardBody>
             </Card>
@@ -767,41 +785,38 @@ export function SecaoJogos({ fut }: { fut: PainelDoFut }) {
               )}
 
               {podeEditarPlacar && (
-                <form
-                  action={addGoal.bind(null, matchDay.id, game.id)}
-                  className="flex flex-wrap items-end gap-2"
-                >
-                  <Field
-                    htmlFor={`gol-${game.id}`}
-                    label="Quem marcou"
-                    className="min-w-40 flex-1"
-                  >
-                    <Select id={`gol-${game.id}`} name="playerId">
-                      {(["A", "B"] as const).map((side) => (
-                        <optgroup key={side} label={side === "A" ? timeA : timeB}>
-                          {lineup
-                            .filter((m) => m.side === side)
-                            .map((m) => (
-                              <option key={m.playerId} value={m.playerId}>
-                                {m.nickname ?? m.playerName}
-                              </option>
-                            ))}
-                        </optgroup>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field htmlFor={`qtd-${game.id}`} label="Quantos" className="w-24">
-                    <Input
-                      id={`qtd-${game.id}`}
-                      name="quantity"
-                      type="number"
-                      min={1}
-                      max={20}
-                      defaultValue={1}
-                      className="text-center"
-                    />
-                  </Field>
-                  <SubmitButton variante="secondary">+ Gol</SubmitButton>
+                <form action={addGoal.bind(null, matchDay.id, game.id)}>
+                  <LinhaDeCampos colunas={["cheio", "minimo", "acao"]}>
+                    <Field htmlFor={`gol-${game.id}`} label="Quem marcou">
+                      <Select id={`gol-${game.id}`} name="playerId">
+                        {(["A", "B"] as const).map((side) => (
+                          <optgroup key={side} label={side === "A" ? timeA : timeB}>
+                            {lineup
+                              .filter((m) => m.side === side)
+                              .map((m) => (
+                                <option key={m.playerId} value={m.playerId}>
+                                  {m.nickname ?? m.playerName}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field htmlFor={`qtd-${game.id}`} label="Quantos">
+                      <Input
+                        id={`qtd-${game.id}`}
+                        name="quantity"
+                        type="number"
+                        min={1}
+                        max={20}
+                        defaultValue={1}
+                        className="text-center"
+                      />
+                    </Field>
+                    <AcaoDaLinha>
+                      <SubmitButton variante="secondary">+ Gol</SubmitButton>
+                    </AcaoDaLinha>
+                  </LinhaDeCampos>
                 </form>
               )}
             </CardBody>
@@ -815,49 +830,50 @@ export function SecaoJogos({ fut }: { fut: PainelDoFut }) {
             <span className="font-display text-[14px] font-bold text-fg">Novo jogo</span>
           </CardHeader>
           <CardBody>
-            <form
-              action={createGame.bind(null, matchDay.id)}
-              className="flex flex-wrap items-end gap-2"
-            >
-              <Field htmlFor="teamAId" label="Time A" className="min-w-32 flex-1">
-                <Select id="teamAId" name="teamAId">
-                  {teamList.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field htmlFor="novo-scoreA" label="Gols" className="w-20">
-                <Input
-                  id="novo-scoreA"
-                  name="scoreA"
-                  type="number"
-                  min={0}
-                  defaultValue={0}
-                  className="text-center"
-                />
-              </Field>
-              <Field htmlFor="novo-scoreB" label="Gols" className="w-20">
-                <Input
-                  id="novo-scoreB"
-                  name="scoreB"
-                  type="number"
-                  min={0}
-                  defaultValue={0}
-                  className="text-center"
-                />
-              </Field>
-              <Field htmlFor="teamBId" label="Time B" className="min-w-32 flex-1">
-                <Select id="teamBId" name="teamBId" defaultValue={teamList[1]?.id}>
-                  {teamList.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <SubmitButton>Adicionar</SubmitButton>
+            {/* Quatro colunas é o teto da LinhaDeCampos, então o botão desce
+                para a sua própria linha em vez de virar a quinta. */}
+            <form action={createGame.bind(null, matchDay.id)} className="flex flex-col gap-3">
+              <LinhaDeCampos colunas={["cheio", "minimo", "minimo", "cheio"]}>
+                <Field htmlFor="teamAId" label="Time A">
+                  <Select id="teamAId" name="teamAId">
+                    {teamList.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field htmlFor="novo-scoreA" label="Gols">
+                  <Input
+                    id="novo-scoreA"
+                    name="scoreA"
+                    type="number"
+                    min={0}
+                    defaultValue={0}
+                    className="text-center"
+                  />
+                </Field>
+                <Field htmlFor="novo-scoreB" label="Gols">
+                  <Input
+                    id="novo-scoreB"
+                    name="scoreB"
+                    type="number"
+                    min={0}
+                    defaultValue={0}
+                    className="text-center"
+                  />
+                </Field>
+                <Field htmlFor="teamBId" label="Time B">
+                  <Select id="teamBId" name="teamBId" defaultValue={teamList[1]?.id}>
+                    {teamList.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </LinhaDeCampos>
+              <SubmitButton className="self-start">Adicionar</SubmitButton>
             </form>
           </CardBody>
         </Card>

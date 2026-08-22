@@ -14,7 +14,7 @@ export function LoginForm({ next }: { next?: string }) {
   return (
     <form action={formAction} className="flex flex-col gap-4">
       {next && <input type="hidden" name="next" value={next} />}
-      <Field htmlFor="username" label="Usuário">
+      <Field htmlFor="username" label="Usuário" obrigatorio>
         <Input
           id="username"
           name="username"
@@ -25,7 +25,7 @@ export function LoginForm({ next }: { next?: string }) {
           autoComplete="username"
         />
       </Field>
-      <Field htmlFor="password" label="Senha">
+      <Field htmlFor="password" label="Senha" obrigatorio>
         <Input
           id="password"
           name="password"

@@ -3,6 +3,7 @@ import { SubmitButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader, Section } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Field, Input, Select } from "@/components/ui/field";
+import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import type { Group } from "@/db/schema";
 import { papelLabel } from "@/lib/grupos-permissions";
@@ -53,25 +54,20 @@ export function SecaoDadosDoGrupo({ grupo, groupId }: { grupo: Group; groupId: n
                 placeholder="Quarta às 20h, quadra do clube"
               />
             </Field>
-            <div className="flex flex-wrap gap-4">
-              <Field htmlFor="gr-vis" label="Quem encontra" className="min-w-52 flex-1">
+            <LinhaDeCampos colunas={["cheio", "cheio"]}>
+              <Field htmlFor="gr-vis" label="Quem encontra">
                 <Select id="gr-vis" name="visibility" defaultValue={grupo.visibility}>
                   <option value="private">Privado — só por convite</option>
                   <option value="public">Público — aparece na busca</option>
                 </Select>
               </Field>
-              <Field
-                htmlFor="gr-join"
-                label="Como se entra"
-                className="min-w-52 flex-1"
-                ajuda="Só vale em grupo público."
-              >
+              <Field htmlFor="gr-join" label="Como se entra" ajuda="Só vale em grupo público.">
                 <Select id="gr-join" name="joinPolicy" defaultValue={grupo.joinPolicy}>
                   <option value="request">Sob aprovação</option>
                   <option value="open">Entrada livre</option>
                 </Select>
               </Field>
-            </div>
+            </LinhaDeCampos>
             <p className="text-[12px] leading-[1.45] text-fg-4">
               Ao tornar o grupo privado, os pedidos que estiverem na fila são recusados.
             </p>
@@ -242,24 +238,25 @@ export function SecaoLink({
             <p className="text-[13px] text-fg-3">Nenhum link ativo.</p>
           )}
 
-          <form
-            action={gerarLinkDoGrupo.bind(null, groupId)}
-            className="flex flex-wrap items-end gap-2 border-t border-line pt-3"
-          >
-            <Field htmlFor="maxUses" label="Limite de usos" className="w-40">
-              <Input
-                id="maxUses"
-                name="maxUses"
-                type="number"
-                min={1}
-                max={500}
-                placeholder="Sem limite"
-              />
-            </Field>
-            {/* Gerar duas vezes revoga o link que acabou de ir pro zap. */}
-            <SubmitButton variante="secondary" labelPending="Gerando…">
-              {link ? "Gerar link novo" : "Gerar link"}
-            </SubmitButton>
+          <form action={gerarLinkDoGrupo.bind(null, groupId)}>
+            <LinhaDeCampos colunas={["curto", "acao"]} className="border-t border-line pt-3">
+              <Field htmlFor="maxUses" label="Limite de usos">
+                <Input
+                  id="maxUses"
+                  name="maxUses"
+                  type="number"
+                  min={1}
+                  max={500}
+                  placeholder="Sem limite"
+                />
+              </Field>
+              <AcaoDaLinha>
+                {/* Gerar duas vezes revoga o link que acabou de ir pro zap. */}
+                <SubmitButton variante="secondary" labelPending="Gerando…">
+                  {link ? "Gerar link novo" : "Gerar link"}
+                </SubmitButton>
+              </AcaoDaLinha>
+            </LinhaDeCampos>
           </form>
 
           {link && (
@@ -303,7 +300,9 @@ export function SecaoConvidar({
                 key={c.id}
                 className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-2.5 last:border-0"
               >
-                <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
+                {/* `basis-full` no celular: dividindo a linha com os selos e o botão,
+                    o nome sobrava com cinco caracteres antes das reticências. */}
+                <span className="min-w-0 basis-full truncate font-display text-[14px] font-bold text-fg sm:basis-0 sm:grow">
                   {c.nickname ?? c.name}
                 </span>
                 {/* O aviso sai num after(): logo depois de convidar, a linha pode
