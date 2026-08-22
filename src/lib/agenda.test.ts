@@ -5,6 +5,7 @@ import {
   icsDeConvite,
   icsParaBaixar,
   uidDoConvite,
+  urlDeAgendaGoogle,
   urlGoogleAgenda,
   urlOutlookAgenda,
   type FutParaAgenda,
@@ -186,6 +187,14 @@ describe("urlGoogleAgenda", () => {
     expect(urlGoogleAgenda({ ...FUT, endTime: null }, URL_BASE)).toContain(
       "dates=20260822T200000%2F20260822T210000",
     );
+  });
+});
+
+describe("urlDeAgendaGoogle", () => {
+  // O e-mail leva ESTE link, e o que o justifica é o domínio: igual ao do
+  // remetente. Se um dia ele voltar a apontar para fora, o teste cai.
+  it("fica na nossa origem e aponta para a rota do fut", () => {
+    expect(urlDeAgendaGoogle(7, URL_BASE)).toBe("https://futzenha.com.br/fut/7/agenda/google");
   });
 });
 

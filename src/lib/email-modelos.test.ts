@@ -195,16 +195,20 @@ describe("emailDeEventoDeAgenda", () => {
   it("saída e fut cancelado não levam botão nem link do fut", () => {
     for (const tipo of ["saida", "fut-cancelado"] as const) {
       const email = evento(tipo);
-      expect(email.html).not.toContain("calendar.google.com");
+      expect(email.html).not.toContain("/agenda/google");
       expect(email.html).not.toContain("/fut/7");
       expect(email.texto).not.toContain("/fut/7");
     }
   });
 
+  // O botão passa pela nossa rota, que redireciona. O `not.toContain` do Google
+  // é a regressão que o Resend apontou: link de domínio diferente do remetente
+  // pesa em filtro de spam (ver src/app/fut/[id]/agenda/google/route.ts).
   it("convite e atualização levam o botão do Google e o link do fut", () => {
     for (const tipo of ["convite", "atualizacao"] as const) {
       const email = evento(tipo);
-      expect(email.html).toContain("calendar.google.com");
+      expect(email.html).toContain("/fut/7/agenda/google");
+      expect(email.html).not.toContain("calendar.google.com");
       expect(email.texto).toContain("/fut/7");
     }
   });
