@@ -301,6 +301,17 @@ export function urlGoogleAgenda(fut: FutParaAgenda, urlBase: string): string {
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
+/**
+ * O link do Google que vai no E-MAIL: a nossa rota, que devolve 302 para a URL
+ * acima. Link de outro domínio que o do remetente pesa em filtro de spam — o
+ * porquê inteiro está em src/app/fut/[id]/agenda/google/route.ts.
+ *
+ * A página do fut não usa este: lá o `urlGoogleAgenda` direto continua certo.
+ */
+export function urlDeAgendaGoogle(futId: number, urlBase: string): string {
+  return `${urlBase}/fut/${futId}/agenda/google`;
+}
+
 export function urlOutlookAgenda(fut: FutParaAgenda, urlBase: string): string {
   const params = new URLSearchParams({
     rru: "addevent",

@@ -52,6 +52,14 @@ test.describe("fut lotado do seed", () => {
     expect(ics.headers()["content-type"]).toContain("text/calendar");
     expect(ics.headers()["content-disposition"]).toContain("attachment");
     expect(await ics.text()).toContain("BEGIN:VCALENDAR");
+    // A rota que o botão do e-mail usa: nossa origem, 302 para o Google. Só o
+    // servidor real prova o status e o Location (ver
+    // ./fut/[id]/agenda/google/route.ts).
+    const google = await page.request.get(`${urlDoFut}/agenda/google`, { maxRedirects: 0 });
+    expect(google.status()).toBe(302);
+    expect(google.headers()["location"]).toContain(
+      "https://calendar.google.com/calendar/render",
+    );
 
     // Lotada: o CTA do du é a espera, não o "Vou".
     await page.getByRole("button", { name: "Entrar na espera" }).click();

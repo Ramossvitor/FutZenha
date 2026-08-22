@@ -13,7 +13,7 @@
 // primeira coisa que a pessoa vê do produto e precisa parecer o produto. A
 // versão `texto` sempre repete a URL crua — é o que sobrevive a qualquer cliente.
 
-import { urlGoogleAgenda, type FutParaAgenda } from "./agenda";
+import { urlDeAgendaGoogle, type FutParaAgenda } from "./agenda";
 import type { EmailPronto } from "./email-envio";
 import { formatDate, formatHorarioPorExtenso } from "./format";
 // ./resumo é puro como este arquivo — a derivação do placar mora lá, e trazê-la
@@ -291,8 +291,12 @@ export function emailDeEventoDeAgenda(dados: {
     [
       `<p style="margin:0 0 4px 0;font-size:18px;font-weight:bold;color:${FG};">${titulo}</p>`,
       `<p style="margin:12px 0;">${corpo}</p>`,
+      // Pela nossa rota, não direto para o calendar.google.com: link de domínio
+      // diferente do remetente pesa em filtro de spam (ver o route.ts em
+      // src/app/fut/[id]/agenda/google). A tela do Google chega igual — o 302
+      // leva os mesmos parâmetros.
       comBotao
-        ? `<p style="margin:20px 0;">${botao(urlGoogleAgenda(dados.fut, siteUrl()), "Adicionar ao Google Agenda")}</p>`
+        ? `<p style="margin:20px 0;">${botao(urlDeAgendaGoogle(dados.fut.id, siteUrl()), "Adicionar ao Google Agenda")}</p>`
         : "",
       // A saída de quem foi confirmado por outro. É link e não botão de propósito:
       // o botão é a ação que o e-mail está propondo (pôr na agenda), e esta é a
