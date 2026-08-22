@@ -40,7 +40,10 @@ export function CardDoMultiplicador({
         <Eyebrow>multiplicador</Eyebrow>
         {armadoAqui !== null && <Badge tom="warn">armado</Badge>}
       </CardHeader>
-      <CardBody>
+      {/* O CardBody é bloco puro: sem declarar o empilhamento, o parágrafo,
+          o botão e a linha de ajuda saem colados. É o único dos 22 CardBody
+          com vários filhos que esqueceu de declará-lo. */}
+      <CardBody className="flex flex-col items-start gap-3">
         {armadoAqui !== null ? (
           <>
             <p className="text-[13px] leading-[1.5] text-fg-2">

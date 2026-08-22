@@ -16,6 +16,7 @@ import { Button, SubmitButton, type BotaoVariante } from "@/components/ui/button
 import { Card, CardBody, CardHeader, Eyebrow, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Select } from "@/components/ui/field";
+import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { VestChip } from "@/components/ui/vest";
 import {
@@ -308,8 +309,12 @@ function SecaoIniciarJogo({ matchDayId, times }: PainelSumulaProps) {
             action={iniciarJogo.bind(null, matchDayId)}
             className="flex flex-col gap-3"
           >
-            <div className="flex items-end gap-2">
-              <Field htmlFor="sumula-timeA" label="Time A" className="flex-1">
+            {/* Sem empilhar: "Time A × Time B" é confronto, e empilhado o "×"
+                fica sozinho no meio da tela. O "×" era um `pb-2.5` chutado
+                para casar com a altura do Select; agora ele cai na faixa do
+                controle porque é uma AcaoDaLinha. */}
+            <LinhaDeCampos colunas={["cheio", "acao", "cheio"]} empilhaNoCelular={false}>
+              <Field htmlFor="sumula-timeA" label="Time A">
                 <Select id="sumula-timeA" name="teamAId" defaultValue={times[0]?.id}>
                   {times.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -318,8 +323,10 @@ function SecaoIniciarJogo({ matchDayId, times }: PainelSumulaProps) {
                   ))}
                 </Select>
               </Field>
-              <span className="pb-2.5 text-fg-4">×</span>
-              <Field htmlFor="sumula-timeB" label="Time B" className="flex-1">
+              <AcaoDaLinha>
+                <span className="flex h-10 items-center text-fg-4">×</span>
+              </AcaoDaLinha>
+              <Field htmlFor="sumula-timeB" label="Time B">
                 <Select id="sumula-timeB" name="teamBId" defaultValue={times[1]?.id}>
                   {times.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -328,7 +335,7 @@ function SecaoIniciarJogo({ matchDayId, times }: PainelSumulaProps) {
                   ))}
                 </Select>
               </Field>
-            </div>
+            </LinhaDeCampos>
             <SubmitButton tamanho="lg" className="w-full">
               Iniciar jogo
             </SubmitButton>
@@ -407,21 +414,21 @@ function SecaoDelegacao({ matchDayId, operadores, candidatos }: PainelSumulaProp
             </HairlineList>
           )}
           {candidatos.length > 0 ? (
-            <form action={delegarSumula.bind(null, matchDayId)} className="flex items-end gap-2">
-              <Field
-                htmlFor="sumula-delegado"
-                label="Quem está revezando fica com o celular"
-                className="flex-1"
-              >
-                <Select id="sumula-delegado" name="playerId">
-                  {candidatos.map((c) => (
-                    <option key={c.playerId} value={c.playerId}>
-                      {c.rotulo}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <SubmitButton variante="secondary">Delegar</SubmitButton>
+            <form action={delegarSumula.bind(null, matchDayId)}>
+              <LinhaDeCampos colunas={["cheio", "acao"]}>
+                <Field htmlFor="sumula-delegado" label="Quem está revezando fica com o celular">
+                  <Select id="sumula-delegado" name="playerId">
+                    {candidatos.map((c) => (
+                      <option key={c.playerId} value={c.playerId}>
+                        {c.rotulo}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <AcaoDaLinha>
+                  <SubmitButton variante="secondary">Delegar</SubmitButton>
+                </AcaoDaLinha>
+              </LinhaDeCampos>
             </form>
           ) : (
             operadores.length === 0 && (

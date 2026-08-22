@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { SubmitButton } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
-import { Field, Input } from "@/components/ui/field";
+import { Checkbox, Field, Input } from "@/components/ui/field";
+import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { IconeLuva } from "@/components/ui/icons";
 import { Nota } from "@/components/ui/nota";
 import type { Invite, Player, User } from "@/db/schema";
@@ -22,40 +23,33 @@ import {
 export function CamposDoJogador({ player }: { player?: Player }) {
   const sufixo = player ? `-${player.id}` : "-novo";
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <Field htmlFor={`nome${sufixo}`} label="Nome" obrigatorio className="min-w-44 flex-1">
-        <Input id={`nome${sufixo}`} name="name" required defaultValue={player?.name} />
-      </Field>
-      <Field htmlFor={`apelido${sufixo}`} label="Apelido" className="min-w-36 flex-1">
-        <Input
-          id={`apelido${sufixo}`}
-          name="nickname"
-          defaultValue={player?.nickname ?? ""}
-          placeholder="Como o pessoal chama"
-        />
-      </Field>
-      {/* Só no cadastro: o e-mail pertence ao convite, não ao jogador. Editar um
-          jogador que já existe não deve mexer no acesso dele. */}
-      {!player && (
-        <Field
-          htmlFor="email-novo"
-          label="E-mail (conta Google)"
-          className="min-w-44 flex-1"
-          ajuda="Opcional."
-        >
-          <Input id="email-novo" name="email" type="email" placeholder="fulano@gmail.com" />
+    <div className="flex flex-col gap-3">
+      <LinhaDeCampos colunas={player ? ["medio", "medio"] : ["medio", "medio", "medio"]}>
+        <Field htmlFor={`nome${sufixo}`} label="Nome" obrigatorio>
+          <Input id={`nome${sufixo}`} name="name" required defaultValue={player?.name} />
         </Field>
-      )}
-      <label className="flex h-10 items-center gap-2 text-[13px] text-fg-2">
-        <input
-          name="isGoalkeeper"
-          type="checkbox"
-          defaultChecked={player?.isGoalkeeper}
-          className="size-4 accent-[var(--accent)]"
-        />
-        Goleiro
-      </label>
-      <SubmitButton>{player ? "Salvar" : "Adicionar"}</SubmitButton>
+        <Field htmlFor={`apelido${sufixo}`} label="Apelido">
+          <Input
+            id={`apelido${sufixo}`}
+            name="nickname"
+            defaultValue={player?.nickname ?? ""}
+            placeholder="Como o pessoal chama"
+          />
+        </Field>
+        {/* Só no cadastro: o e-mail pertence ao convite, não ao jogador. Editar
+            um jogador que já existe não deve mexer no acesso dele. */}
+        {!player && (
+          <Field htmlFor="email-novo" label="E-mail (conta Google)" ajuda="Opcional.">
+            <Input id="email-novo" name="email" type="email" placeholder="fulano@gmail.com" />
+          </Field>
+        )}
+      </LinhaDeCampos>
+      {/* Checkbox e botão descem para a própria linha: como colunas eles
+          empurrariam os campos para larguras de duas palavras no celular. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Checkbox name="isGoalkeeper" defaultChecked={player?.isGoalkeeper} label="Goleiro" />
+        <SubmitButton>{player ? "Salvar" : "Adicionar"}</SubmitButton>
+      </div>
     </div>
   );
 }
@@ -113,7 +107,9 @@ export function SecaoDeAcesso({
               {invite.emailSentAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
             </Badge>
           )}
-          <code className="min-w-0 flex-1 truncate rounded-selo bg-surface-2 px-2 py-1 text-[11px] text-fg-2">
+          {/* Linha própria, não `flex-1`: dividindo a faixa com os selos, a URL
+              sobrava com meia dúzia de caracteres antes das reticências. */}
+          <code className="w-full min-w-0 truncate rounded-selo bg-surface-2 px-2 py-1 text-[11px] text-fg-2">
             {inviteUrl}
           </code>
           <CopyButton text={inviteUrl} />
@@ -139,59 +135,65 @@ export function SecaoDeAcesso({
         </div>
       )}
 
-      <div className="flex flex-wrap items-end gap-3">
+      {/* Coluna, não linha: são dois formulários independentes, e o
+          `flex-wrap items-end` daqui fazia um se alinhar pelo outro. */}
+      <div className="flex flex-col gap-4">
         {/* Errou o e-mail? Revogar e gerar de novo — o convite trava no endereço
             digitado, então corrigi-lo é emitir outro. */}
         {!convitePendente && (
-          <form
-            action={createInvite.bind(null, player.id)}
-            className="flex flex-wrap items-end gap-2"
-          >
-            <Field
-              htmlFor={`convite-email-${player.id}`}
-              label="E-mail da conta Google"
-              className="w-60"
-              ajuda="Opcional."
-            >
-              <Input
-                id={`convite-email-${player.id}`}
-                name="email"
-                type="email"
-                placeholder="fulano@gmail.com"
-              />
-            </Field>
-            <SubmitButton variante="secondary">
-              {user ? "Resetar acesso" : conviteExpirado ? "Gerar novo convite" : "Gerar convite"}
-            </SubmitButton>
+          <form action={createInvite.bind(null, player.id)}>
+            <LinhaDeCampos colunas={["medio", "acao"]}>
+              <Field
+                htmlFor={`convite-email-${player.id}`}
+                label="E-mail da conta Google"
+                ajuda="Opcional."
+              >
+                <Input
+                  id={`convite-email-${player.id}`}
+                  name="email"
+                  type="email"
+                  placeholder="fulano@gmail.com"
+                />
+              </Field>
+              <AcaoDaLinha>
+                <SubmitButton variante="secondary">
+                  {user
+                    ? "Resetar acesso"
+                    : conviteExpirado
+                      ? "Gerar novo convite"
+                      : "Gerar convite"}
+                </SubmitButton>
+              </AcaoDaLinha>
+            </LinhaDeCampos>
           </form>
         )}
 
         {/* Mora em `users`, então só existe para quem já tem conta. Quem ainda
             não tem recebe o endereço pelo convite ou digita ao criar a conta. */}
         {user && (
-          <form
-            action={definirEmailDeContato.bind(null, user.id)}
-            className="flex flex-wrap items-end gap-2"
-          >
-            <Field
-              htmlFor={`contato-${user.id}`}
-              label="E-mail de contato"
-              className="w-60"
-              ajuda={
-                user.email
-                  ? `Os avisos vão para ${user.email} (conta Google) — este campo fica de reserva.`
-                  : "Só para avisos. Não vale para entrar pelo Google."
-              }
-            >
-              <Input
-                id={`contato-${user.id}`}
-                name="contactEmail"
-                type="email"
-                defaultValue={user.contactEmail ?? ""}
-                placeholder="fulano@example.com"
-              />
-            </Field>
-            <SubmitButton variante="secondary">Salvar contato</SubmitButton>
+          <form action={definirEmailDeContato.bind(null, user.id)}>
+            <LinhaDeCampos colunas={["medio", "acao"]}>
+              <Field
+                htmlFor={`contato-${user.id}`}
+                label="E-mail de contato"
+                ajuda={
+                  user.email
+                    ? `Os avisos vão para ${user.email} (conta Google) — este campo fica de reserva.`
+                    : "Só para avisos. Não vale para entrar pelo Google."
+                }
+              >
+                <Input
+                  id={`contato-${user.id}`}
+                  name="contactEmail"
+                  type="email"
+                  defaultValue={user.contactEmail ?? ""}
+                  placeholder="fulano@example.com"
+                />
+              </Field>
+              <AcaoDaLinha>
+                <SubmitButton variante="secondary">Salvar contato</SubmitButton>
+              </AcaoDaLinha>
+            </LinhaDeCampos>
           </form>
         )}
 

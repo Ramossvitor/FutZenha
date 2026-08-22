@@ -5,7 +5,8 @@ import { Banner, BannerDaQuery } from "@/components/ui/banner";
 import { SubmitButton } from "@/components/ui/button";
 import { Card, CardBody, PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Checkbox, Field, Input, MensagemDeCampo, Select } from "@/components/ui/field";
+import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { db } from "@/db";
 import { players, zenhaConfig } from "@/db/schema";
@@ -88,7 +89,12 @@ export default async function AdminZenhasPage({ searchParams }: PageProps<"/admi
         <Section titulo="Ganhos e regras">
           <Card>
             <CardBody className="flex flex-col gap-5">
-              <div className="grid gap-4 sm:grid-cols-2">
+              {/* Coluna única, e não duas: cada CampoDeNumero é a sua própria
+                  LinhaDeCampos, e duas linhas lado a lado não compartilham
+                  faixa — bastava um rótulo quebrar em duas linhas para os
+                  campos vizinhos ficarem em alturas diferentes. A largura
+                  que sobrava já é usada pela caixa "voltar ao padrão". */}
+              <div className="flex flex-col gap-4">
                 {CHAVES_DE_AJUSTE.map((chave) => {
                   const def = AJUSTES[chave];
                   return (
@@ -132,7 +138,12 @@ export default async function AdminZenhasPage({ searchParams }: PageProps<"/admi
                 cima. Um campo aqui seria um segundo lugar para o mesmo número — e o daqui não
                 cobraria nada.
               </p>
-              <div className="grid gap-4 sm:grid-cols-2">
+              {/* Coluna única, e não duas: cada CampoDeNumero é a sua própria
+                  LinhaDeCampos, e duas linhas lado a lado não compartilham
+                  faixa — bastava um rótulo quebrar em duas linhas para os
+                  campos vizinhos ficarem em alturas diferentes. A largura
+                  que sobrava já é usada pela caixa "voltar ao padrão". */}
+              <div className="flex flex-col gap-4">
                 {aVenda.map((item) => (
                   <CampoDeNumero
                     key={item.id}
@@ -233,49 +244,62 @@ function CampoDeNumero({
   recusado: boolean;
 }) {
   const id = `campo-${chave}`;
+  const idDaMensagem = `${id}-msg`;
+
   return (
-    <Field
-      htmlFor={id}
-      label={rotulo}
-      ajuda={ajuda}
-      erro={recusado ? `Este valor não foi aceito. ${aceita ?? ""}`.trim() : undefined}
-    >
-      <div className="flex flex-col gap-1.5">
-        {valores ? (
-          <Select
-            id={id}
-            name={chave}
-            defaultValue={String(vigente)}
-            aria-invalid={recusado || undefined}
-          >
-            {valores.map((v) => (
-              <option key={v} value={v}>
-                {v}%
-              </option>
-            ))}
-          </Select>
-        ) : (
-          <Input
-            id={id}
-            name={chave}
-            type="number"
-            inputMode="numeric"
-            step={1}
-            defaultValue={vigente}
-            placeholder={String(padrao)}
-            aria-invalid={recusado || undefined}
-          />
-        )}
-        <label className="flex items-center gap-2 text-[12px] text-fg-4">
-          <input
-            type="checkbox"
-            name={`padrao:${chave}`}
-            className="size-4 accent-[var(--accent)]"
-          />
-          Voltar ao padrão ({padrao})
-        </label>
-      </div>
-    </Field>
+    <div className="flex flex-col gap-1.5">
+      {/* A caixa fica AO LADO do campo, não dentro dele. Enfiada entre o
+          controle e a mensagem, ela empurrava o erro para duas caixas abaixo do
+          campo que tinha ficado vermelho. */}
+      <LinhaDeCampos colunas={["curto", "cheio"]}>
+        <Field htmlFor={id} label={rotulo}>
+          {valores ? (
+            <Select
+              id={id}
+              name={chave}
+              defaultValue={String(vigente)}
+              aria-invalid={recusado || undefined}
+              aria-describedby={idDaMensagem}
+            >
+              {valores.map((v) => (
+                <option key={v} value={v}>
+                  {v}%
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <Input
+              id={id}
+              name={chave}
+              type="number"
+              inputMode="numeric"
+              step={1}
+              defaultValue={vigente}
+              placeholder={String(padrao)}
+              aria-invalid={recusado || undefined}
+              aria-describedby={idDaMensagem}
+            />
+          )}
+        </Field>
+        <AcaoDaLinha>
+          <Checkbox name={`padrao:${chave}`} label={`Voltar ao padrão (${padrao})`} />
+        </AcaoDaLinha>
+      </LinhaDeCampos>
+
+      {/* Abaixo da linha inteira, e não na prop `ajuda` do Field: aqui a
+          descrição é um parágrafo, e na faixa do campo — que é estreita porque
+          o controle é um número de três dígitos — ela quebrava em seis linhas
+          com meia tela vazia ao lado. O `aria-describedby` vai à mão pelo mesmo
+          motivo: quem escreve a mensagem fora do Field liga o controle a ela.
+
+          O parágrafo em si é o mesmo do Field (<MensagemDeCampo>) e não uma
+          cópia: escrito à mão aqui, ele já tinha divergido na entrelinha. */}
+      <MensagemDeCampo
+        id={idDaMensagem}
+        erro={recusado ? `Este valor não foi aceito. ${aceita ?? ""}`.trim() : undefined}
+        ajuda={ajuda}
+      />
+    </div>
   );
 }
 

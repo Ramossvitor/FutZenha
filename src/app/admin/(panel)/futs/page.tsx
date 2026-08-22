@@ -5,6 +5,7 @@ import { BannerDaQuery } from "@/components/ui/banner";
 import { Card, CardBody, PageHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/field";
+import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { SubmitButton } from "@/components/ui/button";
 import { db } from "@/db";
 import { gamePlayers, games, matchDays, players, ratingRounds, users } from "@/db/schema";
@@ -98,30 +99,30 @@ export default async function AdminFutsPage({ searchParams }: PageProps<"/admin/
                   <summary className="cursor-pointer font-display text-[12px] font-bold text-danger-ink">
                     Excluir por abuso
                   </summary>
-                  <form
-                    action={excluirFutAbusivo.bind(null, p.id)}
-                    className="mt-2 flex flex-wrap items-end gap-2"
-                  >
-                    <Field
-                      htmlFor={`motivo-${p.id}`}
-                      label="Motivo"
-                      obrigatorio
-                      className="min-w-52 flex-1"
-                      ajuda="Fica no log do servidor."
-                    >
-                      <Input
-                        id={`motivo-${p.id}`}
-                        name="motivo"
-                        required
-                        minLength={10}
-                        placeholder="Fut fabricado para inflar nota"
-                      />
-                    </Field>
-                    {/* Apaga o fut e recalcula a nota de todo mundo do zero:
-                        não tem desfazer. */}
-                    <SubmitButton variante="danger" labelPending="Excluindo…">
-                      Excluir e recalcular
-                    </SubmitButton>
+                  <form action={excluirFutAbusivo.bind(null, p.id)}>
+                    <LinhaDeCampos colunas={["cheio", "acao"]} className="mt-2">
+                      <Field
+                        htmlFor={`motivo-${p.id}`}
+                        label="Motivo"
+                        obrigatorio
+                        ajuda="Fica no log do servidor."
+                      >
+                        <Input
+                          id={`motivo-${p.id}`}
+                          name="motivo"
+                          required
+                          minLength={10}
+                          placeholder="Fut fabricado para inflar nota"
+                        />
+                      </Field>
+                      <AcaoDaLinha>
+                        {/* Apaga o fut e recalcula a nota de todo mundo do
+                            zero: não tem desfazer. */}
+                        <SubmitButton variante="danger" labelPending="Excluindo…">
+                          Excluir e recalcular
+                        </SubmitButton>
+                      </AcaoDaLinha>
+                    </LinhaDeCampos>
                   </form>
                 </details>
               </CardBody>

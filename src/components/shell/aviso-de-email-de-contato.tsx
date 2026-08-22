@@ -56,7 +56,7 @@ export function AvisoDeEmailDeContato({
             EmailDeContatoForm aparecem juntos (a condição de um é a do outro),
             e dois `id="contactEmail"` no documento fariam o rótulo de lá focar
             o campo daqui. Quem lê o formulário é a action, que só olha `name`. */}
-        <Field htmlFor="contactEmail-aviso" label="Seu e-mail" obrigatorio>
+        <Field htmlFor="contactEmail-aviso" label="Seu e-mail" obrigatorio largura="medio">
           <Input
             id="contactEmail-aviso"
             name="contactEmail"
