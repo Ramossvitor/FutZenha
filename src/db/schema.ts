@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   boolean,
   check,
+  customType,
   date,
   index,
   integer,
@@ -1212,9 +1213,14 @@ export const matchDayDeletionVoters = pgTable(
 //    guarda só as sobrescritas do admin. Chave ausente vale o padrão de
 //    src/lib/zenha.ts. Mudar um valor vale dali para frente — o que já foi
 //    pago está no ledger e ninguém recalcula.
-// 4. O catálogo da loja é CÓDIGO (src/lib/loja-catalogo.ts), não linha de
-//    tabela: cada item precisa de SVG próprio e de token de cor, que migration
-//    nenhuma carrega. Daí `item_id` ser text sem FK.
+// 4. O catálogo da loja é DADO (`loja_itens`), e não código. Já foi o
+//    contrário, com o argumento de que cada item precisa de arte própria e
+//    migration nenhuma carrega arte. O que virou a mesa foi a arte deixar de
+//    ser código: o badge é uma IMAGEM que o admin envia (`loja_imagens`), e um
+//    produto cuja identidade é um upload não tem como nascer de um `git push`.
+//    Daí `zenha_inventario.item_id` ser integer com FK de verdade — e
+//    `restrict`, para item vendido não poder ser apagado por baixo de quem
+//    pagou.
 // ---------------------------------------------------------------------------
 
 // Por que a zenha entrou na carteira. É o que o extrato lê para escrever a
@@ -1236,23 +1242,166 @@ export const zenhaMotivoEnum = pgEnum("zenha_motivo", [
   "compra",
 ]);
 
-// Onde um item comprado aparece. Um por vez em cada lugar — quem garante isso é
-// a PK composta de `zenha_equipados`, não a aplicação.
-export const zenhaSlotEnum = pgEnum("zenha_slot", [
+// O que um item da loja É — e, por consequência, o que a tela precisa desenhar
+// dele.
+//
+// `badge` tem imagem enviada pelo admin e é a única vitrine com mais de uma
+// vaga; `moldura` e `cor_do_nome` são uma COR e nada mais (o desenho é o anel do
+// avatar e o nome do jogador, que já existem); `titulo` é o próprio nome do
+// produto virando capsula; `consumivel` é o único que faz alguma coisa em campo,
+// e o único que o admin não cria — o efeito dele é código (ver `efeito`).
+export const lojaTipoEnum = pgEnum("loja_tipo", [
   "badge",
   "moldura",
   "cor_do_nome",
   "titulo",
+  "consumivel",
 ]);
+
+// Onde um item comprado aparece, quando o lugar é ÚNICO. Um por vez em cada
+// lugar — quem garante isso é a PK composta de `zenha_equipados`, não a
+// aplicação.
+//
+// `badge` não está aqui de propósito, e já esteve: badge virou coleção (até
+// cinco na `zenha_vitrine`, um em destaque), e slot é justamente a promessa de
+// que só cabe um. Deixá-lo no enum seria oferecer duas portas para o mesmo item,
+// e a segunda limitaria a vitrine a uma vaga sem dizer isso em lugar nenhum.
+export const zenhaSlotEnum = pgEnum("zenha_slot", ["moldura", "cor_do_nome", "titulo"]);
+
+/**
+ * Bytes crus, para a imagem do badge.
+ *
+ * `customType` porque o drizzle-orm desta versão não exporta `bytea`. Do lado do
+ * driver não há o que configurar: o postgres.js infere oid 17 de um `Buffer`,
+ * serializa em hex e devolve `Buffer` na leitura — com `prepare: false` e
+ * `fetch_types: false` do src/db/index.ts inclusive, porque os parsers de tipo
+ * embutido são estáticos.
+ */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
+
+/**
+ * O catálogo da loja.
+ *
+ * Isto já foi um array em TypeScript, e a troca é o coração desta parte do
+ * sistema: enquanto o item era uma capsula de texto colorida, escrever a lista
+ * no código pagava — cada entrada tinha piada própria e nasceria de um commit de
+ * qualquer jeito. Agora o badge é a IMAGEM que o jogador ostenta (o escudo do
+ * time, a foto que o grupo vai reconhecer), e quem escolhe essa imagem é o admin
+ * numa tela, não o programador num deploy.
+ *
+ * Os checks amarram tipo e campos porque a alternativa é validar em três lugares
+ * (formulário, action, módulo) e descobrir o quarto tarde demais: cor existe
+ * exatamente para moldura e cor do nome, imagem exatamente para badge, efeito
+ * exatamente para o consumível. E `efeito` é único parcial: o multiplicador é UM
+ * — o motor dele (src/lib/multiplicador-engine.ts) fala em "o consumível", no
+ * singular, e duas linhas com o mesmo efeito partiriam essa premissa em silêncio.
+ *
+ * Não existe apagar item vendido: a FK de `zenha_inventario` é `restrict`, e
+ * tirar de venda é `ativo = false`. Item que sai da vitrine continua no perfil
+ * de quem pagou por ele — foi o que ele comprou.
+ */
+export const lojaItens = pgTable(
+  "loja_itens",
+  {
+    id: serial("id").primaryKey(),
+    tipo: lojaTipoEnum("tipo").notNull(),
+    nome: text("nome").notNull(),
+    descricao: text("descricao").notNull().default(""),
+    preco: integer("preco").notNull(),
+    /** `#rrggbb`. Só moldura e cor do nome. */
+    cor: text("cor"),
+    /**
+     * O hash do conteúdo da imagem — o mesmo de `loja_imagens.hash`. Só badge.
+     *
+     * Duplicado aqui de propósito: ele entra na URL pública da imagem, e a
+     * vitrine, o perfil e cada linha de ranking precisam montar essa URL. Ler o
+     * hash da tabela dos BYTES para isso arrastaria o blob inteiro para dentro
+     * de uma consulta que só quer desenhar um `<img>`.
+     */
+    imagemHash: text("imagem_hash"),
+    /**
+     * O que este item faz em campo. Só o consumível tem.
+     *
+     * Text com check em vez de enum: existe um valor só, e o dono da regra é o
+     * código que implementa o efeito. Um enum prometeria que acrescentar valor é
+     * barato — e não é: efeito novo é motor novo, não linha de migration.
+     */
+    efeito: text("efeito"),
+    /** À venda. `false` = saiu da vitrine e continua no perfil de quem tem. */
+    ativo: boolean("ativo").notNull().default(true),
+    criadoEm: timestamp("criado_em").notNull().defaultNow(),
+    atualizadoEm: timestamp("atualizado_em").notNull().defaultNow(),
+  },
+  (t) => [
+    // O teto é alto de propósito: não é regra de produto, é o freio contra dedo
+    // escorregado no formulário (um zero a mais tira o item de circulação sem
+    // ninguém perceber).
+    check("loja_itens_preco_valido", sql`${t.preco} >= 0 and ${t.preco} <= 100000`),
+    check("loja_itens_cor_valida", sql`${t.cor} is null or ${t.cor} ~ '^#[0-9a-f]{6}$'`),
+    check(
+      "loja_itens_cor_por_tipo",
+      sql`(${t.tipo} in ('moldura', 'cor_do_nome')) = (${t.cor} is not null)`,
+    ),
+    check("loja_itens_imagem_por_tipo", sql`(${t.tipo} = 'badge') = (${t.imagemHash} is not null)`),
+    check("loja_itens_efeito_por_tipo", sql`(${t.tipo} = 'consumivel') = (${t.efeito} is not null)`),
+    check("loja_itens_efeito_conhecido", sql`${t.efeito} is null or ${t.efeito} in ('multiplicador')`),
+    uniqueIndex("loja_itens_efeito_unico_idx").on(t.efeito).where(sql`${t.efeito} is not null`),
+    // A vitrine é sempre "os ativos, por prateleira e por preço".
+    index("loja_itens_vitrine_idx").on(t.ativo, t.tipo, t.preco),
+  ],
+);
+
+/**
+ * Os bytes da imagem do badge.
+ *
+ * Tabela separada, e não uma coluna em `loja_itens`, porque a leitura quente da
+ * loja é a que NÃO quer os bytes: a vitrine, o perfil e cada linha de ranking
+ * precisam de nome, preço e hash. Com o blob na mesma linha, um `select` distraído
+ * (ou um `select()` sem projeção) carregaria duzentos kilobytes por item para
+ * desenhar uma grade — e o Postgres esconde tão bem esse custo no TOAST que
+ * ninguém perceberia até a conta do Neon.
+ *
+ * No Postgres e não num serviço de blob: são poucas imagens, pequenas por
+ * construção (o formulário recorta para 256×256 e o servidor recusa acima de
+ * 200 KB), e a alternativa custa uma dependência, uma env var, uma linha na CSP
+ * e um mock nos testes. Este projeto é de R$ 0 por decisão.
+ *
+ * `hash` é o conteúdo, e é ele que vai na URL pública: trocar a imagem troca a
+ * URL, e é isso que deixa a resposta ser `immutable` por um ano sem risco de
+ * alguém ficar preso na arte antiga.
+ */
+export const lojaImagens = pgTable(
+  "loja_imagens",
+  {
+    itemId: integer("item_id")
+      .primaryKey()
+      .references(() => lojaItens.id, { onDelete: "cascade" }),
+    hash: text("hash").notNull(),
+    mime: text("mime").notNull(),
+    bytes: bytea("bytes").notNull(),
+    atualizadoEm: timestamp("atualizado_em").notNull().defaultNow(),
+  },
+  (t) => [
+    // O mime é servido de volta no `Content-Type`. A lista fechada aqui é a
+    // segunda metade da checagem de magic bytes de src/lib/imagem-de-item.ts:
+    // nenhum caminho grava svg (que é script) nem gif.
+    check("loja_imagens_mime_aceito", sql`${t.mime} in ('image/png', 'image/jpeg', 'image/webp')`),
+  ],
+);
 
 /**
  * As sobrescritas do admin sobre os valores da economia.
  *
  * Guarda SÓ o que foi mudado: chave ausente vale o padrão declarado em
- * src/lib/zenha.ts (ganhos, fator e preço-base do multiplicador) e em
- * src/lib/loja-catalogo.ts (preço de cada item, na chave `preco:{itemId}`).
- * Uma tabela que espelhasse todos os valores precisaria de migration a cada
- * item novo do catálogo, e nasceria desatualizada no dia do deploy.
+ * src/lib/zenha.ts (os ganhos e o fator do multiplicador). Uma tabela que
+ * espelhasse todos os valores nasceria desatualizada no dia do deploy.
+ *
+ * Preço de item NÃO mora aqui, e já morou (numa chave `preco:{itemId}`). Ele é
+ * coluna de `loja_itens`: com o catálogo em código não havia onde guardá-lo, e
+ * a sobrescrita era o contorno; com o catálogo no banco, manter as duas portas
+ * seria ter dois donos para o mesmo número — e a de baixo venceria em silêncio.
  *
  * `valor` é integer porque toda grandeza da economia é inteira: zenha não tem
  * centavo, e o fator do multiplicador entra como percentual (150 = 1,5×) em vez
@@ -1365,12 +1514,13 @@ export const zenhaLedger = pgTable(
 /**
  * O que cada um comprou.
  *
- * `item_id` é text **sem FK**: o catálogo é código (src/lib/loja-catalogo.ts),
- * não linha de tabela. Cada item precisa de SVG próprio e de token de cor, que
- * migration nenhuma carrega — uma tabela guardaria metade da verdade e pediria
- * migration por badge novo. É o mesmo precedente de corpos.tsx e nav-items.tsx.
- * O preço da regra do catálogo: **nunca apagar entrada — marcar `aposentado`**,
- * senão a linha aqui aponta para o vazio.
+ * `item_id` é integer com FK **`restrict`**, e isso é a regra do catálogo virando
+ * garantia de banco: enquanto existir uma linha aqui, aquele item não pode ser
+ * apagado. Antes o catálogo era código e a coluna era text sem FK; a regra "nunca
+ * apagar entrada, só aposentar" existia num comentário, e a punição por quebrá-la
+ * era o perfil de alguém apontando para o vazio. Agora quem administra a loja é
+ * uma tela — e uma tela precisa que o "não pode" seja verdade, não etiqueta.
+ * Retirar de venda continua sendo `loja_itens.ativo = false`.
  *
  * `preco_pago` e `fator_percent` são congelados na compra. O admin pode mexer
  * nos valores amanhã; o que a pessoa comprou continua valendo o que valia.
@@ -1386,7 +1536,9 @@ export const zenhaInventario = pgTable(
     playerId: integer("player_id")
       .notNull()
       .references(() => players.id, { onDelete: "cascade" }),
-    itemId: text("item_id").notNull(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => lojaItens.id, { onDelete: "restrict" }),
     precoPago: integer("preco_pago").notNull(),
     // Consumível some ao ser usado (o multiplicador); o resto fica para sempre.
     consumivel: boolean("consumivel").notNull().default(false),
@@ -1426,7 +1578,9 @@ export const zenhaInventario = pgTable(
 );
 
 /**
- * O que está aparecendo no perfil.
+ * O que está aparecendo no perfil nos lugares de vaga ÚNICA: a moldura do
+ * avatar, a cor do nome e o título. Badge não passa por aqui — ele é coleção, e
+ * mora em `zenha_vitrine`.
  *
  * A PK composta `(player_id, slot)` é o "um por slot" garantido pelo BANCO, no
  * mesmo espírito do group_members_admin_unico_idx: equipar é
@@ -1449,6 +1603,46 @@ export const zenhaEquipados = pgTable(
     equipadoEm: timestamp("equipado_em").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.playerId, t.slot] })],
+);
+
+/**
+ * Os badges que o jogador escolheu ostentar, e qual deles anda junto do nome.
+ *
+ * Tabela própria e não mais um slot: badge é o único item de COLEÇÃO da loja —
+ * dá para ter muitos e mostrar cinco. A `posicao` (1..5) é o que faz a vitrine
+ * ter ordem escolhida em vez de ordem de compra, e a PK `(player_id, posicao)`
+ * é o teto das cinco vagas garantido pelo BANCO: não existe caminho de aplicação
+ * que ponha um sexto.
+ *
+ * `destaque` é o badge que aparece ao lado do nome em ranking, escalação e lista
+ * de presença — o único cosmético que sai do perfil e circula pelo app. Uma
+ * coluna booleana com **unique parcial**, e não um `destaque_inventario_id` em
+ * outra tabela: assim "ser o destaque" é uma propriedade da linha que já está na
+ * vitrine, e é impossível destacar o que não está sendo mostrado. O parcial é o
+ * que permite muitos `false` e um só `true` por jogador.
+ *
+ * `inventario_id` é unique (global, não por jogador) pela mesma razão de
+ * `zenha_equipados`: o mesmo item comprado não ocupa duas vagas.
+ */
+export const zenhaVitrine = pgTable(
+  "zenha_vitrine",
+  {
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    posicao: integer("posicao").notNull(),
+    inventarioId: integer("inventario_id")
+      .notNull()
+      .unique()
+      .references(() => zenhaInventario.id, { onDelete: "cascade" }),
+    destaque: boolean("destaque").notNull().default(false),
+    colocadoEm: timestamp("colocado_em").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playerId, t.posicao] }),
+    check("zenha_vitrine_posicao_valida", sql`${t.posicao} between 1 and 5`),
+    uniqueIndex("zenha_vitrine_destaque_unico_idx").on(t.playerId).where(sql`${t.destaque}`),
+  ],
 );
 
 /**
@@ -1543,6 +1737,10 @@ export type Notification = typeof notifications.$inferSelect;
 export type MatchDayDeletionVote = typeof matchDayDeletionVotes.$inferSelect;
 export type MatchDayDeletionVoter = typeof matchDayDeletionVoters.$inferSelect;
 export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
+export type LojaItem = typeof lojaItens.$inferSelect;
+export type LojaImagem = typeof lojaImagens.$inferSelect;
+export type LojaTipo = (typeof lojaTipoEnum.enumValues)[number];
+export type ZenhaVitrineLinha = typeof zenhaVitrine.$inferSelect;
 export type ZenhaConfig = typeof zenhaConfig.$inferSelect;
 export type ZenhaCarteira = typeof zenhaCarteiras.$inferSelect;
 export type ZenhaLedgerEntry = typeof zenhaLedger.$inferSelect;

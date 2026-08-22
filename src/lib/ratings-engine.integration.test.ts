@@ -27,7 +27,7 @@ import {
 } from "@/db/schema";
 import { quemViraFalta } from "@/lib/encerramento";
 import { getAvaliadoresDaRodada, getCompanheiros } from "@/lib/ratings";
-import { ID_DO_MULTIPLICADOR } from "@/lib/loja-catalogo";
+import { garantirMultiplicador } from "@/test/fixtures-loja";
 import { abrirRodada, fecharRodada } from "@/lib/ratings-engine";
 import { getAttendanceStats } from "@/lib/stats";
 import {
@@ -633,11 +633,12 @@ describe("aplicarReplay com multiplicador", () => {
 
     // Um item comprado e consumido neste fut, a 150%.
     const comprador = timeA.jogadores[0];
+    const daLoja = await garantirMultiplicador();
     const [item] = await db
       .insert(zenhaInventario)
       .values({
         playerId: comprador.id,
-        itemId: ID_DO_MULTIPLICADOR,
+        itemId: daLoja.id,
         precoPago: 120,
         consumivel: true,
         fatorPercent: 150,

@@ -14,6 +14,7 @@ import { IconeCadeado, IconeLuva } from "@/components/ui/icons";
 import { assinarPush, cancelarPush } from "@/app/pwa/actions";
 import { PedidoDePush } from "@/components/push/pedido-de-push";
 import { LinkJogador } from "@/components/ui/nome-jogador";
+import { lerDestaques, type DestaqueDoJogador } from "@/lib/loja";
 import { Nota } from "@/components/ui/nota";
 import { VestChip } from "@/components/ui/vest";
 import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
@@ -63,6 +64,7 @@ function Bloco({
   linhas,
   jogadorPorId,
   meuPlayerId,
+  destaques,
   numerada = false,
   apagar = true,
 }: {
@@ -71,6 +73,8 @@ function Bloco({
   linhas: LinhaExibida[];
   jogadorPorId: Map<number, { id: number; name: string; nickname: string | null }>;
   meuPlayerId: number | null;
+  /** O badge que cada um escolheu levar para fora do perfil. Ver `lerDestaques`. */
+  destaques: Map<number, DestaqueDoJogador>;
   numerada?: boolean;
   apagar?: boolean;
 }) {
@@ -109,6 +113,7 @@ function Bloco({
                 playerId={jogador.id}
                 apelido={jogador.nickname}
                 nome={jogador.name}
+                destaque={destaques.get(jogador.id)}
               />
 
               {souEu && <Badge tom="accent">você</Badge>}
@@ -262,6 +267,15 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
     session ? temSumulaDelegada(id, session.player.id) : false,
     // Vazio enquanto a rodada de avaliação corre — o título só existe apurado.
     matchDay.status === "finished" ? getMvpDoFut(id) : [],
+  ]);
+
+  // Os badges em destaque de todo mundo que esta página desenha, numa consulta
+  // só: a lista de presença, a escalação e o MVP saem todos de quem tem linha em
+  // `attendances` ou está no elenco ativo. Uma consulta por nome seriam dezenas
+  // de idas ao banco para enfeitar uma lista.
+  const destaques = await lerDestaques(db, [
+    ...activePlayers.map((p) => p.id),
+    ...attendanceRows.map((a) => a.playerId),
   ]);
   // Placar, gols e o colete de cada gol saem do módulo puro, com os dados que
   // esta página já carregou — nenhuma consulta a mais. O mesmo montarResumo
@@ -456,7 +470,12 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
                             <span className="sr-only">goleiro</span>
                           </span>
                         )}
-                        <LinkJogador playerId={m.playerId} apelido={m.nickname} nome={m.name} />
+                        <LinkJogador
+                          playerId={m.playerId}
+                          apelido={m.nickname}
+                          nome={m.name}
+                          destaque={destaques.get(m.playerId)}
+                        />
                         {m.playerId === meuPlayerId && <Badge tom="accent">você</Badge>}
                         <Nota valor={m.skill} tamanho="sm" />
                       </li>
@@ -519,7 +538,12 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
           <HairlineList as="ul">
             {mvps.map((m) => (
               <HairlineRow as="li" key={m.playerId} destaque={m.playerId === meuPlayerId}>
-                <LinkJogador playerId={m.playerId} apelido={m.nickname} nome={m.name} />
+                <LinkJogador
+                  playerId={m.playerId}
+                  apelido={m.nickname}
+                  nome={m.name}
+                  destaque={destaques.get(m.playerId)}
+                />
                 {m.playerId === meuPlayerId && <Badge tom="accent">você</Badge>}
                 <Badge tom="warn">MVP</Badge>
               </HairlineRow>
@@ -592,6 +616,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             linhas={vagas}
             jogadorPorId={jogadorPorId}
             meuPlayerId={meuPlayerId}
+            destaques={destaques}
             numerada
           />
         )}
@@ -607,6 +632,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             linhas={espera}
             jogadorPorId={jogadorPorId}
             meuPlayerId={meuPlayerId}
+            destaques={destaques}
             numerada
           />
         )}
@@ -618,6 +644,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             linhas={faltas}
             jogadorPorId={jogadorPorId}
             meuPlayerId={meuPlayerId}
+            destaques={destaques}
           />
         )}
 
@@ -638,6 +665,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             linhas={semResposta.map((p) => ({ playerId: p.id, status: "out" as const }))}
             jogadorPorId={jogadorPorId}
             meuPlayerId={meuPlayerId}
+            destaques={destaques}
             apagar={false}
           />
         )}

@@ -20,7 +20,7 @@ import {
   situacaoDoMultiplicador,
   soltarArmesDeFutsAbandonados,
 } from "./multiplicador-engine";
-import { ID_DO_MULTIPLICADOR } from "./loja-catalogo";
+import { garantirMultiplicador } from "@/test/fixtures-loja";
 import { AJUSTES } from "./zenha";
 
 // O ciclo do multiplicador contra o banco de verdade.
@@ -57,11 +57,14 @@ async function futJaComecado(
 
 /** Põe um multiplicador comprado no inventário de alguém. */
 async function comprarMultiplicador(jogador: Player): Promise<number> {
+  // A linha do consumível nasce na migration, mas o truncate do beforeEach a
+  // leva junto — daí a fixture. Ver src/test/fixtures-loja.ts.
+  const daLoja = await garantirMultiplicador();
   const [item] = await db
     .insert(zenhaInventario)
     .values({
       playerId: jogador.id,
-      itemId: ID_DO_MULTIPLICADOR,
+      itemId: daLoja.id,
       precoPago: 120,
       consumivel: true,
       fatorPercent: FATOR,

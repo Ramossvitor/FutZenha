@@ -45,6 +45,10 @@ export const ZENHA_DESDE = "2026-09-01";
 // é o PADRÃO; a tabela zenha_config guarda só as sobrescritas, e chave ausente
 // vale o padrão daqui.
 //
+// PREÇO não é ajuste da economia: ele é coluna de `loja_itens`, editada na tela
+// da loja. O que sobra aqui é o que a economia PAGA — mais o fator do
+// multiplicador, que é regra de jogo e não etiqueta de preço.
+//
 // Mudar um valor vale DALI PARA FRENTE. Nada é recalculado — o que já foi pago
 // está no ledger, que é append-only. Não existe código de reprocessamento a
 // escrever, e é essa ausência que torna o painel do admin seguro.
@@ -58,8 +62,7 @@ export type ChaveDeAjuste =
   | "streak_tamanho"
   | "min_contas_para_pagar"
   | "max_futs_pagos_semana"
-  | "multiplicador_fator"
-  | "multiplicador_preco_base";
+  | "multiplicador_fator";
 
 export type DefinicaoDeAjuste = {
   padrao: number;
@@ -153,14 +156,6 @@ export const AJUSTES: Readonly<Record<ChaveDeAjuste, DefinicaoDeAjuste>> = {
     max: 200,
     valores: PERCENTUAIS_DO_MULTIPLICADOR,
   },
-  multiplicador_preco_base: {
-    padrao: 120,
-    rotulo: "Preço do multiplicador",
-    descricao:
-      "Preço da primeira compra do mês. Da segunda em diante o preço sobe, para o item continuar sendo um evento e não uma rotina.",
-    min: 0,
-    max: 5000,
-  },
 };
 
 export const CHAVES_DE_AJUSTE = Object.keys(AJUSTES) as ChaveDeAjuste[];
@@ -238,12 +233,17 @@ export function fatorDoPercentual(percent: number): FatorDaRodada {
 }
 
 // A escada de preço do multiplicador, por compra já feita no mês corrente.
-// Com o preço-base padrão de 120 dá 120, 160, 210 e 280 — números redondos por
+// Com o preço de tabela de 120 dá 120, 160, 210 e 280 — números redondos por
 // construção, não por acaso.
 //
 // Ela existe porque o multiplicador é o único item recomprável: sem a escada,
 // quem tem saldo compraria um por semana e ele deixaria de ser uma aposta para
 // virar o estado normal do jogo.
+//
+// A `base` é o `preco` da linha do consumível em `loja_itens`, e não um ajuste
+// da economia — já foi um (`multiplicador_preco_base`), no tempo em que o
+// catálogo era código e não havia coluna onde guardá-lo. Com o catálogo no
+// banco, manter as duas portas seria dar dois donos ao mesmo número.
 const ESCADA_DO_MULTIPLICADOR: readonly (readonly [number, number])[] = [
   [1, 1],
   [4, 3],

@@ -8,14 +8,10 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/db";
 import { zenhaConfig } from "@/db/schema";
 import { salvarAjustes } from "@/app/admin/(panel)/zenhas/actions";
-import { chaveDePreco, precoVigente, CATALOGO } from "@/lib/loja-catalogo";
 import { AJUSTES, AJUSTES_PADRAO } from "@/lib/zenha";
-import { getAjustes, lerSobrescritas, salvarAjuste } from "@/lib/zenha-config";
+import { getAjustes, salvarAjuste } from "@/lib/zenha-config";
 import { criarJogador, criarJogadorComConta, deslogar, logarComo } from "@/test/fixtures";
 import { esperaNotFound, esperaRedirect } from "@/test/navigation-fake";
-
-const ITEM = "nome-grama";
-const CHAVE_DO_ITEM = chaveDePreco(ITEM);
 
 async function logarComoAdminDaPlataforma(): Promise<number> {
   const { jogador, conta } = await criarJogadorComConta({}, { isPlatformAdmin: true });
@@ -141,22 +137,22 @@ describe("salvarAjustes", () => {
     expect((await getAjustes(db)).multiplicador_fator).toBe(200);
   });
 
-  it("preço de item é aceito e passa a valer na vitrine", async () => {
+  // Preço saiu daqui: ele é coluna de `loja_itens` e se edita em /admin/loja. A
+  // chave `preco:{itemId}` foi apagada pela migration 0033, e o formulário nem a
+  // monta mais — mas uma aba velha ou um curl ainda podem mandá-la, e o que se
+  // cobra é que ela seja IGNORADA em vez de gravar linha órfã.
+  it("chave de preço antiga não é aceita nem grava linha", async () => {
     await logarComoAdminDaPlataforma();
 
-    await esperaRedirect(salvarAjustes(formulario({ [CHAVE_DO_ITEM]: "480" })));
+    const url = await esperaRedirect(
+      salvarAjustes(formulario({ participacao: "250", "preco:7": "480" })),
+    );
 
-    expect(precoVigente(ITEM, await lerSobrescritas(db))).toBe(480);
-  });
-
-  it("preço recusado marca a chave do item na volta", async () => {
-    await logarComoAdminDaPlataforma();
-
-    const url = await esperaRedirect(salvarAjustes(formulario({ [CHAVE_DO_ITEM]: "-10" })));
-
-    // A chave carrega dois-pontos e volta escapada — a tela a compara crua.
-    expect(url).toBe(`/admin/zenhas?erro=ajuste-recusado&campo=${encodeURIComponent(CHAVE_DO_ITEM)}`);
-    expect(await linhaDe(CHAVE_DO_ITEM)).toBeNull();
+    // O campo desconhecido é ignorado no parse (a action só procura as chaves que
+    // conhece), então o resto do formulário grava normalmente.
+    expect(url).toBe("/admin/zenhas?ok=ajustes-salvos");
+    expect((await getAjustes(db)).participacao).toBe(250);
+    expect(await linhaDe("preco:7")).toBeNull();
   });
 });
 
@@ -176,13 +172,13 @@ describe("voltar ao padrão", () => {
 
   it("campo esvaziado é a mesma coisa que voltar ao padrão", async () => {
     const jogador = await criarJogador();
-    await salvarAjuste(db, CHAVE_DO_ITEM, 480, jogador.id);
+    await salvarAjuste(db, "mvp", 480, jogador.id);
     await logarComoAdminDaPlataforma();
 
-    await esperaRedirect(salvarAjustes(formulario({ [CHAVE_DO_ITEM]: "" })));
+    await esperaRedirect(salvarAjustes(formulario({ mvp: "" })));
 
-    expect(await linhaDe(CHAVE_DO_ITEM)).toBeNull();
-    expect(precoVigente(ITEM, await lerSobrescritas(db))).toBe(CATALOGO[ITEM].preco);
+    expect(await linhaDe("mvp")).toBeNull();
+    expect((await getAjustes(db)).mvp).toBe(AJUSTES_PADRAO.mvp);
   });
 
   // A tabela guarda SÓ o que foi mudado: uma linha com o número de hoje

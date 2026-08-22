@@ -1,7 +1,6 @@
+import type { CSSProperties } from "react";
 import { cx } from "@/lib/cx";
 import { iniciais } from "@/lib/iniciais";
-import type { TokenDeItem } from "@/lib/loja-catalogo";
-import { CLASSES_DO_TOKEN } from "./tokens-de-item";
 
 export type TamanhoAvatar = "sm" | "md" | "lg";
 
@@ -28,19 +27,23 @@ export function Avatar({
   nome: string;
   tamanho?: TamanhoAvatar;
   /**
-   * O token da moldura comprada na loja, quando existe uma equipada.
+   * A cor da moldura comprada na loja (`#rrggbb`), quando existe uma equipada.
    *
    * Opcional e sem valor padrão para que os ~15 avatares que já existem no app
-   * saiam byte a byte como saíam: sem a prop, nem `ring-2` nem cor entram na
-   * string de classes. Aceita `null` porque quem chama lê o slot do banco, e
-   * `equipados.moldura?.tokenId ?? null` é mais honesto que um ternário.
+   * saiam byte a byte como saíam: sem a prop, nem `ring-2` nem `style` entram.
+   * Aceita `null` porque quem chama lê o slot do banco, e
+   * `vitrine.moldura?.cor ?? null` é mais honesto que um ternário.
+   *
+   * A cor entra por custom property porque vem de uma coluna: o Tailwind varre o
+   * fonte, e `ring-[${cor}]` nunca existiria na folha (ver previa-do-item.tsx).
    */
-  moldura?: TokenDeItem | null;
+  moldura?: string | null;
   className?: string;
 }) {
   return (
     <span
       aria-hidden
+      style={moldura ? ({ "--cor-da-moldura": moldura } as CSSProperties) : undefined}
       className={cx(
         "inline-flex shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 font-display font-bold text-fg-3",
         tamanhos[tamanho],
@@ -48,7 +51,7 @@ export function Avatar({
         // do avatar para desenhar o vão, e o mesmo avatar aparece sobre canvas,
         // surface e surface-2. Chutar uma delas desenha um halo errado nas
         // outras duas; encostado na borda o anel lê como aro em qualquer fundo.
-        moldura && cx("ring-2", CLASSES_DO_TOKEN[moldura].anel),
+        moldura && "ring-2 ring-(--cor-da-moldura)",
         className,
       )}
     >

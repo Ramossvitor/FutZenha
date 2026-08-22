@@ -12,9 +12,9 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchDays, zenhaInventario, type MatchDay, type Player } from "@/db/schema";
 import { armarMultiplicador, desarmarMultiplicador } from "@/app/fut/[id]/actions";
-import { ID_DO_MULTIPLICADOR } from "@/lib/loja-catalogo";
 import { AJUSTES } from "@/lib/zenha";
 import { criarFut, criarJogadorComConta, deslogar, logarComo } from "@/test/fixtures";
+import { garantirMultiplicador } from "@/test/fixtures-loja";
 import { esperaRedirect } from "@/test/navigation-fake";
 
 /** Um fut marcado para daqui a alguns dias — dentro da janela do arme. */
@@ -25,11 +25,14 @@ const futFuturo = (): Promise<MatchDay> =>
   });
 
 async function multiplicadorDe(jogador: Player): Promise<number> {
+  // A linha do consumível nasce na migration, mas o truncate do beforeEach a
+  // leva junto — daí a fixture. Ver src/test/fixtures-loja.ts.
+  const daLoja = await garantirMultiplicador();
   const [item] = await db
     .insert(zenhaInventario)
     .values({
       playerId: jogador.id,
-      itemId: ID_DO_MULTIPLICADOR,
+      itemId: daLoja.id,
       precoPago: 120,
       consumivel: true,
       fatorPercent: AJUSTES.multiplicador_fator.padrao,

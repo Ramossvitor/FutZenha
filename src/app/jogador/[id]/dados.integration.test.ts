@@ -3,11 +3,28 @@
 // saem das funções de ./stats, que têm testes próprios.
 
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { gamePlayers, games, goals, teams, type Player } from "@/db/schema";
+import { gamePlayers, games, goals, lojaItens, teams, zenhaInventario, type Player } from "@/db/schema";
+import { creditar } from "@/lib/carteira";
+import { comprar, tirarDaVitrine } from "@/lib/loja";
 import { confirmarPresenca, criarFut, criarJogadorComConta } from "@/test/fixtures";
 import { criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
+import { criarBadge, criarCorDoNome, criarMoldura, criarTitulo } from "@/test/fixtures-loja";
 import { carregarPerfil } from "./dados";
+
+/** Saldo para o alvo poder comprar o que a vitrine vai mostrar. */
+async function creditarParaComprar(playerId: number, saldo: number): Promise<void> {
+  await creditar(db, [
+    {
+      playerId,
+      motivo: "boas_vindas",
+      amount: saldo,
+      dedupeKey: "boas-vindas",
+      descricao: "Saldo de fixture",
+    },
+  ]);
+}
 
 /** Visitante comum: o `Ator` que a página monta a partir da sessão. */
 function visitanteComum(playerId: number) {
@@ -304,6 +321,81 @@ describe("carregarPerfil: os números", () => {
 
     expect(geral?.numeros).toMatchObject({ gols: 4, jogos: 2, presencas: 2, totalDays: 2 });
     expect(doGrupo?.numeros).toMatchObject({ gols: 3, jogos: 1, presencas: 1, totalDays: 1 });
+  });
+});
+
+// A vitrine é a única parte do perfil que NÃO tem filtro de privacidade, e é
+// decisão: item exibido é vitrine — a pessoa pagou zenha para que os outros
+// vejam, e escolheu item por item o que deixar à mostra.
+describe("carregarPerfil: a vitrine", () => {
+  it("perfil de quem não comprou nada vem vazio, sem nulo estranho", async () => {
+    const alvo = await criarJogadorComConta();
+    const visitante = await criarJogadorComConta();
+
+    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), alvo.jogador.id, undefined);
+
+    expect(dados?.vitrine).toEqual({
+      moldura: null,
+      corDoNome: null,
+      titulo: null,
+      badges: [],
+    });
+  });
+
+  it("traz os três slots e os badges, na ordem das vagas", async () => {
+    const alvo = await criarJogadorComConta();
+    const visitante = await criarJogadorComConta();
+    await creditarParaComprar(alvo.jogador.id, 5000);
+
+    const moldura = await criarMoldura("Moldura de ouro", 10);
+    const cor = await criarCorDoNome("Nome brasa", 10);
+    const titulo = await criarTitulo("Camisa 10", 10);
+    const primeiro = await criarBadge("Avaí", 10);
+    const segundo = await criarBadge("Figueirense", 10);
+    for (const item of [moldura, cor, titulo, primeiro, segundo]) {
+      await comprar(alvo.jogador.id, item.id);
+    }
+
+    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), alvo.jogador.id, undefined);
+
+    // Comprar já equipa o slot vazio e já põe o badge na vitrine.
+    expect(dados?.vitrine.moldura?.cor).toBe(moldura.cor);
+    expect(dados?.vitrine.corDoNome?.nome).toBe("Nome brasa");
+    expect(dados?.vitrine.titulo?.nome).toBe("Camisa 10");
+    expect(dados?.vitrine.badges.map((b) => b.item.nome)).toEqual(["Avaí", "Figueirense"]);
+    expect(dados?.vitrine.badges.map((b) => b.destaque)).toEqual([true, false]);
+  });
+
+  it("badge guardado no inventário NÃO aparece no perfil", async () => {
+    const alvo = await criarJogadorComConta();
+    const visitante = await criarJogadorComConta();
+    await creditarParaComprar(alvo.jogador.id, 1000);
+    const badge = await criarBadge("Guardado", 10);
+    await comprar(alvo.jogador.id, badge.id);
+    const [linha] = await db
+      .select()
+      .from(zenhaInventario)
+      .where(eq(zenhaInventario.playerId, alvo.jogador.id));
+    await tirarDaVitrine(alvo.jogador.id, linha.id);
+
+    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), alvo.jogador.id, undefined);
+
+    expect(dados?.vitrine.badges).toEqual([]);
+  });
+
+  // A contrapartida de o admin poder tirar um item de venda sem apagá-lo: quem
+  // comprou continua exibindo.
+  it("item fora de venda continua desenhado no perfil de quem comprou", async () => {
+    const alvo = await criarJogadorComConta();
+    const visitante = await criarJogadorComConta();
+    await creditarParaComprar(alvo.jogador.id, 1000);
+    const badge = await criarBadge("Raro", 10);
+    await comprar(alvo.jogador.id, badge.id);
+    await db.update(lojaItens).set({ ativo: false }).where(eq(lojaItens.id, badge.id));
+
+    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), alvo.jogador.id, undefined);
+
+    expect(dados?.vitrine.badges.map((b) => b.item.nome)).toEqual(["Raro"]);
   });
 });
 

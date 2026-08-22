@@ -5,11 +5,13 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { Meter } from "@/components/ui/meter";
-import { LinkJogador } from "@/components/ui/nome-jogador";
+import { DestaqueNoNome, LinkJogador } from "@/components/ui/nome-jogador";
 import { Nota, NotaVariacao } from "@/components/ui/nota";
 import { Pilula } from "@/components/ui/pilula";
 import { Podium } from "@/components/ui/podium";
+import { db } from "@/db";
 import { cx } from "@/lib/cx";
+import { lerDestaques } from "@/lib/loja";
 import { posicoes } from "@/lib/posicao";
 import { MIN_JOGOS_APROVEITAMENTO } from "@/lib/regras";
 import {
@@ -116,6 +118,17 @@ export async function Rankings({
   // perguntar "qual era a nota em 2024".
   const temFiltroDeAno = aba !== "notas";
 
+  // Os badges em destaque da aba que está aberta, numa consulta só. Depois das
+  // estatísticas porque são elas que dizem QUEM aparece — e só da aba visível,
+  // porque as outras cinco não renderizam nada.
+  const destaques = await lerDestaques(db, [
+    ...notas.map((n) => n.playerId),
+    ...artilheiros.map((a) => a.playerId),
+    ...records.map((r) => r.playerId),
+    ...presenca.perPlayer.map((p) => p.playerId),
+    ...mvps.map((m) => m.playerId),
+  ]);
+
   return (
     <div className="flex flex-col gap-4">
       <nav aria-label="Rankings" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0">
@@ -160,7 +173,12 @@ export async function Rankings({
             {notas.map((n, i) => (
               <HairlineRow as="li" key={n.playerId} destaque={n.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(notas, (x) => x.skill)[i]} />
-                <LinkJogador playerId={n.playerId} apelido={n.nickname} nome={n.name} />
+                <LinkJogador
+                  playerId={n.playerId}
+                  apelido={n.nickname}
+                  nome={n.name}
+                  destaque={destaques.get(n.playerId)}
+                />
                 <NotaVariacao valor={n.variacao} />
                 <Nota valor={n.skill} tamanho="lg" className="min-w-[3.5rem] text-right" />
               </HairlineRow>
@@ -196,7 +214,12 @@ export async function Rankings({
             {artilheiros.map((a, i) => (
               <HairlineRow as="li" key={a.playerId} destaque={a.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(artilheiros, (x) => x.total)[i]} />
-                <LinkJogador playerId={a.playerId} apelido={a.nickname} nome={a.name} />
+                <LinkJogador
+                  playerId={a.playerId}
+                  apelido={a.nickname}
+                  nome={a.name}
+                  destaque={destaques.get(a.playerId)}
+                />
                 <span
                   className="font-display text-[22px] leading-none font-black font-stretch-125% text-fg"
                   data-num
@@ -266,7 +289,11 @@ export async function Rankings({
                           não pode faltar é o destino — era a única aba em que
                           o nome não levava a lugar nenhum. */}
                       <td className="text-left font-display font-bold text-fg">
-                        <Link href={`/jogador/${r.playerId}`} className="hover:underline">
+                        <Link
+                          href={`/jogador/${r.playerId}`}
+                          className="inline-flex items-center gap-1.5 hover:underline"
+                        >
+                          <DestaqueNoNome destaque={destaques.get(r.playerId)} />
                           {r.nickname ?? r.name}
                         </Link>
                       </td>
@@ -315,9 +342,10 @@ export async function Rankings({
                       chegou em cinco tamanhos diferentes uma vez. */}
                   <Link
                     href={`/jogador/${p.playerId}`}
-                    className="block truncate font-display text-[14px] leading-[1.2] font-bold text-fg hover:underline"
+                    className="flex items-center gap-1.5 font-display text-[14px] leading-[1.2] font-bold text-fg hover:underline"
                   >
-                    {p.nickname ?? p.name}
+                    <DestaqueNoNome destaque={destaques.get(p.playerId)} />
+                    <span className="min-w-0 truncate">{p.nickname ?? p.name}</span>
                   </Link>
                   <Meter
                     valor={p.attended}
@@ -377,7 +405,12 @@ export async function Rankings({
             {mvps.map((m, i) => (
               <HairlineRow as="li" key={m.playerId} destaque={m.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(mvps, (x) => x.titulos)[i]} />
-                <LinkJogador playerId={m.playerId} apelido={m.nickname} nome={m.name} />
+                <LinkJogador
+                  playerId={m.playerId}
+                  apelido={m.nickname}
+                  nome={m.name}
+                  destaque={destaques.get(m.playerId)}
+                />
                 <span
                   className="font-display text-[22px] leading-none font-black font-stretch-125% text-fg"
                   data-num

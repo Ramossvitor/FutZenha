@@ -658,18 +658,22 @@ describe("fatorDoPercentual", () => {
 describe("precoDoMultiplicador", () => {
   // Com o preço-base padrão a escada dá números redondos por construção. Se um
   // degrau mudar, é aqui que se vê o preço que o jogador passa a ver.
+  // 120 é o preço com que a migration 0033 semeia a linha do consumível — a
+  // `base` deixou de ser ajuste da economia e virou `loja_itens.preco`.
+  const BASE_SEMEADA = 120;
+
   it("a escada do preço-base padrão é 120, 160, 210 e 280", () => {
-    const base = AJUSTES.multiplicador_preco_base.padrao;
-    expect([0, 1, 2, 3].map((n) => precoDoMultiplicador(base, n))).toEqual([120, 160, 210, 280]);
+    expect([0, 1, 2, 3].map((n) => precoDoMultiplicador(BASE_SEMEADA, n))).toEqual([
+      120, 160, 210, 280,
+    ]);
   });
 
   // O último degrau se repete: a escada trava em vez de crescer sem fim, senão
   // o item viraria inalcançável para quem joga muito — e o teto é o que o
   // mantém uma aposta cara, não uma impossibilidade.
   it("da quarta compra em diante o preço trava no último degrau", () => {
-    const base = AJUSTES.multiplicador_preco_base.padrao;
-    expect(precoDoMultiplicador(base, 4)).toBe(280);
-    expect(precoDoMultiplicador(base, 12)).toBe(280);
+    expect(precoDoMultiplicador(BASE_SEMEADA, 4)).toBe(280);
+    expect(precoDoMultiplicador(BASE_SEMEADA, 12)).toBe(280);
   });
 
   // Contagem negativa é dado impossível, mas o clamp evita indexar fora da

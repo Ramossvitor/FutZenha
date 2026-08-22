@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { BannerDaQuery } from "@/components/ui/banner";
-import { Button, LinkButton } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardBody, Eyebrow, PageHeader, Section } from "@/components/ui/card";
+import { BannerDaQuery } from "@/components/ui/banner";
+import { LinkButton } from "@/components/ui/button";
+import { Card, CardLink, Eyebrow, PageHeader, Section } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { IconeZenha } from "@/components/ui/icons";
-import { Selo } from "@/components/ui/selo";
+import { PreviaDoItem } from "@/components/ui/previa-do-item";
+import type { ItemDaLoja } from "@/lib/item-da-loja";
 import { requirePlayer } from "@/lib/require-player";
 import { carregarLoja, type Prateleira } from "./dados";
 
@@ -12,8 +14,9 @@ export const metadata: Metadata = { title: "Loja" };
 export const dynamic = "force-dynamic";
 
 const LOCAIS = {
-  // Na vitrine o slug só chega pelo id forjado ou pelo item recém-aposentado —
-  // o texto global fala do link direto, que é o caso da tela de confirmação.
+  // Na vitrine o slug só chega pelo id forjado ou pelo item recém-retirado de
+  // venda — o texto global fala do link direto, que é o caso da tela de
+  // confirmação.
   "item-indisponivel": "Esse item não está mais à venda.",
 };
 
@@ -37,7 +40,7 @@ export default async function LojaPage({ searchParams }: PageProps<"/loja">) {
       <BannerDaQuery erro={erro} ok={ok} locais={LOCAIS} />
 
       {/* O saldo no topo da loja mesmo com o chip no cabeçalho: o chip é do app
-          inteiro e mede 14px; aqui ele é a informação que decide cada botão da
+          inteiro e mede 14px; aqui ele é a informação que decide cada card da
           página abaixo. */}
       <Card className="flex items-center gap-4 p-4">
         <IconeZenha className="size-7 shrink-0 text-accent-ink" />
@@ -55,14 +58,29 @@ export default async function LojaPage({ searchParams }: PageProps<"/loja">) {
         </LinkButton>
       </Card>
 
-      {prateleiras.map((prateleira) => (
-        <SecaoDaPrateleira
-          key={prateleira.chave}
-          prateleira={prateleira}
-          saldo={saldo}
-          multiplicadoresNoMes={multiplicadoresNoMes}
+      {prateleiras.length === 0 ? (
+        // Loja vazia é estado de verdade, e não hipótese: o catálogo nasce só com
+        // o multiplicador, e tudo o mais depende de o admin cadastrar. Sem isto a
+        // página seria um saldo solto no branco.
+        <EmptyState
+          titulo="Nada à venda ainda"
+          descricao="A loja está sendo montada. Sua zenha continua entrando a cada fut apurado — e ela não vence."
+          acao={
+            <LinkButton href="/zenhas" variante="secondary" tamanho="sm">
+              Ver seu extrato
+            </LinkButton>
+          }
         />
-      ))}
+      ) : (
+        prateleiras.map((prateleira) => (
+          <SecaoDaPrateleira
+            key={prateleira.chave}
+            prateleira={prateleira}
+            saldo={saldo}
+            multiplicadoresNoMes={multiplicadoresNoMes}
+          />
+        ))
+      )}
     </div>
   );
 }
@@ -91,44 +109,12 @@ function SecaoDaPrateleira({
         </p>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Showroom: a grade é de quadrados e a ARTE ocupa o card. Duas colunas já
+          no celular — com uma, a página vira um rolo e não dá para comparar dois
+          itens sem rolar. */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
         {prateleira.itens.map(({ item, preco, possui }) => (
-          <Card key={item.id} className="flex flex-col">
-            <CardBody className="flex flex-1 flex-col gap-2.5">
-              <Selo item={item} className="self-start" />
-              <p className="flex-1 text-[13px] leading-[1.5] text-fg-2">{item.descricao}</p>
-
-              {possui ? (
-                <Badge tom="accent" ponto className="self-start">
-                  no inventário
-                </Badge>
-              ) : saldo >= preco ? (
-                <LinkButton
-                  href={`/loja/${item.id}`}
-                  tamanho="sm"
-                  className="w-full"
-                  aria-label={`Comprar ${item.nome} por ${preco} zenhas`}
-                >
-                  Comprar · {preco.toLocaleString("pt-BR")}
-                </LinkButton>
-              ) : (
-                // Desabilitado mostrando o PREÇO, e não um "sem saldo": o
-                // número é a única coisa acionável ali — é ele que diz quanto
-                // falta jogar. O rótulo repetido no aria-label porque o
-                // `disabled` já tira o elemento da ordem de foco, e sem ele o
-                // leitor de tela ouviria só um número solto.
-                <Button
-                  disabled
-                  variante="secondary"
-                  tamanho="sm"
-                  className="w-full"
-                  aria-label={`${item.nome} custa ${preco} zenhas — seu saldo não cobre`}
-                >
-                  {preco.toLocaleString("pt-BR")} zenhas
-                </Button>
-              )}
-            </CardBody>
-          </Card>
+          <CardDoItem key={item.id} item={item} preco={preco} possui={possui} saldo={saldo} />
         ))}
       </div>
 
@@ -139,5 +125,81 @@ function SecaoDaPrateleira({
         </p>
       )}
     </Section>
+  );
+}
+
+/**
+ * Um item no showroom.
+ *
+ * O card inteiro é o alvo de toque quando dá para comprar, e vira `Card` inerte
+ * quando o item já é seu — um link para uma tela que só diz "você já tem" é
+ * caminho que não leva a lugar nenhum. Sem saldo o card CONTINUA clicável de
+ * propósito: a tela de confirmação é onde está escrito quanto falta, e trancar a
+ * porta esconderia justamente essa conta.
+ *
+ * Nada de `flex` na raiz: `Card` e `CardLink` já trazem `display` na string
+ * deles (`block` no link), e o `cx` do projeto não faz merge — quem vencesse a
+ * disputa seria a ordem no CSS gerado, que é aposta. Os dois filhos são blocos e
+ * empilham sozinhos; o flex mora dentro de cada um.
+ */
+function CardDoItem({
+  item,
+  preco,
+  possui,
+  saldo,
+}: {
+  item: ItemDaLoja;
+  preco: number;
+  possui: boolean;
+  saldo: number;
+}) {
+  const miolo = (
+    <>
+      {/* O quadrado é o que faz a grade ler como prateleira mesmo com itens de
+          desenhos muito diferentes: uma imagem, um anel, duas letras. */}
+      <div className="flex aspect-square items-center justify-center bg-surface-2 p-3">
+        <PreviaDoItem item={item} tamanho="lg" />
+      </div>
+      {/* Altura mínima igual nos dois estados (preço ou "seu"), senão as linhas
+          da grade dançariam conforme o que cada jogador já comprou. */}
+      <div className="flex min-h-[3.25rem] flex-col justify-center gap-1 px-3 py-2.5">
+        <p className="truncate font-display text-[13px] leading-[1.2] font-bold text-fg">
+          {item.nome}
+        </p>
+        {possui ? (
+          <Badge tom="accent" ponto className="self-start">
+            seu
+          </Badge>
+        ) : (
+          // O preço apagado quando o saldo não cobre — apagado, e não escondido:
+          // o número é a única coisa acionável ali, é ele que diz quanto falta
+          // jogar. O PESO do texto muda junto com a cor, pelo mesmo motivo do
+          // extrato: um print em preto e branco tem que contar a mesma história.
+          <p
+            className={
+              saldo >= preco
+                ? "font-display text-[13px] leading-none font-extrabold text-fg"
+                : "font-display text-[13px] leading-none font-medium text-fg-4"
+            }
+            data-num
+          >
+            {preco.toLocaleString("pt-BR")}
+          </p>
+        )}
+      </div>
+    </>
+  );
+
+  return possui ? (
+    // `overflow-hidden` para o fundo do quadrado ser cortado pelo raio do card.
+    <Card className="overflow-hidden">{miolo}</Card>
+  ) : (
+    <CardLink
+      href={`/loja/${item.id}`}
+      className="overflow-hidden"
+      aria-label={`${item.nome}, ${preco} zenhas`}
+    >
+      {miolo}
+    </CardLink>
   );
 }

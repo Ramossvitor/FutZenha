@@ -4,16 +4,20 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
-import { ID_DO_MULTIPLICADOR, chaveDePreco, itensAVenda } from "@/lib/loja-catalogo";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
 import { AJUSTES, CHAVES_DE_AJUSTE } from "@/lib/zenha";
 import { limparAjuste, salvarAjuste } from "@/lib/zenha-config";
 
 // O painel manda a seção inteira de uma vez, e não um campo por submit: mexer na
 // economia é quase sempre mexer em dois ou três números que só fazem sentido
-// juntos (o prêmio da sequência e o tamanho dela, o preço-base e o fator). Um
-// POST por campo obrigaria o admin a salvar cada metade de uma decisão sozinha,
-// com a tela passando por estados que ele não escolheu.
+// juntos (o prêmio da sequência e o tamanho dela). Um POST por campo obrigaria o
+// admin a salvar cada metade de uma decisão sozinha, com a tela passando por
+// estados que ele não escolheu.
+//
+// PREÇO não passa por aqui, e já passou: o preço de cada item é coluna de
+// `loja_itens` e se edita em /admin/loja. Enquanto o catálogo era código, este
+// formulário carregava também os vinte e quatro preços, numa chave
+// `preco:{itemId}` do zenha_config — a migration 0033 apagou essas linhas.
 
 /** O que a página monta em cada campo, e o que esta action volta a procurar. */
 type CampoConhecido = { chave: string; padrao: number };
@@ -21,25 +25,11 @@ type CampoConhecido = { chave: string; padrao: number };
 /**
  * As chaves que o formulário pode conter — derivadas, nunca escritas à mão.
  *
- * Chave de ajuste nova em zenha.ts e item novo no catálogo passam a ser
- * salváveis sem tocar aqui, que é a mesma promessa que a página faz ao iterar
- * `AJUSTES` em vez de listar os campos.
- *
- * O multiplicador fica de fora dos preços de propósito: o preço dele não sai do
- * catálogo, sai da escada sobre `multiplicador_preco_base` — que já é um dos
- * ajustes acima. Aceitar `preco:multiplicador-de-nota` gravaria uma linha que
- * ninguém lê e faria o admin acreditar ter mudado um preço que seguiu igual.
+ * Ajuste novo em zenha.ts passa a ser salvável sem tocar aqui, que é a mesma
+ * promessa que a página faz ao iterar `AJUSTES` em vez de listar os campos.
  */
 function camposConhecidos(): CampoConhecido[] {
-  const campos: CampoConhecido[] = CHAVES_DE_AJUSTE.map((chave) => ({
-    chave,
-    padrao: AJUSTES[chave].padrao,
-  }));
-  for (const item of itensAVenda()) {
-    if (item.id === ID_DO_MULTIPLICADOR) continue;
-    campos.push({ chave: chaveDePreco(item.id), padrao: item.preco });
-  }
-  return campos;
+  return CHAVES_DE_AJUSTE.map((chave) => ({ chave, padrao: AJUSTES[chave].padrao }));
 }
 
 // O campo do formulário é texto; o que a economia guarda é inteiro. O `trim`
@@ -110,9 +100,9 @@ export async function salvarAjustes(formData: FormData) {
           await limparAjuste(tx, pedido.chave);
           continue;
         }
-        // A faixa, a lista fechada e o teto de preço são de `salvarAjuste`: ele
-        // é o dono da regra e o único que a aplica na escrita. Repetir a
-        // validação aqui daria dois lugares para divergirem.
+        // A faixa e a lista fechada são de `salvarAjuste`: ele é o dono da regra
+        // e o único que a aplica na escrita. Repetir a validação aqui daria dois
+        // lugares para divergirem.
         const recusa = await salvarAjuste(tx, pedido.chave, pedido.valor, session.player.id);
         if (recusa !== null) throw new AjusteRecusado(pedido.chave);
       }

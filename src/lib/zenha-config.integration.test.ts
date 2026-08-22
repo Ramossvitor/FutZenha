@@ -72,33 +72,24 @@ describe("salvarAjuste", () => {
     expect(await linhaDe("multiplicador_fator")).toBeNull();
   });
 
-  it("aceita chave de preço da loja", async () => {
-    const admin = await criarJogador();
-
-    expect(await salvarAjuste(db, "preco:badge_artilheiro", 480, admin.id)).toBeNull();
-
-    expect((await lerSobrescritas(db)).get("preco:badge_artilheiro")).toBe(480);
-  });
-
-  it("recusa preço negativo e preço acima do teto", async () => {
-    const admin = await criarJogador();
-
-    expect(await salvarAjuste(db, "preco:badge_artilheiro", -10, admin.id)).toBe(
-      "Use um número de 0 a 100000.",
-    );
-    expect(await salvarAjuste(db, "preco:badge_artilheiro", 100001, admin.id)).toBe(
-      "Use um número de 0 a 100000.",
-    );
-    expect(await db.select().from(zenhaConfig)).toHaveLength(0);
-  });
-
-  it("recusa chave desconhecida — inclusive o prefixo de preço sem item", async () => {
+  // Preço saiu desta tabela: ele é `loja_itens.preco`, editado em /admin/loja. A
+  // chave `preco:{itemId}` existiu enquanto o catálogo era código, e a migration
+  // 0033 apagou as linhas. O que se cobra agora é que ela seja tratada como
+  // qualquer outra chave desconhecida — e, principalmente, que NÃO grave: uma
+  // linha órfã aqui apareceria no "Sobrescrito hoje" do painel e um dia alguém
+  // confiaria nela.
+  it("recusa chave desconhecida — inclusive as chaves de preço aposentadas", async () => {
     const admin = await criarJogador();
 
     expect(await salvarAjuste(db, "participacaozinha", 10, admin.id)).toBe(
       "Esse ajuste não existe.",
     );
+    expect(await salvarAjuste(db, "preco:7", 480, admin.id)).toBe("Esse ajuste não existe.");
     expect(await salvarAjuste(db, "preco:", 10, admin.id)).toBe("Esse ajuste não existe.");
+    // O preço-base do multiplicador também era ajuste, e virou coluna do item.
+    expect(await salvarAjuste(db, "multiplicador_preco_base", 200, admin.id)).toBe(
+      "Esse ajuste não existe.",
+    );
     expect(await db.select().from(zenhaConfig)).toHaveLength(0);
   });
 
@@ -106,9 +97,6 @@ describe("salvarAjuste", () => {
     const admin = await criarJogador();
 
     expect(await salvarAjuste(db, "participacao", 12.5, admin.id)).toBe("Use um número inteiro.");
-    expect(await salvarAjuste(db, "preco:badge_artilheiro", 12.5, admin.id)).toBe(
-      "Use um número inteiro.",
-    );
     expect(await db.select().from(zenhaConfig)).toHaveLength(0);
   });
 });
@@ -155,12 +143,15 @@ describe("getAjustes", () => {
     expect((await getAjustes(db)).participacao).toBe(AJUSTES_PADRAO.participacao);
   });
 
-  // Chave de preço não é ajuste: ela existe na tabela, some do objeto de
-  // ajustes e é o catálogo que a lê.
-  it("chave de preço não vaza para os ajustes", async () => {
-    const admin = await criarJogador();
-    await salvarAjuste(db, "preco:badge_artilheiro", 480, admin.id);
+  // Linha órfã na tabela — de um ajuste que saiu do código, ou de uma chave de
+  // preço que a migration 0033 não tenha alcançado — não pode derrubar a
+  // economia: ela é DESCARTADA na leitura dos ajustes e o resto continua valendo.
+  it("chave desconhecida gravada por fora não vaza para os ajustes", async () => {
+    await db.insert(zenhaConfig).values({ chave: "preco:7", valor: 480 });
 
     expect(await getAjustes(db)).toEqual(AJUSTES_PADRAO);
+    // Ela continua visível na leitura crua, que é o que o painel usa para
+    // mostrá-la no "Sobrescrito hoje" e o admin poder limpá-la.
+    expect((await lerSobrescritas(db)).get("preco:7")).toBe(480);
   });
 });

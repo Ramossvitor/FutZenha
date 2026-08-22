@@ -5,47 +5,55 @@ import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { PageHeader, Section } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
-import { Selo } from "@/components/ui/selo";
+import { ImagemDoItem } from "@/components/ui/imagem-do-item";
+import { PreviaDoItem } from "@/components/ui/previa-do-item";
 import { formatDateShort } from "@/lib/format";
+import { VAGAS_NA_VITRINE, type SlotDeExibicao } from "@/lib/item-da-loja";
 import { getInventario, type ItemDoInventario } from "@/lib/loja";
-import type { SlotDeExibicao } from "@/lib/loja-catalogo";
 import { requirePlayer } from "@/lib/require-player";
-import { desequiparSlot, equiparItem } from "./actions";
+import {
+  desequiparSlot,
+  destacarBadge,
+  equiparItem,
+  porBadgeNaVitrine,
+  tirarBadgeDaVitrine,
+} from "./actions";
 
 export const metadata: Metadata = { title: "Inventário" };
 export const dynamic = "force-dynamic";
 
 /**
- * As prateleiras do inventário, na ordem em que elas aparecem no perfil de cima
+ * As prateleiras de slot único, na ordem em que elas aparecem no perfil de cima
  * para baixo. `Record` fechado: slot novo em `SlotDeExibicao` sem rótulo aqui
  * não compila, e sem isso o item comprado sumiria da tela sem ninguém notar —
  * o defeito mais caro possível num produto que vende cosmético.
  */
 const PRATELEIRAS: Readonly<Record<SlotDeExibicao, { titulo: string; vazio: string }>> = {
-  badge: { titulo: "Badges", vazio: "Nenhum badge ainda." },
   moldura: { titulo: "Molduras", vazio: "Nenhuma moldura ainda." },
   cor_do_nome: { titulo: "Cores do nome", vazio: "Seu nome está na cor padrão." },
   titulo: { titulo: "Títulos", vazio: "Nenhum título ainda." },
 };
 
-const ORDEM: SlotDeExibicao[] = ["badge", "moldura", "cor_do_nome", "titulo"];
+const ORDEM: SlotDeExibicao[] = ["moldura", "cor_do_nome", "titulo"];
 
 export default async function InventarioPage({ searchParams }: PageProps<"/perfil/inventario">) {
   const session = await requirePlayer();
   const { erro, ok } = await searchParams;
   const itens = await getInventario(session.player.id);
 
-  const consumiveis = itens.filter((i) => i.item.slot === null);
-  const cosmeticos = itens.filter((i) => i.item.slot !== null);
+  const consumiveis = itens.filter((i) => i.item.tipo === "consumivel");
+  const badges = itens.filter((i) => i.item.tipo === "badge");
+  const deSlot = itens.filter((i) => i.item.tipo !== "consumivel" && i.item.tipo !== "badge");
+  const naVitrine = badges.filter((b) => b.naVitrine !== null);
 
   return (
     <div className="flex flex-col gap-7">
       <PageHeader
         titulo="Inventário"
-        descricao="O que você comprou. Um item por lugar no perfil — equipar troca quem estava lá."
+        descricao="O que você comprou, e onde cada coisa está aparecendo."
         acao={
           <div className="flex gap-2">
-            {/* O perfil público é o resultado de tudo que se equipa aqui — e é
+            {/* O perfil público é o resultado de tudo que se escolhe aqui — e é
                 a única tela onde dá para conferir se ficou como se queria. */}
             <LinkButton href={`/jogador/${session.player.id}`} variante="ghost" tamanho="sm">
               Ver meu perfil
@@ -71,6 +79,32 @@ export default async function InventarioPage({ searchParams }: PageProps<"/perfi
         />
       ) : (
         <>
+          <Section titulo="Vitrine">
+            <p className="text-[12.5px] leading-[1.5] text-fg-4">
+              As cinco vagas do seu perfil. A que estiver <strong>em destaque</strong> é a única que
+              sai daqui: ela aparece do lado do seu nome no ranking, na escalação e na lista de
+              presença.
+            </p>
+            <Vagas naVitrine={naVitrine} />
+          </Section>
+
+          <Section titulo="Badges">
+            <HairlineList
+              as="ul"
+              vazio={
+                <p className="text-[13px] text-fg-4">
+                  Nenhum badge ainda — é o que a loja tem de mais bonito para gastar zenha.
+                </p>
+              }
+            >
+              {badges.map((badge) => (
+                <li key={badge.inventarioId}>
+                  <LinhaDeBadge badge={badge} vitrineCheia={naVitrine.length >= VAGAS_NA_VITRINE} />
+                </li>
+              ))}
+            </HairlineList>
+          </Section>
+
           <Section titulo="Multiplicadores">
             <p className="text-[12.5px] leading-[1.5] text-fg-4">
               {/* Nenhum botão de armar aqui, e isso é decisão: o gesto é sobre
@@ -102,12 +136,10 @@ export default async function InventarioPage({ searchParams }: PageProps<"/perfi
             <Section key={slot} titulo={PRATELEIRAS[slot].titulo}>
               <HairlineList
                 as="ul"
-                vazio={
-                  <p className="text-[13px] text-fg-4">{PRATELEIRAS[slot].vazio}</p>
-                }
+                vazio={<p className="text-[13px] text-fg-4">{PRATELEIRAS[slot].vazio}</p>}
               >
-                {cosmeticos
-                  .filter((c) => c.item.slot === slot)
+                {deSlot
+                  .filter((c) => c.item.tipo === slot)
                   .map((cosmetico) => (
                     <li key={cosmetico.inventarioId}>
                       <LinhaDeCosmetico cosmetico={cosmetico} slot={slot} />
@@ -123,6 +155,119 @@ export default async function InventarioPage({ searchParams }: PageProps<"/perfi
 }
 
 /**
+ * As cinco vagas, ocupadas ou não.
+ *
+ * As vazias são desenhadas em vez de omitidas: é assim que a tela diz quantas
+ * ainda cabem sem precisar escrever um número, e é o que faz "vitrine cheia"
+ * fazer sentido quando o banner aparecer.
+ */
+function Vagas({ naVitrine }: { naVitrine: ItemDoInventario[] }) {
+  const porPosicao = new Map(naVitrine.map((b) => [b.naVitrine!.posicao, b]));
+
+  return (
+    <div className="grid grid-cols-5 gap-2">
+      {Array.from({ length: VAGAS_NA_VITRINE }, (_, i) => i + 1).map((posicao) => {
+        const ocupante = porPosicao.get(posicao);
+        return (
+          <div key={posicao} className="flex flex-col items-center gap-1.5">
+            {ocupante ? (
+              <>
+                <ImagemDoItem item={ocupante.item} tamanho="md" />
+                {/* `max-w-full` é o que faz o `truncate` cortar: numa coluna
+                    `items-center` o span nasce com a largura do texto, e sem o
+                    teto um nome longo atravessaria as vagas vizinhas. */}
+                {ocupante.naVitrine!.destaque ? (
+                  <Badge tom="accent" ponto>
+                    destaque
+                  </Badge>
+                ) : (
+                  <span className="max-w-full truncate text-[11px] text-fg-4">
+                    {ocupante.item.nome}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <span
+                  aria-hidden
+                  className="size-14 rounded-ctl border border-dashed border-dash bg-surface-2"
+                />
+                <span className="text-[11px] text-fg-faint">livre</span>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Um badge do inventário: entra e sai da vitrine, e pode virar o destaque. */
+function LinhaDeBadge({
+  badge,
+  vitrineCheia,
+}: {
+  badge: ItemDoInventario;
+  vitrineCheia: boolean;
+}) {
+  const posicao = badge.naVitrine;
+  return (
+    <HairlineRow className="items-center">
+      <ImagemDoItem item={badge.item} tamanho="sm" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display text-[14px] font-bold text-fg">
+          {badge.item.nome}
+        </span>
+        <span className="mt-0.5 block text-[12px] text-fg-4">
+          comprado em <span data-num>{formatDataDeCompra(badge.adquiridoEm)}</span> por{" "}
+          <span data-num>{badge.precoPago.toLocaleString("pt-BR")}</span>
+        </span>
+      </span>
+
+      {posicao ? (
+        <>
+          {posicao.destaque ? (
+            <Badge tom="accent" ponto>
+              em destaque
+            </Badge>
+          ) : (
+            <form action={destacarBadge.bind(null, badge.inventarioId)}>
+              <SubmitButton variante="secondary" tamanho="sm" labelPending="Destacando…">
+                Destacar
+              </SubmitButton>
+            </form>
+          )}
+          <form action={tirarBadgeDaVitrine.bind(null, badge.inventarioId)}>
+            <SubmitButton variante="ghost" tamanho="sm" labelPending="Tirando…">
+              Tirar
+            </SubmitButton>
+          </form>
+        </>
+      ) : (
+        <form action={porBadgeNaVitrine.bind(null, badge.inventarioId)}>
+          <SubmitButton
+            variante="secondary"
+            tamanho="sm"
+            labelPending="Pondo…"
+            disabled={vitrineCheia}
+            // Sem isto o botão desabilitado seria um botão morto sem explicação
+            // — e o `disabled` já o tira da ordem de foco, então o texto ao lado
+            // não chegaria a quem navega por leitor de tela.
+            aria-label={
+              vitrineCheia
+                ? `${badge.item.nome}: a vitrine já tem ${VAGAS_NA_VITRINE} badges — tire um para pôr este`
+                : `Pôr ${badge.item.nome} na vitrine`
+            }
+          >
+            Pôr na vitrine
+          </SubmitButton>
+        </form>
+      )}
+    </HairlineRow>
+  );
+}
+
+/**
  * Um multiplicador guardado: a força congelada nele e onde ele está.
  *
  * O fut armado vira LINK, e não só texto: quem quer desarmar precisa chegar
@@ -131,9 +276,12 @@ export default async function InventarioPage({ searchParams }: PageProps<"/perfi
 function LinhaDeMultiplicador({ guardado }: { guardado: ItemDoInventario }) {
   return (
     <HairlineRow className="items-start">
+      <PreviaDoItem item={guardado.item} tamanho="sm" />
       <span className="min-w-0 flex-1">
-        <Selo item={guardado.item} />
-        <span className="mt-1 block text-[12.5px] text-fg-4">
+        <span className="block font-display text-[14px] font-bold text-fg">
+          {guardado.item.nome}
+        </span>
+        <span className="mt-0.5 block text-[12.5px] text-fg-4">
           {guardado.fatorPercent !== null && (
             <>
               <span data-num>
@@ -176,7 +324,7 @@ function LinhaDeMultiplicador({ guardado }: { guardado: ItemDoInventario }) {
   );
 }
 
-/** Um cosmético: equipar troca quem estava no slot; tirar deixa o slot vazio. */
+/** Um cosmético de slot único: equipar troca quem estava lá; tirar deixa o slot vazio. */
 function LinhaDeCosmetico({
   cosmetico,
   slot,
@@ -187,9 +335,12 @@ function LinhaDeCosmetico({
   const equipado = cosmetico.equipadoEm !== null;
   return (
     <HairlineRow className="items-center">
+      <PreviaDoItem item={cosmetico.item} tamanho="sm" />
       <span className="min-w-0 flex-1">
-        <Selo item={cosmetico.item} />
-        <span className="mt-1 block text-[12px] text-fg-4">
+        <span className="block truncate font-display text-[14px] font-bold text-fg">
+          {cosmetico.item.nome}
+        </span>
+        <span className="mt-0.5 block text-[12px] text-fg-4">
           comprado em <span data-num>{formatDataDeCompra(cosmetico.adquiridoEm)}</span> por{" "}
           <span data-num>{cosmetico.precoPago.toLocaleString("pt-BR")}</span>
         </span>

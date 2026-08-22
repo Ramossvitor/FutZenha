@@ -1,6 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // O corpo de uma Server Action é limitado a 1 MB por padrão — e o upload da
+    // arte do badge (src/app/admin/(panel)/loja) passa por uma. O formulário
+    // recorta e reduz antes de enviar, mas o caminho SEM JavaScript (e o HEIC
+    // que o canvas não abre) manda a foto crua do celular, de vários megabytes:
+    // com o padrão, o Next recusava o POST antes de `validarImagem` rodar, e o
+    // admin via erro de framework no lugar do aviso de "imagem grande". 5 MB
+    // cobre a foto comum de celular e continua sendo teto: a recusa com texto
+    // mora em src/lib/imagem-de-item.ts (200 KB), e acima deste número é o Next
+    // quem corta. Vale para TODAS as actions — nenhuma outra recebe arquivo.
+    serverActions: { bodySizeLimit: "5mb" },
+  },
   // O domínio se chamava "pelada" e virou "fut". As rotas velhas não podem
   // simplesmente sumir: elas estão gravadas em `notifications.href` de todo
   // aviso já emitido, e correram o mundo em push, e-mail e mensagem de

@@ -1,28 +1,33 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
-import { matchDays, zenhaEquipados, zenhaInventario } from "@/db/schema";
+import {
+  lojaItens,
+  matchDays,
+  zenhaEquipados,
+  zenhaInventario,
+  zenhaVitrine,
+} from "@/db/schema";
 import { debitar, getSaldo } from "./carteira";
 import {
-  CATALOGO,
-  ehIdDeItem,
-  ID_DO_MULTIPLICADOR,
-  itensAVenda,
-  precoVigente,
-  type IdDeItem,
+  VAGAS_NA_VITRINE,
+  ehConsumivel,
+  slotDoItem,
   type ItemDaLoja,
   type SlotDeExibicao,
-} from "./loja-catalogo";
-import { comSobrescritas, precoDoMultiplicador, type Ajustes } from "./zenha";
+} from "./item-da-loja";
+import { lerItem, lerItensAVenda } from "./loja-itens";
+import { comSobrescritas, precoDoMultiplicador } from "./zenha";
 import { lerSobrescritas } from "./zenha-config";
 
-// A loja: a vitrine, a compra e o inventário.
+// A loja: a vitrine, a compra, o inventário e o que aparece no perfil.
 //
-// O catálogo (src/lib/loja-catalogo.ts) diz o que existe e o motor da zenha
-// (src/lib/zenha.ts) diz quanto custa; aqui só se resolve o que o BANCO sabe —
-// quem já tem o quê, quanto o multiplicador já subiu neste mês, e o que está
-// equipado. Nenhuma linha daqui sabe somar saldo: isso é de carteira.ts, e a
-// única porta de saída de zenha continua sendo `debitar`.
+// O catálogo (`loja_itens`, lido por src/lib/loja-itens.ts) diz o que existe e
+// quanto custa; o motor da zenha (src/lib/zenha.ts) diz como a escada do
+// consumível sobe; aqui só se resolve o que o BANCO sabe sobre UM jogador —
+// quem já tem o quê, quantos multiplicadores ele comprou no mês, o que está
+// equipado e o que está na vitrine. Nenhuma linha daqui sabe somar saldo: isso é
+// de carteira.ts, e a única porta de saída de zenha continua sendo `debitar`.
 //
 // ── A regra que sustenta a compra ───────────────────────────────────────────
 //
@@ -32,10 +37,18 @@ import { lerSobrescritas } from "./zenha-config";
 // `compra:{itemId}` o segundo multiplicador do mês sairia de graça, engolido
 // pela unique. Débito recusado LANÇA para o rollback desfazer o insert; nunca se
 // devolve item sem cobrar.
+//
+// ── Comprou, apareceu ───────────────────────────────────────────────────────
+//
+// A compra também COLOCA o item: badge vai para a primeira vaga livre da
+// vitrine, cosmético de slot único ocupa o slot se ele estiver vazio. É a
+// resposta à pergunta que toda loja de cosmético gera ("comprei, e agora?"), e
+// ela nunca pode derrubar a compra — vitrine cheia e slot ocupado são silêncio,
+// não erro. O inventário é onde se troca depois.
 
 /** Por que a compra não aconteceu. `null` é a compra feita. */
 export type ErroDeCompra =
-  /** Item aposentado — some da vitrine, mas o link direto continua existindo. */
+  /** Item fora de venda (ou que nunca existiu) — o link direto continua existindo. */
   | "item-indisponivel"
   /** Cosmético que ele já tem. Nada foi cobrado. */
   | "ja-possui"
@@ -43,15 +56,22 @@ export type ErroDeCompra =
 
 /** Por que o item não foi para o slot. */
 export type ErroDeEquipar =
-  /** Não é dele, não existe, ou é o consumível — que não fica pendurado no perfil. */
+  /** Não é dele, não existe, ou não é de slot único (badge e consumível). */
   "item-nao-e-seu";
+
+/** Por que o badge não entrou na vitrine. */
+export type ErroDeVitrine =
+  /** Não é dele, não existe, ou não é badge. */
+  | "item-nao-e-seu"
+  /** As cinco vagas estão ocupadas. */
+  | "vitrine-cheia";
 
 export type ItemDaVitrine = {
   item: ItemDaLoja;
   /**
-   * O que ESTA compra cobra deste jogador, agora. No multiplicador é o degrau
-   * dele da escada, e não o preço de tabela — a vitrine tem que dizer o número
-   * que vai sair da carteira.
+   * O que ESTA compra cobra deste jogador, agora. No consumível é o degrau dele
+   * da escada, e não o preço de tabela — a vitrine tem que dizer o número que
+   * vai sair da carteira.
    */
   preco: number;
   /** Cosmético que ele já tem. Sempre `false` no consumível, que é recomprável. */
@@ -67,7 +87,7 @@ export type Vitrine = {
    * A força que o multiplicador comprado HOJE teria (150 = 1,5×).
    *
    * Sai daqui, e não de uma segunda leitura do `zenha_config` na tela: é o mesmo
-   * SELECT que resolve os preços, e o número que a vitrine promete tem que ser
+   * SELECT que resolve os ajustes, e o número que a vitrine promete tem que ser
    * o mesmo que a compra vai congelar em `fator_percent`.
    */
   fatorDoMultiplicador: number;
@@ -85,20 +105,14 @@ class SaldoInsuficiente extends Error {}
 /**
  * O preço que a compra vai cobrar deste item, agora.
  *
- * O consumível não passa por `precoVigente` porque aquela função responde
- * sempre pelo PRIMEIRO degrau (é o que a vitrine de quem ainda não comprou
- * nenhum no mês precisa). Aqui o degrau é o do jogador, e é esta função — uma
- * só — que a vitrine e a compra chamam, para o número da tela e o número do
- * débito não terem como divergir.
+ * O consumível é o único com preço variável: `loja_itens.preco` é o primeiro
+ * degrau, e os seguintes saem da escada do mês DESTE jogador. Uma função só,
+ * chamada pela vitrine e pela compra, para o número da tela e o número do débito
+ * não terem como divergir.
  */
-function precoParaEste(
-  item: ItemDaLoja,
-  ajustes: Ajustes,
-  sobrescritas: ReadonlyMap<string, number>,
-  multiplicadoresNoMes: number,
-): number {
-  if (item.id !== ID_DO_MULTIPLICADOR) return precoVigente(item.id, sobrescritas);
-  return precoDoMultiplicador(ajustes.multiplicador_preco_base, multiplicadoresNoMes);
+function precoParaEste(item: ItemDaLoja, multiplicadoresNoMes: number): number {
+  if (!ehConsumivel(item)) return item.preco;
+  return precoDoMultiplicador(item.preco, multiplicadoresNoMes);
 }
 
 /**
@@ -125,16 +139,35 @@ function precoParaEste(
 const LOCK_COMPRA = 573914028;
 
 /**
- * Quantos multiplicadores este jogador comprou no mês CORRENTE.
+ * O irmão do LOCK_COMPRA, para as escritas na vitrine de UM jogador.
+ *
+ * Pôr um badge na vitrine é ler as vagas ocupadas e escrever na primeira livre;
+ * destacar é apagar o destaque atual e marcar o novo. Os dois são
+ * leia-então-escreva sobre o mesmo conjunto de linhas, e dois cliques
+ * simultâneos (o botão tocado duas vezes, duas abas) resolveriam a mesma vaga
+ * para dois itens. A PK `(player_id, posicao)` recusaria o segundo — com um 500
+ * na cara de quem só tocou duas vezes. O lock transforma isso em fila.
+ *
+ * Chave diferente da compra de propósito: comprar um consumível não tem por que
+ * esperar a vitrine de badge do mesmo jogador.
+ */
+const LOCK_VITRINE = 573914029;
+
+async function travarVitrine(exec: Executor, playerId: number): Promise<void> {
+  await exec.execute(sql`select pg_advisory_xact_lock(${LOCK_VITRINE}::int, ${playerId}::int)`);
+}
+
+/**
+ * Quantos consumíveis este jogador comprou no mês CORRENTE.
  *
  * `date_trunc('month', now())` do Postgres, e nunca uma data montada em
  * JavaScript: o relógio que decide de que mês é a compra tem que ser o mesmo
  * que carimbou `adquirido_em`, senão o fuso do runtime vira preço errado nas
  * primeiras (e nas últimas) horas do mês.
  *
- * Conta a linha do inventário, e não o ledger: é a linha do inventário que
- * sobrevive ao item ser armado, consumido e virar fato — a escada mede COMPRA,
- * não item disponível.
+ * Pela coluna `consumivel` do inventário, e não pelo id do item: a coluna foi
+ * congelada na compra e sobrevive ao item ser editado no painel do admin. A
+ * escada mede COMPRA de consumível, e existe um só.
  */
 async function contarMultiplicadoresDoMes(exec: Executor, playerId: number): Promise<number> {
   const [linha] = await exec
@@ -143,7 +176,7 @@ async function contarMultiplicadoresDoMes(exec: Executor, playerId: number): Pro
     .where(
       and(
         eq(zenhaInventario.playerId, playerId),
-        eq(zenhaInventario.itemId, ID_DO_MULTIPLICADOR),
+        eq(zenhaInventario.consumivel, true),
         sql`${zenhaInventario.adquiridoEm} >= date_trunc('month', now())`,
       ),
     );
@@ -151,7 +184,7 @@ async function contarMultiplicadoresDoMes(exec: Executor, playerId: number): Pro
 }
 
 /** Os cosméticos que ele já tem, para a vitrine marcá-los em vez de vendê-los de novo. */
-async function idsQueJaTem(exec: Executor, playerId: number): Promise<Set<string>> {
+async function idsQueJaTem(exec: Executor, playerId: number): Promise<Set<number>> {
   const linhas = await exec
     .select({ itemId: zenhaInventario.itemId })
     .from(zenhaInventario)
@@ -162,18 +195,19 @@ async function idsQueJaTem(exec: Executor, playerId: number): Promise<Set<string
 /**
  * A vitrine deste jogador: o que está à venda, por quanto, e o que ele já tem.
  *
- * As quatro leituras em paralelo porque nenhuma depende da outra e esta é a
- * página inteira — em série seriam quatro idas ao banco no caminho crítico.
+ * As cinco leituras em paralelo porque nenhuma depende da outra e esta é a
+ * página inteira — em série seriam cinco idas ao banco no caminho crítico.
  *
- * Item aposentado não entra (é `itensAVenda` quem filtra) e continua funcionando
- * no inventário de quem comprou: a regra do catálogo é aposentar, nunca apagar.
+ * Item fora de venda não entra (é `lerItensAVenda` quem filtra) e continua
+ * funcionando no inventário e no perfil de quem comprou.
  */
 export async function getVitrine(playerId: number): Promise<Vitrine> {
-  const [saldo, sobrescritas, possuidos, multiplicadoresNoMes] = await Promise.all([
+  const [saldo, sobrescritas, possuidos, multiplicadoresNoMes, aVenda] = await Promise.all([
     getSaldo(playerId),
     lerSobrescritas(db),
     idsQueJaTem(db, playerId),
     contarMultiplicadoresDoMes(db, playerId),
+    lerItensAVenda(db),
   ]);
   const ajustes = comSobrescritas(sobrescritas);
 
@@ -181,20 +215,94 @@ export async function getVitrine(playerId: number): Promise<Vitrine> {
     saldo,
     multiplicadoresNoMes,
     fatorDoMultiplicador: ajustes.multiplicador_fator,
-    itens: itensAVenda().map((item) => ({
+    itens: aVenda.map((item) => ({
       item,
-      preco: precoParaEste(item, ajustes, sobrescritas, multiplicadoresNoMes),
-      possui: !item.consumivel && possuidos.has(item.id),
+      preco: precoParaEste(item, multiplicadoresNoMes),
+      possui: !ehConsumivel(item) && possuidos.has(item.id),
     })),
   };
 }
 
 /**
+ * Põe o badge recém-comprado na primeira vaga livre da vitrine.
+ *
+ * Devolve `"vitrine-cheia"` sem escrever quando não há vaga. Quem chama de
+ * dentro da compra ENGOLE esse retorno: cinco vagas cheias não podem recusar uma
+ * compra, e o item vai para o inventário como qualquer outro.
+ *
+ * O primeiro badge da vitrine vira o destaque sozinho. É a leitura honesta de
+ * "só tem um": obrigar um segundo clique para pôr ao lado do nome o único badge
+ * que existe seria cerimônia sem escolha.
+ *
+ * Exige o LOCK_VITRINE tomado por quem chama — daí ele ser privado.
+ */
+async function porNaVitrineCom(
+  exec: Executor,
+  playerId: number,
+  inventarioId: number,
+): Promise<"vitrine-cheia" | null> {
+  const ocupadas = await exec
+    .select({
+      posicao: zenhaVitrine.posicao,
+      inventarioId: zenhaVitrine.inventarioId,
+      destaque: zenhaVitrine.destaque,
+    })
+    .from(zenhaVitrine)
+    .where(eq(zenhaVitrine.playerId, playerId));
+
+  // Já está lá: pedir de novo é o estado que a pessoa quer, não um erro (dois
+  // toques no botão, aba velha reenviada).
+  if (ocupadas.some((o) => o.inventarioId === inventarioId)) return null;
+
+  const usadas = new Set(ocupadas.map((o) => o.posicao));
+  const vaga = Array.from({ length: VAGAS_NA_VITRINE }, (_, i) => i + 1).find(
+    (p) => !usadas.has(p),
+  );
+  if (vaga === undefined) return "vitrine-cheia";
+
+  await exec.insert(zenhaVitrine).values({
+    playerId,
+    posicao: vaga,
+    inventarioId,
+    // Só o PRIMEIRO badge vira destaque sozinho. Vitrine com badges e sem
+    // destaque é escolha (ver `tirarDaVitrine`), e o recém-chegado não a desfaz.
+    destaque: ocupadas.length === 0,
+  });
+  return null;
+}
+
+/**
+ * O item recém-comprado já aparecendo.
+ *
+ * Nunca falha a compra: o slot ocupado é `onConflictDoNothing` (a PK
+ * `(player_id, slot)` é quem recusa) e a vitrine cheia volta como silêncio. Os
+ * dois casos são a mesma decisão — a pessoa pagou pelo item, não pelo lugar, e
+ * trocar de lugar é no inventário.
+ */
+async function colocarAoComprar(
+  exec: Executor,
+  playerId: number,
+  inventarioId: number,
+  item: ItemDaLoja,
+): Promise<void> {
+  const slot = slotDoItem(item);
+  if (slot !== null) {
+    await exec.insert(zenhaEquipados).values({ playerId, slot, inventarioId }).onConflictDoNothing();
+    return;
+  }
+  if (item.tipo === "badge") {
+    await travarVitrine(exec, playerId);
+    await porNaVitrineCom(exec, playerId, inventarioId);
+  }
+}
+
+/**
  * Compra. Devolve o slug do que impediu, ou `null` quando entregou e cobrou.
  *
- * Tudo numa transação porque as duas escritas são inseparáveis, e o preço é
- * resolvido DENTRO dela: ler o `zenha_config` fora abriria a janela em que o
- * admin muda o preço entre a leitura e o débito.
+ * Tudo numa transação porque as escritas são inseparáveis, e o ITEM é lido
+ * DENTRO dela: ler o preço fora abriria a janela em que o admin muda o preço
+ * entre a leitura e o débito, e ler o `ativo` fora abriria a janela em que o
+ * item sai de venda entre a tela e o clique.
  *
  * O `onConflictDoNothing` do cosmético carrega o predicado do índice parcial
  * (`consumivel = false`) porque sem ele o Postgres não infere o índice e recusa
@@ -206,45 +314,35 @@ export async function getVitrine(playerId: number): Promise<Vitrine> {
  * vezes de propósito —, e é justamente ele que tem preço em ESCADA. Daí o
  * advisory lock: ver `LOCK_COMPRA`.
  */
-export async function comprar(playerId: number, itemId: IdDeItem): Promise<ErroDeCompra | null> {
-  const item = CATALOGO[itemId];
-  // Aposentado sai da vitrine, mas a rota `/loja/[item]` continua respondendo —
-  // link velho no zap, aba aberta desde antes. A recusa mora aqui, e não só na
-  // tela, porque a tela não é trava.
-  if (item.aposentado) return "item-indisponivel";
-
+export async function comprar(playerId: number, itemId: number): Promise<ErroDeCompra | null> {
   try {
     return await db.transaction(async (tx) => {
+      const item = await lerItem(tx, itemId);
+      // Fora de venda some da vitrine, mas a rota `/loja/[item]` continua
+      // respondendo — link velho no zap, aba aberta desde antes. A recusa mora
+      // aqui, e não só na tela, porque a tela não é trava. Item inexistente dá a
+      // MESMA resposta: distinguir os dois faria a URL virar um oráculo de quais
+      // ids existem.
+      if (!item || !item.ativo) return "item-indisponivel";
+
+      const consumivel = ehConsumivel(item);
       // Antes de LER a escada, não depois: `contarMultiplicadoresDoMes` é um
       // `count(*)` e nada o serializa sozinho. Ver `LOCK_COMPRA`.
-      if (item.consumivel) {
-        await tx.execute(
-          sql`select pg_advisory_xact_lock(${LOCK_COMPRA}::int, ${playerId}::int)`,
-        );
+      if (consumivel) {
+        await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_COMPRA}::int, ${playerId}::int)`);
       }
 
-      const sobrescritas = await lerSobrescritas(tx);
-      const ajustes = comSobrescritas(sobrescritas);
       const preco = precoParaEste(
         item,
-        ajustes,
-        sobrescritas,
         // Só o consumível tem escada, e só ele paga esta consulta.
-        item.consumivel ? await contarMultiplicadoresDoMes(tx, playerId) : 0,
+        consumivel ? await contarMultiplicadoresDoMes(tx, playerId) : 0,
       );
-
-      const valores = {
-        playerId,
-        itemId,
-        // Congelado: o admin mexe no preço amanhã e o que a pessoa pagou
-        // continua sendo o que ela pagou.
-        precoPago: preco,
-        consumivel: item.consumivel,
-        // O fator vigente vira propriedade DESTE item no instante da compra. Sem
-        // o congelamento, baixar a força do multiplicador no painel enfraqueceria
-        // retroativamente o que já estava comprado e guardado.
-        fatorPercent: item.consumivel ? ajustes.multiplicador_fator : null,
-      };
+      // O fator vigente vira propriedade DESTE item no instante da compra. Sem o
+      // congelamento, baixar a força do multiplicador no painel enfraqueceria
+      // retroativamente o que já estava comprado e guardado.
+      const fatorPercent = consumivel
+        ? comSobrescritas(await lerSobrescritas(tx)).multiplicador_fator
+        : null;
 
       // Um insert só para os dois casos: o `onConflictDoNothing` carrega o
       // predicado do índice parcial (`consumivel = false`), e o consumível
@@ -253,7 +351,15 @@ export async function comprar(playerId: number, itemId: IdDeItem): Promise<ErroD
       // mesmo insert para dizer uma distinção que o índice já faz.
       const [novo] = await tx
         .insert(zenhaInventario)
-        .values(valores)
+        .values({
+          playerId,
+          itemId: item.id,
+          // Congelado: o admin mexe no preço amanhã e o que a pessoa pagou
+          // continua sendo o que ela pagou.
+          precoPago: preco,
+          consumivel,
+          fatorPercent,
+        })
         .onConflictDoNothing({
           target: [zenhaInventario.playerId, zenhaInventario.itemId],
           where: sql`${zenhaInventario.consumivel} = false`,
@@ -262,21 +368,27 @@ export async function comprar(playerId: number, itemId: IdDeItem): Promise<ErroD
 
       if (!novo) return "ja-possui";
 
-      // Preço zero é decisão legítima do admin — o mínimo do ajuste e o do preço
-      // de item são os dois 0 —, e não dá para mandá-lo ao débito: o ledger tem
-      // `check (amount <> 0)` e `debitar` lança em valor não-positivo. Item de
-      // graça entra no inventário sem linha no extrato, que é a leitura honesta
-      // do que aconteceu — e o fecho `saldo == sum(amount)` continua de pé.
-      if (preco === 0) return null;
+      // Preço zero é decisão legítima do admin, e não dá para mandá-lo ao
+      // débito: o ledger tem `check (amount <> 0)` e `debitar` lança em valor
+      // não-positivo. Item de graça entra no inventário sem linha no extrato,
+      // que é a leitura honesta do que aconteceu — e o fecho
+      // `saldo == sum(amount)` continua de pé.
+      if (preco > 0) {
+        const saldo = await debitar(
+          tx,
+          playerId,
+          preco,
+          `compra:${novo.id}`,
+          `Comprou ${item.nome}`,
+          { inventarioId: novo.id },
+        );
+        // `debitar` não escreveu nada quando devolve null, mas o INSERT acima já
+        // escreveu. Lançar é o que desfaz os dois — devolver aqui entregaria o
+        // item de graça.
+        if (saldo === null) throw new SaldoInsuficiente();
+      }
 
-      const saldo = await debitar(tx, playerId, preco, `compra:${novo.id}`, `Comprou ${item.nome}`, {
-        inventarioId: novo.id,
-      });
-      // `debitar` não escreveu nada quando devolve null, mas o INSERT acima já
-      // escreveu. Lançar é o que desfaz os dois — devolver aqui entregaria o
-      // item de graça.
-      if (saldo === null) throw new SaldoInsuficiente();
-
+      await colocarAoComprar(tx, playerId, novo.id, item);
       return null;
     });
   } catch (erro) {
@@ -290,10 +402,12 @@ export type ItemDoInventario = {
   item: ItemDaLoja;
   precoPago: number;
   adquiridoEm: Date;
-  /** O percentual congelado na compra (150 = 1,5×). Nulo fora do multiplicador. */
+  /** O percentual congelado na compra (150 = 1,5×). Nulo fora do consumível. */
   fatorPercent: number | null;
   /** O slot em que ele está aparecendo no perfil, ou `null` se está guardado. */
   equipadoEm: SlotDeExibicao | null;
+  /** Onde este badge está na vitrine, ou `null` se está guardado. */
+  naVitrine: { posicao: number; destaque: boolean } | null;
   /** O fut em que este consumível está armado. Nulo quando está livre. */
   armadoNo: { id: number; data: string; local: string } | null;
   /**
@@ -307,55 +421,72 @@ export type ItemDoInventario = {
 };
 
 /**
- * O inventário: o que é dele, o que está equipado e onde cada consumível está
- * armado.
+ * O inventário: o que é dele, onde cada coisa está aparecendo e onde cada
+ * consumível está armado.
  *
- * Uma consulta com dois LEFT JOINs, e não três idas ao banco: `zenha_equipados`
- * tem `inventario_id` unique e o arme é uma coluna da própria linha, então
- * nenhum dos dois multiplica linha.
+ * Uma consulta com um inner join e três LEFT JOINs, e não quatro idas ao banco:
+ * `zenha_equipados` e `zenha_vitrine` têm `inventario_id` unique e o arme é uma
+ * coluna da própria linha, então nenhum dos três multiplica linha.
  *
- * O `item_id` que o catálogo não conhece morre aqui, CALADO — a mesma decisão
- * (e a mesma razão) do perfil público: a regra é nunca apagar entrada do
- * catálogo, e o preço de alguém quebrá-la um dia tem que ser um item que sumiu
- * da lista, nunca a página inteira em 500.
+ * O join com `loja_itens` é INNER e pode ser: a FK garante que todo `item_id`
+ * aponta para uma linha viva, e o `on delete restrict` garante que ela continua
+ * viva enquanto houver inventário. Antes disto o catálogo era código e esta
+ * função precisava descartar em silêncio o id que ele não conhecesse — o banco
+ * passou a responder por isso.
  */
 export async function getInventario(playerId: number): Promise<ItemDoInventario[]> {
   const linhas = await db
     .select({
       id: zenhaInventario.id,
-      itemId: zenhaInventario.itemId,
       precoPago: zenhaInventario.precoPago,
       adquiridoEm: zenhaInventario.adquiridoEm,
       fatorPercent: zenhaInventario.fatorPercent,
       consumidoEm: zenhaInventario.consumidoEm,
       slot: zenhaEquipados.slot,
+      posicao: zenhaVitrine.posicao,
+      destaque: zenhaVitrine.destaque,
       futId: matchDays.id,
       futData: matchDays.date,
       futLocal: matchDays.location,
+      itemId: lojaItens.id,
+      tipo: lojaItens.tipo,
+      nome: lojaItens.nome,
+      descricao: lojaItens.descricao,
+      preco: lojaItens.preco,
+      cor: lojaItens.cor,
+      imagemHash: lojaItens.imagemHash,
+      efeito: lojaItens.efeito,
+      ativo: lojaItens.ativo,
     })
     .from(zenhaInventario)
+    .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
     .leftJoin(zenhaEquipados, eq(zenhaEquipados.inventarioId, zenhaInventario.id))
+    .leftJoin(zenhaVitrine, eq(zenhaVitrine.inventarioId, zenhaInventario.id))
     .leftJoin(matchDays, eq(matchDays.id, zenhaInventario.armadoMatchDayId))
     .where(eq(zenhaInventario.playerId, playerId))
     .orderBy(desc(zenhaInventario.adquiridoEm), desc(zenhaInventario.id));
 
-  return linhas.flatMap((l) =>
-    ehIdDeItem(l.itemId)
-      ? [
-          {
-            inventarioId: l.id,
-            item: CATALOGO[l.itemId],
-            precoPago: l.precoPago,
-            adquiridoEm: l.adquiridoEm,
-            fatorPercent: l.fatorPercent,
-            consumidoEm: l.consumidoEm,
-            equipadoEm: l.slot,
-            armadoNo:
-              l.futId !== null ? { id: l.futId, data: l.futData!, local: l.futLocal! } : null,
-          },
-        ]
-      : [],
-  );
+  return linhas.map((l) => ({
+    inventarioId: l.id,
+    item: {
+      id: l.itemId,
+      tipo: l.tipo,
+      nome: l.nome,
+      descricao: l.descricao,
+      preco: l.preco,
+      cor: l.cor,
+      imagemHash: l.imagemHash,
+      efeito: l.efeito === "multiplicador" ? "multiplicador" : null,
+      ativo: l.ativo,
+    },
+    precoPago: l.precoPago,
+    adquiridoEm: l.adquiridoEm,
+    fatorPercent: l.fatorPercent,
+    consumidoEm: l.consumidoEm,
+    equipadoEm: l.slot,
+    naVitrine: l.posicao === null ? null : { posicao: l.posicao, destaque: l.destaque! },
+    armadoNo: l.futId !== null ? { id: l.futId, data: l.futData!, local: l.futLocal! } : null,
+  }));
 }
 
 /**
@@ -366,9 +497,9 @@ export async function getInventario(playerId: number): Promise<ItemDoInventario[
  * está vazio, e uma falha ali deixaria a pessoa sem o item que ela tinha e sem o
  * que ela pediu. O upsert troca o ocupante numa statement só.
  *
- * O slot sai do CATÁLOGO, e não do cliente: o formulário manda o id da linha do
- * inventário e mais nada. Quem manda o slot escolhe onde o próprio item aparece
- * — e um badge declarado como "titulo" ocuparia dois lugares no perfil.
+ * O slot sai do TIPO do item no banco, e não do cliente: o formulário manda o id
+ * da linha do inventário e mais nada. Quem manda o slot escolhe onde o próprio
+ * item aparece — e um badge declarado como "titulo" ocuparia dois lugares.
  *
  * A posse é conferida no `WHERE` da leitura, dentro da mesma transação da
  * escrita. Item não muda de dono (não existe caminho que reescreva
@@ -382,17 +513,19 @@ export async function equipar(
 ): Promise<ErroDeEquipar | null> {
   return db.transaction(async (tx) => {
     const [linha] = await tx
-      .select({ itemId: zenhaInventario.itemId })
+      .select({ tipo: lojaItens.tipo })
       .from(zenhaInventario)
+      .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
       .where(and(eq(zenhaInventario.id, inventarioId), eq(zenhaInventario.playerId, playerId)));
 
-    // Não é dele, não existe, ou o catálogo não conhece o id. As três coisas dão
-    // a mesma resposta de propósito: distinguir "não existe" de "existe e não é
-    // seu" transformaria o formulário num oráculo do inventário alheio.
-    if (!linha || !ehIdDeItem(linha.itemId)) return "item-nao-e-seu";
+    // Não é dele ou não existe. Os dois dão a mesma resposta de propósito:
+    // distinguir "não existe" de "existe e não é seu" transformaria o formulário
+    // num oráculo do inventário alheio.
+    if (!linha) return "item-nao-e-seu";
 
-    const slot = CATALOGO[linha.itemId].slot;
-    // Consumível não tem slot: ele se arma num fut, não se pendura no perfil.
+    const slot = slotDoItem({ tipo: linha.tipo });
+    // Badge vai para a vitrine e consumível se arma num fut — nenhum dos dois
+    // tem slot, e mandar um para cá é formulário forjado.
     if (slot === null) return "item-nao-e-seu";
 
     await tx
@@ -420,4 +553,163 @@ export async function desequipar(playerId: number, slot: SlotDeExibicao): Promis
   await db
     .delete(zenhaEquipados)
     .where(and(eq(zenhaEquipados.playerId, playerId), eq(zenhaEquipados.slot, slot)));
+}
+
+/** Põe um badge do inventário na vitrine do perfil. */
+export async function porNaVitrine(
+  playerId: number,
+  inventarioId: number,
+): Promise<ErroDeVitrine | null> {
+  return db.transaction(async (tx) => {
+    await travarVitrine(tx, playerId);
+
+    const [linha] = await tx
+      .select({ tipo: lojaItens.tipo })
+      .from(zenhaInventario)
+      .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
+      .where(and(eq(zenhaInventario.id, inventarioId), eq(zenhaInventario.playerId, playerId)));
+    if (!linha || linha.tipo !== "badge") return "item-nao-e-seu";
+
+    return porNaVitrineCom(tx, playerId, inventarioId);
+  });
+}
+
+/**
+ * Tira o badge da vitrine. A vaga volta a ficar livre e o item continua no
+ * inventário.
+ *
+ * Sem erro, pela mesma razão de `desequipar`. E sem promover ninguém a destaque
+ * no lugar: tirar o destaque é um jeito legítimo de não ter badge nenhum ao lado
+ * do nome, e escolher um substituto por conta própria seria decidir por quem
+ * acabou de decidir.
+ */
+export async function tirarDaVitrine(playerId: number, inventarioId: number): Promise<void> {
+  await db
+    .delete(zenhaVitrine)
+    .where(
+      and(eq(zenhaVitrine.playerId, playerId), eq(zenhaVitrine.inventarioId, inventarioId)),
+    );
+}
+
+/**
+ * Escolhe qual badge da vitrine anda junto do nome nas listas.
+ *
+ * Só vale para quem JÁ está na vitrine — é o que a unique parcial do banco
+ * também diz, e o que impede destacar algo que ninguém está vendo.
+ *
+ * Apaga o destaque anterior ANTES de marcar o novo, e não numa statement só: o
+ * índice `zenha_vitrine_destaque_unico_idx` é conferido a cada comando, então a
+ * ordem inversa esbarraria nele mesmo dentro da transação.
+ */
+export async function destacar(
+  playerId: number,
+  inventarioId: number,
+): Promise<ErroDeVitrine | null> {
+  return db.transaction(async (tx) => {
+    await travarVitrine(tx, playerId);
+
+    const [linha] = await tx
+      .select({ posicao: zenhaVitrine.posicao })
+      .from(zenhaVitrine)
+      .where(and(eq(zenhaVitrine.playerId, playerId), eq(zenhaVitrine.inventarioId, inventarioId)));
+    if (!linha) return "item-nao-e-seu";
+
+    await tx
+      .update(zenhaVitrine)
+      .set({ destaque: false })
+      .where(and(eq(zenhaVitrine.playerId, playerId), eq(zenhaVitrine.destaque, true)));
+    await tx
+      .update(zenhaVitrine)
+      .set({ destaque: true })
+      .where(and(eq(zenhaVitrine.playerId, playerId), eq(zenhaVitrine.inventarioId, inventarioId)));
+
+    return null;
+  });
+}
+
+export type BadgeNaVitrine = {
+  item: ItemDaLoja;
+  posicao: number;
+  destaque: boolean;
+};
+
+/** Os badges que este jogador escolheu mostrar, na ordem das vagas. */
+export async function lerVitrine(exec: Executor, playerId: number): Promise<BadgeNaVitrine[]> {
+  const linhas = await exec
+    .select({
+      posicao: zenhaVitrine.posicao,
+      destaque: zenhaVitrine.destaque,
+      id: lojaItens.id,
+      tipo: lojaItens.tipo,
+      nome: lojaItens.nome,
+      descricao: lojaItens.descricao,
+      preco: lojaItens.preco,
+      cor: lojaItens.cor,
+      imagemHash: lojaItens.imagemHash,
+      ativo: lojaItens.ativo,
+    })
+    .from(zenhaVitrine)
+    .innerJoin(zenhaInventario, eq(zenhaInventario.id, zenhaVitrine.inventarioId))
+    .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
+    .where(eq(zenhaVitrine.playerId, playerId))
+    .orderBy(asc(zenhaVitrine.posicao));
+
+  return linhas.map((l) => ({
+    posicao: l.posicao,
+    destaque: l.destaque,
+    // Badge não tem efeito: o check `(tipo = 'consumivel') = (efeito is not
+    // null)` responde por isso, e a coluna nem é lida aqui.
+    item: { ...l, efeito: null },
+  }));
+}
+
+/**
+ * O badge em destaque de cada jogador — o único cosmético que sai do perfil e
+ * aparece em ranking, escalação e lista de presença.
+ *
+ * Em LOTE, e é o ponto desta função: as telas que desenham nome desenham dezenas
+ * por vez, e uma consulta por linha seria N idas ao banco para enfeitar uma
+ * lista. Quem chama faz UMA chamada com todos os ids e passa o Map para baixo.
+ *
+ * Lista vazia não vai ao banco: um `in ()` sem elementos é desperdício garantido.
+ */
+export type DestaqueDoJogador = {
+  itemId: number;
+  nome: string;
+  imagemHash: string;
+};
+
+export async function lerDestaques(
+  exec: Executor,
+  playerIds: readonly number[],
+): Promise<Map<number, DestaqueDoJogador>> {
+  if (playerIds.length === 0) return new Map();
+
+  const linhas = await exec
+    .select({
+      playerId: zenhaVitrine.playerId,
+      itemId: lojaItens.id,
+      nome: lojaItens.nome,
+      imagemHash: lojaItens.imagemHash,
+    })
+    .from(zenhaVitrine)
+    .innerJoin(zenhaInventario, eq(zenhaInventario.id, zenhaVitrine.inventarioId))
+    .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
+    .where(
+      and(
+        eq(zenhaVitrine.destaque, true),
+        inArray(zenhaVitrine.playerId, [...new Set(playerIds)]),
+      ),
+    );
+
+  // Só badge entra na vitrine e todo badge tem imagem (dois checks do banco
+  // dizem isso). O filtro existe para o caso impossível não virar `<img src="">`
+  // — que o navegador resolve como um segundo GET da própria página.
+  return new Map(
+    linhas.flatMap((l) =>
+      l.imagemHash === null
+        ? []
+        : [[l.playerId, { itemId: l.itemId, nome: l.nome, imagemHash: l.imagemHash }] as const],
+    ),
+  );
 }

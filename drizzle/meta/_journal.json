@@ -232,6 +232,13 @@
       "when": 1787335362746,
       "tag": "0032_o_multiplicador",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787372636276,
+      "tag": "0033_vitrine_da_loja",
+      "breakpoints": true
     }
   ]
 }

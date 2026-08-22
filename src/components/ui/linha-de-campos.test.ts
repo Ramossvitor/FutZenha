@@ -106,7 +106,7 @@ describe("a escala de largura", () => {
   });
 
   it("escreve a classe de largura literal, nunca por interpolação", () => {
-    // Mesma regra do CLASSES_DO_TOKEN: o Tailwind gera utilitário varrendo o
+    // Mesma regra de previa-do-item.tsx: o Tailwind gera utilitário varrendo o
     // fonte, então `sm:max-w-${largura}` não existiria na folha final e o campo
     // sairia sem teto nenhum — sem erro em lugar nenhum do caminho.
     for (const largura of LARGURAS_DE_CAMPO) {

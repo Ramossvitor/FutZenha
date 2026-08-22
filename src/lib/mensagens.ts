@@ -101,10 +101,28 @@ export const MENSAGENS: Record<string, string> = {
     "Zenha insuficiente para este item. Nada foi cobrado — o saldo sobe sozinho a cada fut apurado.",
   "ja-possui": "Você já tem esse item, e ele não foi cobrado de novo. Ele está no seu inventário.",
   "item-indisponivel":
-    "Esse item não está mais à venda. Quem já comprou continua com ele — itens não são apagados.",
-  // A mesma resposta para "não é seu", "não existe" e "é o consumível": separar
-  // os casos transformaria o formulário num oráculo do inventário alheio.
+    "Esse item não está mais à venda. Quem já comprou continua com ele — e continua exibindo.",
+  // A mesma resposta para "não é seu", "não existe" e "não é do tipo certo":
+  // separar os casos transformaria o formulário num oráculo do inventário alheio.
   "item-nao-e-seu": "Esse item não está no seu inventário.",
+  // A vitrine tem cinco vagas e o botão já vem desabilitado quando elas acabam —
+  // este slug é para as duas abas abertas que contaram quatro cada uma. Diz o
+  // conserto, porque ele não é óbvio: tirar um é no mesmo lugar.
+  "vitrine-cheia":
+    "Sua vitrine já tem cinco badges. Tire um da vitrine para pôr este no lugar — o que sair continua no seu inventário.",
+
+  // Cadastro da loja (painel do admin). Os três da imagem dizem o que fazer, e
+  // não só o que deu errado: quem está cadastrando tem o arquivo na mão.
+  "imagem-ausente": "Badge precisa de imagem — é ela que o jogador vai ostentar no perfil.",
+  "imagem-invalida":
+    "A imagem precisa ser PNG, JPEG ou WebP. SVG e GIF não entram: um é documento com script dentro, o outro anima.",
+  "imagem-grande":
+    "A imagem passou de 200 KB. Com JavaScript ligado o navegador recorta e reduz sozinho — sem ele, reduza antes de enviar.",
+  "item-nao-encontrado": "Esse item não existe mais.",
+  "item-com-compras":
+    "Alguém já comprou esse item, então ele não pode ser apagado. Tire de venda: ele some da vitrine e continua no perfil de quem pagou.",
+  "item-protegido":
+    "O multiplicador é parte do jogo: o efeito dele é código. Dá para mudar preço e texto, não para apagar.",
 
   // grupo
   "entrada-fechada": "Este grupo não está aceitando entradas agora.",
@@ -141,11 +159,23 @@ export const MENSAGENS: Record<string, string> = {
   "multiplicador-armado":
     "Multiplicador armado. Ele vale neste fut e some do inventário quando o fut for encerrado.",
   "multiplicador-desarmado": "Multiplicador desarmado — ele voltou para o seu inventário.",
-  // A compra cai no inventário, e é lá que ela vira alguma coisa: cosmético
-  // precisa ser equipado, multiplicador precisa ser armado num fut.
-  "compra-feita": "Comprado. Está no seu inventário — falta só escolher onde ele vai aparecer.",
+  // Comprar já COLOCA: badge vai para a primeira vaga livre da vitrine,
+  // cosmético ocupa o slot se ele estiver vazio. O texto hedge de propósito — a
+  // vitrine pode estar cheia e o slot ocupado, e nesses casos o item fica só
+  // guardado. Prometer "já está no perfil" sem ressalva mentiria justamente para
+  // quem tem mais itens.
+  "compra-feita": "Comprado. Já entrou no seu perfil — aqui você confere e troca de ideia.",
   "item-equipado": "Pronto, ele já aparece no seu perfil.",
   "item-desequipado": "Item guardado. Ele continua seu — só saiu do perfil.",
+  "item-na-vitrine": "Na vitrine. Ele já aparece no seu perfil.",
+  "item-fora-da-vitrine": "Saiu da vitrine. Continua seu, guardado no inventário.",
+  "destaque-definido":
+    "Em destaque: é ele que anda junto do seu nome no ranking, na escalação e na lista de presença.",
+  "item-criado": "Item criado. Ele já está na loja.",
+  "item-salvo": "Item salvo. Vale daqui para frente — quem já comprou não muda.",
+  "item-retirado": "Item fora de venda. Some da vitrine e continua no perfil de quem comprou.",
+  "item-republicado": "Item de volta à venda.",
+  "item-apagado": "Item apagado.",
   entrou: "Pronto, você está no grupo.",
   saiu: "Você saiu do grupo.",
   "pedido-enviado": "Pedido enviado. O administrador vai decidir.",

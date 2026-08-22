@@ -191,3 +191,31 @@ export function IconeZenha(props: Icone) {
     </svg>
   );
 }
+
+/**
+ * Uma poção: o multiplicador de nota, e qualquer consumível que venha depois.
+ *
+ * O consumível é o único item da loja sem arte enviada — o efeito dele é código,
+ * então o desenho também é. E precisa ser um desenho, não a palavra
+ * "multiplicador": ele divide a vitrine com badges que são imagem, e um card só
+ * de texto no meio deles leria como item quebrado.
+ *
+ * Poção e não seta para cima nem "×2": o item não é um bônus, é uma APOSTA — ele
+ * amplia o movimento da nota nos dois sentidos. Frasco com rolha diz "você
+ * escolhe beber isto", que é exatamente o gesto de armar.
+ */
+export function IconePocao(props: Icone) {
+  return (
+    <svg {...base} {...props}>
+      {/* rolha */}
+      <path d="M9.5 3h5" />
+      {/* gargalo e corpo, num traço só: os ombros do frasco são o que o faz ler
+          como poção e não como copo */}
+      <path d="M10 3v5.2L5.6 15.4A3.6 3.6 0 0 0 8.7 21h6.6a3.6 3.6 0 0 0 3.1-5.6L14 8.2V3" />
+      {/* a linha do líquido, e duas bolhas subindo */}
+      <path d="M6.6 15.5h10.8" />
+      <circle cx="10.2" cy="18" r=".9" />
+      <circle cx="13.6" cy="17.4" r=".6" />
+    </svg>
+  );
+}

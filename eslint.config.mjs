@@ -57,6 +57,26 @@ const eslintConfig = defineConfig([
     rules: { "no-restricted-syntax": "off" },
   },
 
+  {
+    // `<img>` cru em vez de next/image, nos dois lugares que desenham a arte
+    // enviada pelo admin. Não é atalho:
+    //
+    // - os bytes vêm da NOSSA rota, já em 256×256 (o formulário recorta antes
+    //   de enviar), então não há o que redimensionar;
+    // - a URL carrega o hash do conteúdo, então o cache já é imutável sem ajuda;
+    // - a otimização de imagem da Vercel é cota no plano Hobby, e este projeto
+    //   é de R$ 0 por decisão (o app não tem NENHUM next/image hoje).
+    //
+    // O campo de imagem do admin entra na mesma isenção porque a prévia dele é
+    // uma blob: URL do arquivo que a pessoa acabou de escolher — não existe
+    // nada para o otimizador otimizar.
+    files: [
+      "src/components/ui/imagem-do-item.tsx",
+      "src/app/admin/(panel)/loja/campo-de-imagem.tsx",
+    ],
+    rules: { "@next/next/no-img-element": "off" },
+  },
+
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",

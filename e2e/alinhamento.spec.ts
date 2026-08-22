@@ -140,6 +140,12 @@ for (const [nome, viewport] of [
       "/admin/jogadores",
       "/admin/futs",
       "/admin/zenhas",
+      // O cadastro da loja tem o controle mais fácil de desalinhar do app, o
+      // `input[type=color]`, que só fica na faixa do controle porque o `Input`
+      // lhe dá o mesmo `h-10` do resto. `?tipo=moldura` de propósito: é a forma
+      // em que Nome e Cor dividem uma linha — na de badge (o padrão sem query)
+      // cada controle fica sozinho na sua faixa, e não haveria o que comparar.
+      "/admin/loja/novo?tipo=moldura",
     ];
 
     let comparacoes = 0;

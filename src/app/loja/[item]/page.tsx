@@ -5,8 +5,11 @@ import { Banner, BannerDaQuery } from "@/components/ui/banner";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
 import { Card, CardBody, PageHeader, Section } from "@/components/ui/card";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
-import { Selo } from "@/components/ui/selo";
-import { CATALOGO, ehIdDeItem, ID_DO_MULTIPLICADOR } from "@/lib/loja-catalogo";
+import { PreviaDoItem } from "@/components/ui/previa-do-item";
+import { db } from "@/db";
+import { ehMultiplicador } from "@/lib/item-da-loja";
+import { ROTULO_DO_TIPO } from "@/lib/loja-admin";
+import { lerItem } from "@/lib/loja-itens";
 import { requirePlayer } from "@/lib/require-player";
 import { comprarItem } from "../actions";
 import { carregarItemDaLoja } from "../dados";
@@ -21,11 +24,20 @@ export const dynamic = "force-dynamic";
  * irreversível — não existe estorno no ledger —, e uma tela inteira com o preço,
  * o saldo e o que sobra é o mínimo antes de um botão que não desfaz.
  */
+
+/** O id da rota, ou `null` se o que veio na URL não é um id plausível. */
+function idDaRota(bruto: string): number | null {
+  const id = Number(bruto);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 export async function generateMetadata({
   params,
 }: PageProps<"/loja/[item]">): Promise<Metadata> {
   const { item } = await params;
-  return { title: ehIdDeItem(item) ? CATALOGO[item].nome : "Loja" };
+  const id = idDaRota(item);
+  const daLoja = id === null ? undefined : await lerItem(db, id);
+  return { title: daLoja?.nome ?? "Loja" };
 }
 
 export default async function ItemDaLojaPage({ params, searchParams }: PageProps<"/loja/[item]">) {
@@ -33,22 +45,24 @@ export default async function ItemDaLojaPage({ params, searchParams }: PageProps
   const { item: idBruto } = await params;
   const { erro } = await searchParams;
 
-  // Id que o catálogo não conhece é rota que não existe. Item APOSENTADO é outra
-  // coisa — ele continua sendo um id de verdade, e a tela abaixo explica que ele
-  // saiu de venda em vez de dar 404 na cara de quem clicou num link antigo.
-  if (!ehIdDeItem(idBruto)) notFound();
-  const item = CATALOGO[idBruto];
+  // Id que não existe é rota que não existe. Item FORA DE VENDA é outra coisa —
+  // ele continua sendo um item de verdade, e a tela abaixo explica que ele saiu
+  // de venda em vez de dar 404 na cara de quem clicou num link antigo.
+  const id = idDaRota(idBruto);
+  if (id === null) notFound();
+  const item = await lerItem(db, id);
+  if (!item) notFound();
 
   const { saldo, multiplicadoresNoMes, fatorDoMultiplicador, daVitrine } =
-    await carregarItemDaLoja(session.player.id, idBruto);
+    await carregarItemDaLoja(session.player.id, id);
 
-  const ehOMultiplicador = item.id === ID_DO_MULTIPLICADOR;
+  const ehOMultiplicador = ehMultiplicador(item);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         titulo={item.nome}
-        selos={<Selo item={item} />}
+        selos={<Badge tom="outline">{ROTULO_DO_TIPO[item.tipo]}</Badge>}
         descricao={item.descricao}
         acao={
           <LinkButton href="/loja" variante="ghost" tamanho="sm">
@@ -59,10 +73,19 @@ export default async function ItemDaLojaPage({ params, searchParams }: PageProps
 
       <BannerDaQuery erro={erro} />
 
+      {/* A arte em tamanho grande, antes da conta: é o que a pessoa está
+          comprando, e a última chance de ver de perto o que vai ficar pendurado
+          no perfil dela. */}
+      <Card>
+        <CardBody className="flex items-center justify-center py-7">
+          <PreviaDoItem item={item} tamanho="lg" />
+        </CardBody>
+      </Card>
+
       {daVitrine === undefined ? (
         <Banner tom="aviso">
-          Este item saiu de venda. Quem comprou continua com ele — itens não são apagados —, mas não
-          dá mais para adquirir.
+          Este item saiu de venda. Quem comprou continua com ele — e continua exibindo —, mas não dá
+          mais para adquirir.
         </Banner>
       ) : daVitrine.possui ? (
         <Section titulo="Você já tem">
@@ -151,7 +174,7 @@ export default async function ItemDaLojaPage({ params, searchParams }: PageProps
               <p className="text-[12px] leading-[1.45] text-fg-4">
                 {ehOMultiplicador
                   ? "Comprado, ele vai para o inventário. Só vale depois de armado num fut — e só até o horário de início dele."
-                  : "Zenha gasta não volta: o extrato é definitivo e não existe estorno. O item, sim, é seu para sempre."}
+                  : "Comprado, ele já entra no seu perfil — na vitrine, se for badge, ou no lugar dele, se estiver vago. Trocar é no inventário. Zenha gasta não volta: não existe estorno."}
               </p>
             </CardBody>
           </Card>

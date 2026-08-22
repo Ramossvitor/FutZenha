@@ -16,6 +16,7 @@ import { zenhaCarteiras, zenhaInventario, zenhaLedger, type Player } from "@/db/
 import { creditar, debitar, garantirCarteira, getExtrato, getSaldo } from "@/lib/carteira";
 import type { CreditoDeZenha } from "@/lib/zenha";
 import { criarJogador } from "@/test/fixtures";
+import { criarBadge } from "@/test/fixtures-loja";
 
 /**
  * O fecho da carteira. É o invariante que o desenho materializado tem que pagar:
@@ -217,9 +218,10 @@ describe("debitar", () => {
   it("amarra a linha do extrato ao item comprado", async () => {
     const jogador = await criarJogador();
     await creditar(db, creditosDoMesmoFut(jogador));
+    const daLoja = await criarBadge("Badge do Artilheiro", 90);
     const [item] = await db
       .insert(zenhaInventario)
-      .values({ playerId: jogador.id, itemId: "badge_artilheiro", precoPago: 90 })
+      .values({ playerId: jogador.id, itemId: daLoja.id, precoPago: 90 })
       .returning();
 
     await debitar(db, jogador.id, 90, `compra:${item.id}`, "Badge do Artilheiro", {
