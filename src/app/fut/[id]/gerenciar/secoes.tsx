@@ -8,12 +8,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
-import { IconeLuva } from "@/components/ui/icons";
+import { IconeSeta } from "@/components/ui/icons";
 import { NomeJogador } from "@/components/ui/nome-jogador";
 import { Nota } from "@/components/ui/nota";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
-import { formatPercent, formatSkill, formatTime } from "@/lib/format";
+import { formatPercent, formatTime } from "@/lib/format";
 import { JANELA_CORRECAO_HORAS } from "@/lib/regras";
 import { jogoEmAndamento } from "@/lib/sumula";
 import { futAceitaEntrada } from "@/lib/fut-entrada";
@@ -40,13 +40,17 @@ import {
   deleteMatchDay,
   drawTeamsAction,
   marcarFalta,
+  montarTimesAction,
+  moverJogadorAction,
   promoverDaEspera,
   reenviarConviteDoFut,
-  swapPlayersAction,
   updateGameScore,
   updateMatchDay,
 } from "./actions";
 import type { PainelDoFut } from "./dados";
+import { EditorDeTimes } from "./editor-de-times";
+import { LADOS_DO_RASCUNHO, repartirEmColunas, type JogadorDeTime } from "@/lib/montar-times";
+import { defaultTeamNames } from "@/lib/team-colors";
 
 // As seções do painel moram aqui, e não na página, porque o arquivo passava de
 // 760 linhas e qualquer mudança numa seção exigia rolar as outras cinco. As
@@ -498,6 +502,41 @@ export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
 
 export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
   const { matchDay, teamList, teamMembers, confirmed, gameList } = fut;
+  const aberta = matchDay.status === "scheduled";
+
+  // As colunas do editor. Com a lista aberta são um rascunho: todo confirmado
+  // em "Sem time" e dois lados vazios (o localStorage do editor repõe o que o
+  // organizador já tinha arrastado). Fechada, vêm do banco — e quem entrou
+  // depois do sorteio (SecaoEntrada) aparece em "Sem time" esperando colete.
+  const confirmadosComoJogadores: JogadorDeTime[] = confirmed.map((p) => ({
+    playerId: p.id,
+    nome: p.nickname ?? p.name,
+    skill: p.skill,
+    isGoalkeeper: p.isGoalkeeper,
+  }));
+  const colunas = aberta
+    ? repartirEmColunas(
+        confirmadosComoJogadores,
+        LADOS_DO_RASCUNHO.map((lado, i) => ({ chave: lado, nome: defaultTeamNames[i] })),
+        new Map(),
+      )
+    : repartirEmColunas(
+        // Quem tem colete mas saiu da lista continua aparecendo no time — é o
+        // organizador que tira (a action aceita mover para "Sem time").
+        [
+          ...confirmadosComoJogadores,
+          ...teamMembers
+            .filter((m) => !confirmed.some((p) => p.id === m.playerId))
+            .map((m) => ({
+              playerId: m.playerId,
+              nome: m.nickname ?? m.playerName,
+              skill: m.skill,
+              isGoalkeeper: m.isGoalkeeper,
+            })),
+        ],
+        teamList.map((t) => ({ chave: String(t.id), nome: t.name })),
+        new Map(teamMembers.map((m) => [m.playerId, String(m.teamId)])),
+      );
 
   return (
     <Section titulo="Times">
@@ -533,7 +572,7 @@ export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
                   ficaria com duas palavras por linha. */}
               <span className="text-[12px] text-fg-4">
                 {confirmed.length} confirmados
-                {teamList.length === 0 && " · sortear trava a lista: daqui em diante quem inclui é você"}
+                {aberta && " · sortear trava a lista: daqui em diante quem inclui é você"}
                 {teamList.length > 0 &&
                   gameList.length > 0 &&
                   " · apague os jogos antes de re-sortear"}
@@ -543,102 +582,43 @@ export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
         </Card>
       )}
 
-      {teamList.length === 0 ? (
-        <EmptyState
-          titulo="Ainda não teve sorteio"
-          descricao="Sorteie quando a lista de confirmados fechar. Até lá dá para entrar e sair à vontade."
-        />
-      ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {teamList.map((team) => {
-              const members = teamMembers.filter((m) => m.teamId === team.id);
-              // Soma em centésimos: acumular a nota decimal em ponto flutuante
-              // mostraria "Σ 34,400000000000006".
-              const skillSum =
-                members.reduce((acc, m) => acc + Math.round(m.skill * 100), 0) / 100;
-              return (
-                <Card key={team.id}>
-                  <CardHeader>
-                    <VestChip time={team.name} tamanho="lg" />
-                    <span className="flex-1 font-display text-[15px] font-extrabold font-stretch-112% text-fg">
-                      {team.name}
-                    </span>
-                    <span className="text-right">
-                      <Eyebrow>soma · média</Eyebrow>
-                      <span className="block font-display text-[13px] font-bold text-fg-2" data-num>
-                        {formatSkill(skillSum)} ·{" "}
-                        {formatSkill(skillSum / Math.max(members.length, 1))}
-                      </span>
-                    </span>
-                  </CardHeader>
-                  <ul className="flex flex-col">
-                    {members.map((m) => (
-                      <li
-                        key={m.playerId}
-                        className="flex items-center gap-2 border-b border-line-soft px-4 py-2 last:border-0"
-                      >
-                        {m.isGoalkeeper && (
-                          <span title="goleiro">
-                            <IconeLuva className="size-4 shrink-0 text-warn-ink" />
-                            <span className="sr-only">goleiro</span>
-                          </span>
-                        )}
-                        <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
-                          {m.nickname ?? m.playerName}
-                        </span>
-                        <Nota valor={m.skill} tamanho="sm" />
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              );
-            })}
+      {aberta ? (
+        // O outro caminho para fechar a lista: montar os times na mão. Fica
+        // fechado por padrão — a maioria dos futs sorteia — e não custa
+        // consulta nenhuma: as colunas saem dos confirmados que já vieram.
+        <details className="group rounded-card border border-line bg-surface">
+          <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 font-display text-[13px] font-bold text-fg select-none">
+            <IconeSeta className="size-4 shrink-0 text-fg-4 transition-transform group-open:rotate-90" />
+            Montar times na mão
+            <span className="ml-auto text-[12px] font-normal text-fg-4">
+              arraste ou toque no colete
+            </span>
+          </summary>
+          <div className="border-t border-line p-4">
+            {confirmed.length === 0 ? (
+              <EmptyState
+                titulo="Ninguém confirmado ainda"
+                descricao="Os times se montam a partir de quem está na lista."
+              />
+            ) : (
+              <EditorDeTimes
+                futId={matchDay.id}
+                modo="rascunho"
+                colunas={colunas}
+                fecharLista={montarTimesAction.bind(null, matchDay.id)}
+              />
+            )}
           </div>
-
-          {matchDay.status !== "finished" && (
-            <Card>
-              <CardBody>
-                <form
-                  action={swapPlayersAction.bind(null, matchDay.id)}
-                  className="flex flex-col gap-3"
-                >
-                  {/* Título acima da linha, não dentro dela: era um `w-full`
-                      dentro do flex-wrap para forçar a própria linha. */}
-                  <span className="font-display text-[13px] font-bold text-fg">
-                    Trocar jogadores de time
-                  </span>
-                  <LinhaDeCampos colunas={["cheio", "cheio", "acao"]}>
-                    {(["playerA", "playerB"] as const).map((field, i) => (
-                      <Field
-                        key={field}
-                        htmlFor={field}
-                        label={i === 0 ? "Sai daqui" : "Vai para cá"}
-                      >
-                        <Select id={field} name={field}>
-                          {teamList.map((team) => (
-                            <optgroup key={team.id} label={team.name}>
-                              {teamMembers
-                                .filter((m) => m.teamId === team.id)
-                                .map((m) => (
-                                  <option key={m.playerId} value={m.playerId}>
-                                    {m.nickname ?? m.playerName}
-                                  </option>
-                                ))}
-                            </optgroup>
-                          ))}
-                        </Select>
-                      </Field>
-                    ))}
-                    <AcaoDaLinha>
-                      <SubmitButton variante="secondary">Trocar</SubmitButton>
-                    </AcaoDaLinha>
-                  </LinhaDeCampos>
-                </form>
-              </CardBody>
-            </Card>
-          )}
-        </>
+        </details>
+      ) : (
+        // Depois de cada movimento o servidor revalida e o editor recebe as
+        // colunas reais no lugar do palpite otimista (ver o sync por prop lá).
+        <EditorDeTimes
+          futId={matchDay.id}
+          modo={matchDay.status === "finished" ? "leitura" : "gravado"}
+          colunas={colunas}
+          mover={moverJogadorAction.bind(null, matchDay.id)}
+        />
       )}
     </Section>
   );

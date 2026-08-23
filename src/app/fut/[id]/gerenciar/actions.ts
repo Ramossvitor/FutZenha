@@ -38,6 +38,7 @@ import { criarJogoComEscalacao } from "@/lib/jogos";
 import { revalidateMatchDay } from "../revalidate";
 import { listaFechada } from "@/lib/lista-presenca";
 import { parseMatchDayForm } from "@/lib/match-day-form";
+import { LADOS_DO_RASCUNHO, lerLadosDoForm } from "@/lib/montar-times";
 import { notificar } from "@/lib/notifications";
 import {
   avaliarMarcacao,
@@ -237,12 +238,6 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
 
   assertEscalacaoEditavel(matchDay);
 
-  // Re-sortear apagaria os jogos por cascade — exige apagar os jogos antes.
-  const existingGames = await db.select().from(games).where(eq(games.matchDayId, matchDayId));
-  if (existingGames.length > 0) {
-    redirect(`/fut/${matchDayId}/gerenciar?erro=jogos-lancados`);
-  }
-
   const confirmed = await db
     .select({
       id: players.id,
@@ -260,16 +255,115 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
 
   const drawn = drawTeams(confirmed, teamCount);
 
+  await gravarTimes({
+    matchDay,
+    avisadorId: session.player.id,
+    confirmadosIds: confirmed.map((c) => c.id),
+    times: drawn.map((t) => t.players.map((p) => p.id)),
+  });
+
+  revalidateMatchDay(matchDayId);
+  redirect(`/fut/${matchDayId}/gerenciar`);
+}
+
+/**
+ * O modo "montar": os times vêm prontos do organizador, um campo
+ * `lado-<playerId>` = A | B por confirmado, e a lista só fecha aqui — até o
+ * submit o rascunho vive no browser (ver editor-de-times.tsx). O caminho de
+ * gravação é o MESMO do sorteio, inclusive o aviso.
+ */
+export async function montarTimesAction(matchDayId: number, formData: FormData) {
+  const { session, matchDay } = await requireFutAdmin(matchDayId);
+  assertEscalacaoEditavel(matchDay);
+
+  // Só quem o editor mostra precisa de lado: o painel (dados.ts) esconde
+  // jogador desativado mesmo com presença `in`, e sem o mesmo filtro aqui ele
+  // cairia em `semLado` sem ninguém poder vê-lo nem tirá-lo da lista.
+  const confirmed = await db
+    .select({ id: players.id })
+    .from(attendances)
+    .innerJoin(players, eq(attendances.playerId, players.id))
+    .where(
+      and(
+        eq(attendances.matchDayId, matchDayId),
+        eq(attendances.status, "in"),
+        eq(players.active, true),
+      ),
+    );
+  const confirmadosIds = confirmed.map((c) => c.id);
+
+  const { lados, semLado } = lerLadosDoForm(formData, confirmadosIds);
+  // Quem está na lista tem de estar num time: deixar alguém de fora aqui viraria
+  // falta automática no encerramento (marcarFaltasAutomaticas), sem ninguém
+  // ter decidido isso. Quem não vai jogar sai da lista, não fica "sem time".
+  if (semLado.length > 0) {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=jogador-sem-time`);
+  }
+  const times = LADOS_DO_RASCUNHO.map((lado) =>
+    [...lados.entries()].filter(([, l]) => l === lado).map(([id]) => id),
+  );
+  if (times.some((t) => t.length === 0)) {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=time-vazio`);
+  }
+
+  await gravarTimes({
+    matchDay,
+    avisadorId: session.player.id,
+    confirmadosIds,
+    times,
+  });
+
+  revalidateMatchDay(matchDayId);
+  redirect(`/fut/${matchDayId}/gerenciar`);
+}
+
+/**
+ * Grava os times e fecha a lista — o trecho comum ao sorteio e ao "montar".
+ * `times[i]` é a lista de jogadores do i-ésimo time (nunca vazia: quem chama
+ * já recusou time vazio); o nome sai da paleta (`defaultTeamNames`) na ordem.
+ *
+ * As travas de "fut encerrado" e "já tem jogo" moram AQUI, sob o lock, e não
+ * numa guarda pré-transação: o createGame e o encerramento travam o mesmo fut,
+ * então ou commitaram antes (e este select os vê) ou esperam o lock. Sem isso,
+ * um jogo nascendo entre a guarda e o `delete(teams)` sumiria pelo cascade.
+ */
+async function gravarTimes({
+  matchDay,
+  avisadorId,
+  confirmadosIds,
+  times,
+}: {
+  matchDay: MatchDay;
+  avisadorId: number;
+  confirmadosIds: number[];
+  times: number[][];
+}) {
+  const matchDayId = matchDay.id;
   await db.transaction(async (tx) => {
+    const fresca = await travarFut(tx, matchDayId);
+    if (fresca.status === "finished") {
+      redirect(`/fut/${matchDayId}/gerenciar?erro=escalacao-travada`);
+    }
+    // Re-sortear ou re-montar por cima de jogo lançado o apagaria por cascade
+    // — exige apagar os jogos antes. O redirect lança e desfaz a transação.
+    const [jogo] = await tx
+      .select({ id: games.id })
+      .from(games)
+      .where(eq(games.matchDayId, matchDayId))
+      .limit(1);
+    if (jogo) {
+      redirect(`/fut/${matchDayId}/gerenciar?erro=jogos-lancados`);
+    }
+
     await tx.delete(teams).where(eq(teams.matchDayId, matchDayId));
-    for (const [i, team] of drawn.entries()) {
+    for (const [i, playerIds] of times.entries()) {
       const [created] = await tx
         .insert(teams)
         .values({ matchDayId, name: defaultTeamNames[i] ?? `Time ${i + 1}`, sortOrder: i })
         .returning();
       await tx
         .insert(teamPlayers)
-        .values(team.players.map((p) => ({ teamId: created.id, playerId: p.id })));
+        .values(playerIds.map((playerId) => ({ teamId: created.id, playerId })));
     }
     await tx.update(matchDays).set({ status: "teams_drawn" }).where(eq(matchDays.id, matchDayId));
 
@@ -285,11 +379,8 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
           // Quem sorteou já sabe — a exclusão fica no WHERE, como em
           // createMatchDay, e não num filter depois: um lugar só decide quem
           // recebe.
-          ne(users.playerId, session.player.id),
-          inArray(
-            users.playerId,
-            confirmed.map((c) => c.id),
-          ),
+          ne(users.playerId, avisadorId),
+          inArray(users.playerId, confirmadosIds),
         ),
       );
     await notificar(
@@ -298,39 +389,69 @@ export async function drawTeamsAction(matchDayId: number, formData: FormData) {
     );
   });
   agendarDespachoDePush(true);
-
-  revalidateMatchDay(matchDayId);
-  redirect(`/fut/${matchDayId}/gerenciar`);
 }
 
-export async function swapPlayersAction(matchDayId: number, formData: FormData) {
+/**
+ * Move UM jogador para um time (ou para nenhum, com `teamId` null) — é o que
+ * o arrasto e os botõezinhos do editor chamam depois que a lista fechou.
+ * Substitui a permuta antiga (A↔B): mover deixa os times desiguais de
+ * propósito, que é o que acontece num fut de verdade.
+ *
+ * Como a permuta, NÃO reescreve `game_players` de jogo já criado — a escalação
+ * de cada jogo é o snapshot tirado no nascimento dele (ver src/db/schema.ts).
+ * Só o próximo jogo nasce com o colete novo.
+ */
+export async function moverJogadorAction(
+  matchDayId: number,
+  playerId: number,
+  teamId: number | null,
+) {
   const { matchDay } = await requireFutAdmin(matchDayId);
   assertEscalacaoEditavel(matchDay);
-  const playerA = Number(formData.get("playerA"));
-  const playerB = Number(formData.get("playerB"));
-  if (!Number.isInteger(playerA) || !Number.isInteger(playerB) || playerA === playerB) return;
+  if (matchDay.status !== "teams_drawn") {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=lista-aberta`);
+  }
+  if (!Number.isInteger(playerId) || (teamId !== null && !Number.isInteger(teamId))) {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  }
 
-  const dayTeams = await db.select().from(teams).where(eq(teams.matchDayId, matchDayId));
+  const dayTeams = await db
+    .select({ id: teams.id })
+    .from(teams)
+    .where(eq(teams.matchDayId, matchDayId));
   const teamIds = dayTeams.map((t) => t.id);
-  if (teamIds.length === 0) return;
+  if (teamId !== null && !teamIds.includes(teamId)) {
+    redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
+  }
 
-  const rows = await db
-    .select()
-    .from(teamPlayers)
-    .where(and(inArray(teamPlayers.teamId, teamIds), inArray(teamPlayers.playerId, [playerA, playerB])));
-  const rowA = rows.find((r) => r.playerId === playerA);
-  const rowB = rows.find((r) => r.playerId === playerB);
-  if (!rowA || !rowB || rowA.teamId === rowB.teamId) return;
+  // Entrar num time exige estar na lista. Sair de um time (teamId null) não:
+  // quem já saiu da lista e ficou com colete precisa poder ser tirado.
+  if (teamId !== null) {
+    const [presenca] = await db
+      .select({ status: attendances.status })
+      .from(attendances)
+      .where(and(eq(attendances.matchDayId, matchDayId), eq(attendances.playerId, playerId)));
+    if (presenca?.status !== "in") {
+      redirect(`/fut/${matchDayId}/gerenciar?erro=jogador-fora-da-lista`);
+    }
+  }
 
   await db.transaction(async (tx) => {
+    // O lock é o mesmo do createGame: o snapshot da escalação lê team_players,
+    // e sem ele um jogo nascendo agora poderia ver o jogador em dois times.
+    // O status vem fresco do lock: a guarda lá em cima é pré-transação, e um
+    // encerramento pode ter commitado no meio — mover num fut encerrado
+    // quebraria a escalação imutável.
+    const fresca = await travarFut(tx, matchDayId);
+    if (fresca.status !== "teams_drawn") {
+      redirect(`/fut/${matchDayId}/gerenciar?erro=escalacao-travada`);
+    }
     await tx
-      .update(teamPlayers)
-      .set({ teamId: rowB.teamId })
-      .where(and(eq(teamPlayers.teamId, rowA.teamId), eq(teamPlayers.playerId, playerA)));
-    await tx
-      .update(teamPlayers)
-      .set({ teamId: rowA.teamId })
-      .where(and(eq(teamPlayers.teamId, rowB.teamId), eq(teamPlayers.playerId, playerB)));
+      .delete(teamPlayers)
+      .where(and(inArray(teamPlayers.teamId, teamIds), eq(teamPlayers.playerId, playerId)));
+    if (teamId !== null) {
+      await tx.insert(teamPlayers).values({ teamId, playerId });
+    }
   });
 
   revalidateMatchDay(matchDayId);
