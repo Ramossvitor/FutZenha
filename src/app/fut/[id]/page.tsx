@@ -280,8 +280,8 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
   // Placar, gols e o colete de cada gol saem do módulo puro, com os dados que
   // esta página já carregou — nenhuma consulta a mais. O mesmo montarResumo
   // alimenta a tela de avaliação e o e-mail de encerramento, e é por isso que
-  // ele existe: a regra do colete (escalação do jogo, com o `side` do gol de
-  // reserva) tinha três candidatos a dono e nenhum era natural.
+  // ele existe: a regra do colete (o `side` gravado no gol, com a escalação do
+  // jogo de reserva) tinha três candidatos a dono e nenhum era natural.
   const resumo = montarResumo({
     times: teamList,
     jogos: gameList,

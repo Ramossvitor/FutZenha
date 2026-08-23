@@ -26,9 +26,11 @@ import {
   iniciarJogo,
   lancarGol,
   revogarSumula,
+  trocarDeLado,
 } from "./actions";
 
-export type LancamentoDaSumula = {
+export type GolNaSumula = {
+  tipo: "gol";
   id: number;
   lado: "A" | "B" | null;
   /** Apelido ou nome do autor; null = gol contra / sem autor. */
@@ -41,6 +43,21 @@ export type LancamentoDaSumula = {
   podeDesfazer: boolean;
 };
 
+export type TrocaNaSumula = {
+  tipo: "troca";
+  id: number;
+  /** Apelido ou nome de quem trocou de lado. */
+  jogador: string;
+  de: "A" | "B";
+  para: "A" | "B";
+  /** Quem operava a súmula na hora; null = operador apagado. */
+  por: string | null;
+  tempoAtras: string;
+};
+
+/** Os dois eventos que a linha do tempo mostra, já ordenados pelo servidor. */
+export type EventoNaSumula = GolNaSumula | TrocaNaSumula;
+
 export type JogoAberto = {
   id: number;
   scoreA: number;
@@ -50,7 +67,7 @@ export type JogoAberto = {
   emAndamentoHa: string;
   ladoA: { playerId: number; rotulo: string }[];
   ladoB: { playerId: number; rotulo: string }[];
-  lancamentos: LancamentoDaSumula[];
+  eventos: EventoNaSumula[];
 };
 
 export type PainelSumulaProps = {
@@ -67,18 +84,22 @@ export function PainelSumula(props: PainelSumulaProps) {
   const { matchDayId, jogo } = props;
   const [ladoAberto, setLadoAberto] = useState<"A" | "B" | null>(null);
 
-  // O sheet fecha quando o lançamento ATERRISSA — o id mais recente da lista
-  // muda quando o payload novo do servidor chega. Fechar no toque cancelaria o
-  // submit junto (o form desmontaria antes do dispatch); fechar aqui é honesto:
-  // o spinner do jogador tocado fica visível até o gol existir de verdade.
-  const marcaRef = useRef(jogo?.lancamentos[0]?.id ?? null);
+  // O sheet fecha quando o GOL aterrissa — o id do gol mais recente muda quando
+  // o payload novo do servidor chega. Fechar no toque cancelaria o submit junto
+  // (o form desmontaria antes do dispatch); fechar aqui é honesto: o spinner do
+  // jogador tocado fica visível até o gol existir de verdade.
+  //
+  // Só os gols contam: a linha do tempo agora também traz as trocas de lado, e
+  // uma troca de outro operador fechando o sheet de quem está escolhendo o
+  // autor seria o toque perdido que este efeito existe para evitar.
+  const ultimoGol = jogo?.eventos.find((e) => e.tipo === "gol")?.id ?? null;
+  const marcaRef = useRef(ultimoGol);
   useEffect(() => {
-    const marca = jogo?.lancamentos[0]?.id ?? null;
-    if (marca !== marcaRef.current) {
-      marcaRef.current = marca;
+    if (ultimoGol !== marcaRef.current) {
+      marcaRef.current = ultimoGol;
       setLadoAberto(null);
     }
-  }, [jogo?.lancamentos]);
+  }, [ultimoGol]);
 
   if (!jogo) {
     return (
@@ -129,6 +150,8 @@ export function PainelSumula(props: PainelSumulaProps) {
         <BotaoDeGol time={jogo.timeA} onClick={() => setLadoAberto("A")} />
         <BotaoDeGol time={jogo.timeB} onClick={() => setLadoAberto("B")} />
       </div>
+
+      <SecaoEscalacao matchDayId={matchDayId} jogo={jogo} />
 
       <SecaoLancamentos matchDayId={matchDayId} jogo={jogo} />
 
@@ -241,6 +264,93 @@ function SheetDeAutor({
   );
 }
 
+/**
+ * Quem está de cada lado AGORA, com o botão de passar para o outro. Fica acima
+ * dos lançamentos porque é o que o operador precisa conferir de relance quando
+ * alguém troca de colete no meio — e porque trocar é a única ação do painel que
+ * muda o que o sheet de autor vai oferecer no gol seguinte.
+ */
+function SecaoEscalacao({ matchDayId, jogo }: { matchDayId: number; jogo: JogoAberto }) {
+  return (
+    <Section titulo="Escalação">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <ListaDoLado
+          matchDayId={matchDayId}
+          gameId={jogo.id}
+          time={jogo.timeA}
+          outroTime={jogo.timeB}
+          jogadores={jogo.ladoA}
+        />
+        <ListaDoLado
+          matchDayId={matchDayId}
+          gameId={jogo.id}
+          time={jogo.timeB}
+          outroTime={jogo.timeA}
+          jogadores={jogo.ladoB}
+        />
+      </div>
+      <p className="text-[11.5px] text-fg-4">
+        Trocar vale para este jogo e para o colete nos próximos. Os gols já lançados continuam do
+        lado em que saíram; vitória, derrota e a avaliação contam o time em que a pessoa terminou.
+        Para voltar atrás, é só trocar de novo.
+      </p>
+    </Section>
+  );
+}
+
+function ListaDoLado({
+  matchDayId,
+  gameId,
+  time,
+  outroTime,
+  jogadores,
+}: {
+  matchDayId: number;
+  gameId: number;
+  time: string;
+  outroTime: string;
+  jogadores: { playerId: number; rotulo: string }[];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <span className="flex items-center gap-2">
+          <VestChip time={time} tamanho="sm" />
+          <span className="truncate font-display text-[13px] font-extrabold font-stretch-112% text-fg">
+            {time}
+          </span>
+        </span>
+      </CardHeader>
+      <CardBody>
+        {jogadores.length === 0 ? (
+          <p className="text-[12.5px] text-fg-4">Ninguém deste lado.</p>
+        ) : (
+          <HairlineList as="ul">
+            {jogadores.map((j) => (
+              <HairlineRow as="li" key={j.playerId}>
+                <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
+                  {j.rotulo}
+                </span>
+                <form action={trocarDeLado.bind(null, matchDayId, gameId, j.playerId)}>
+                  {/* A confirmação diz o DESTINO, e não "Confirma?": no meio do
+                      jogo o operador precisa ler para onde a pessoa vai antes
+                      do segundo toque. */}
+                  <ConfirmarSubmit
+                    rotulo="Trocar de lado"
+                    confirmacao={`Vai para o ${outroTime}?`}
+                    tamanho="sm"
+                    className="shrink-0"
+                  />
+                </form>
+              </HairlineRow>
+            ))}
+          </HairlineList>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 function SecaoLancamentos({
   matchDayId,
   jogo,
@@ -248,7 +358,7 @@ function SecaoLancamentos({
   matchDayId: number;
   jogo: JogoAberto;
 }) {
-  if (jogo.lancamentos.length === 0) {
+  if (jogo.eventos.length === 0) {
     return (
       <Section titulo="Lançamentos">
         <EmptyState
@@ -258,35 +368,59 @@ function SecaoLancamentos({
       </Section>
     );
   }
+  const nomeDoLado = (lado: "A" | "B" | null) =>
+    lado === "A" ? jogo.timeA : lado === "B" ? jogo.timeB : "";
+
   return (
     <Section titulo="Lançamentos">
       <HairlineList as="ul">
-        {jogo.lancamentos.map((l) => (
-          <HairlineRow as="li" key={l.id} apagado={l.desfeito}>
-            <VestChip time={l.lado === "A" ? jogo.timeA : l.lado === "B" ? jogo.timeB : ""} tamanho="sm" />
-            <span className="min-w-0 flex-1">
-              <span
-                className={`block truncate font-display text-[14px] font-bold ${
-                  l.desfeito ? "text-fg-4 line-through" : l.autor === null ? "text-fg-3 italic" : "text-fg"
-                }`}
-              >
-                {l.autor ?? "Gol contra / sem autor"}
+        {jogo.eventos.map((e) =>
+          e.tipo === "troca" ? (
+            // A troca não tem desfazer: voltar é trocar de novo, e as duas
+            // linhas ficam. O chip é o do time de DESTINO — a linha se lê como
+            // "fulano agora é do verde".
+            <HairlineRow as="li" key={`troca-${e.id}`}>
+              <VestChip time={nomeDoLado(e.para)} tamanho="sm" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-display text-[14px] font-bold text-fg">
+                  {e.jogador} foi para o {nomeDoLado(e.para)}
+                </span>
+                <span className="block truncate text-[11.5px] text-fg-4">
+                  {`saiu do ${nomeDoLado(e.de)} · por ${e.por ?? "—"} · ${e.tempoAtras}`}
+                </span>
               </span>
-              {/* A auditoria é visível de propósito: todo operador vê quem
-                  lançou e quem desfez o quê — é a metade social do anti-abuso. */}
-              <span className="block truncate text-[11.5px] text-fg-4">
-                {l.desfeito
-                  ? `desfeito por ${l.desfeitoPor ?? "—"}`
-                  : `por ${l.lancadoPor ?? "—"} · ${l.tempoAtras}`}
+            </HairlineRow>
+          ) : (
+            <HairlineRow as="li" key={`gol-${e.id}`} apagado={e.desfeito}>
+              <VestChip time={nomeDoLado(e.lado)} tamanho="sm" />
+              <span className="min-w-0 flex-1">
+                <span
+                  className={`block truncate font-display text-[14px] font-bold ${
+                    e.desfeito
+                      ? "text-fg-4 line-through"
+                      : e.autor === null
+                        ? "text-fg-3 italic"
+                        : "text-fg"
+                  }`}
+                >
+                  {e.autor ?? "Gol contra / sem autor"}
+                </span>
+                {/* A auditoria é visível de propósito: todo operador vê quem
+                    lançou e quem desfez o quê — é a metade social do anti-abuso. */}
+                <span className="block truncate text-[11.5px] text-fg-4">
+                  {e.desfeito
+                    ? `desfeito por ${e.desfeitoPor ?? "—"}`
+                    : `por ${e.lancadoPor ?? "—"} · ${e.tempoAtras}`}
+                </span>
               </span>
-            </span>
-            {l.podeDesfazer && (
-              <form action={desfazerLancamento.bind(null, matchDayId, l.id)}>
-                <ConfirmarSubmit rotulo="Desfazer" confirmacao="Confirma?" tamanho="sm" varianteArmado="danger" className="shrink-0" />
-              </form>
-            )}
-          </HairlineRow>
-        ))}
+              {e.podeDesfazer && (
+                <form action={desfazerLancamento.bind(null, matchDayId, e.id)}>
+                  <ConfirmarSubmit rotulo="Desfazer" confirmacao="Confirma?" tamanho="sm" varianteArmado="danger" className="shrink-0" />
+                </form>
+              )}
+            </HairlineRow>
+          ),
+        )}
       </HairlineList>
     </Section>
   );
@@ -438,9 +572,10 @@ function SecaoDelegacao({ matchDayId, operadores, candidatos }: PainelSumulaProp
             )
           )}
           <p className="text-[11.5px] text-fg-4">
-            Quem recebe a súmula abre e finaliza os jogos, lança gol e desfaz o último de cada lado.
-            Não mexe em mais nada do fut — presenças, sorteio, edição de placar e encerramento
-            continuam só com quem organiza. Todo lançamento fica registrado com autor e hora.
+            Quem recebe a súmula abre e finaliza os jogos, lança gol, desfaz o último de cada lado e
+            troca jogador de lado no jogo em andamento. Não mexe em mais nada do fut — presenças,
+            sorteio, edição de placar e encerramento continuam só com quem organiza. Todo lançamento
+            e toda troca ficam registrados com autor e hora.
           </p>
         </CardBody>
       </Card>

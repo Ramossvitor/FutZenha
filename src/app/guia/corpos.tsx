@@ -477,10 +477,19 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         administra o fut desfaz qualquer lançamento do jogo aberto; quem só recebeu a súmula
         desfaz apenas o último do próprio lado.
       </p>
+      <p>
+        <strong className="text-fg">Trocou de time no meio?</strong> Acontece — alguém sai
+        machucado, o time fica desfalcado, chega gente. Na escalação do painel, cada nome tem o
+        botão de passar para o outro lado, e a partir dali a pessoa marca pelo time novo. Os
+        gols que ela já tinha feito continuam do time em que saíram, e todos contam na
+        artilharia dela. Já a vitória, a derrota e a lista de quem ela avalia (e de quem a
+        avalia) contam o time em que ela <strong className="text-fg">terminou</strong> o jogo. A
+        troca também vale para o colete nos jogos seguintes.
+      </p>
       <Banner tom="aviso">
         Quem administra pode passar a súmula para alguém que está jogando. Essa pessoa ganha
-        só a súmula — abrir jogo, lançar e desfazer gol. Não ganha a lista, o sorteio, nem o
-        encerramento. E perde a súmula na hora se sair da lista do fut.
+        só a súmula — abrir jogo, lançar e desfazer gol, e trocar jogador de lado. Não ganha a
+        lista, o sorteio, nem o encerramento. E perde a súmula na hora se sair da lista do fut.
       </Banner>
     </>
   ),

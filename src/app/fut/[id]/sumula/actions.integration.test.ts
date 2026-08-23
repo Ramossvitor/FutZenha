@@ -5,13 +5,25 @@
 // aberto. A matriz pura de decisão já está travada em src/lib/sumula.test.ts —
 // aqui o alvo é a composição com o Postgres, os guards e a concorrência.
 
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { addGoal } from "@/app/fut/[id]/gerenciar/actions";
 import { confirmarEncerramento } from "@/app/fut/[id]/gerenciar/encerrar/actions";
 import { db } from "@/db";
-import { attendances, gamePlayers, games, matchDays, sumulaOperadores, users } from "@/db/schema";
-import { getTopScorers } from "@/lib/stats";
+import {
+  attendances,
+  gamePlayers,
+  games,
+  matchDays,
+  sumulaOperadores,
+  teamPlayers,
+  teams,
+  trocasDeLado,
+  users,
+} from "@/db/schema";
+import { companheirosPorJogador } from "@/lib/lineup";
+import { getEscalacaoDoFut } from "@/lib/ratings";
+import { getPlayerRecords, getTopScorers } from "@/lib/stats";
 import {
   confirmarPresenca,
   criarJogador,
@@ -37,6 +49,7 @@ import {
   iniciarJogo,
   lancarGol,
   revogarSumula,
+  trocarDeLado,
 } from "./actions";
 
 async function abrirJogo(s: Sumula) {
@@ -47,6 +60,35 @@ async function abrirJogo(s: Sumula) {
     .where(eq(games.matchDayId, s.fut.id))
     .orderBy(asc(games.id));
   return jogo;
+}
+
+/** O lado do jogador NAQUELE jogo — a escalação, não o colete. */
+async function ladoNoJogo(gameId: number, playerId: number) {
+  const [linha] = await db
+    .select({ side: gamePlayers.side })
+    .from(gamePlayers)
+    .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerId, playerId)));
+  return linha?.side ?? null;
+}
+
+/** O colete do jogador no fut — o que o próximo jogo vai copiar. */
+async function timeDoJogador(matchDayId: number, playerId: number) {
+  const linhas = await db
+    .select({ teamId: teamPlayers.teamId })
+    .from(teamPlayers)
+    .innerJoin(teams, eq(teams.id, teamPlayers.teamId))
+    .where(and(eq(teams.matchDayId, matchDayId), eq(teamPlayers.playerId, playerId)));
+  // Um colete por fut: mais de um seria a troca deixando rastro nos dois times.
+  expect(linhas.length).toBeLessThanOrEqual(1);
+  return linhas[0]?.teamId ?? null;
+}
+
+async function trocasDoJogo(gameId: number) {
+  return db
+    .select()
+    .from(trocasDeLado)
+    .where(eq(trocasDeLado.gameId, gameId))
+    .orderBy(asc(trocasDeLado.id));
 }
 
 describe("iniciarJogo", () => {
@@ -415,6 +457,216 @@ describe("fronteira com o addGoal do /gerenciar", () => {
     await desfazerLancamento(s.fut.id, daSumula.id);
 
     expect(await jogoDoBanco(jogo.id)).toMatchObject({ scoreA: 0 });
+  });
+});
+
+/**
+ * Trocar de lado no meio do jogo. O que estes testes protegem é a divisão de
+ * trabalho entre as três escritas: `game_players` responde pelo lado em que a
+ * pessoa TERMINOU (e com ele V/E/D e avaliação), `team_players` pelo próximo
+ * jogo, `trocas_de_lado` pela auditoria — e os gols já lançados por ninguém,
+ * porque o lado deles é o do momento em que saíram.
+ */
+describe("trocarDeLado", () => {
+  it("move a escalação, o colete e grava o log no mesmo commit", async () => {
+    const s = await montarSumula();
+    const jogo = await abrirJogo(s);
+    const trocado = s.ladoA[0];
+
+    await trocarDeLado(s.fut.id, jogo.id, trocado.id);
+
+    expect(await ladoNoJogo(jogo.id, trocado.id)).toBe("B");
+    expect(await timeDoJogador(s.fut.id, trocado.id)).toBe(s.timeBId);
+    const trocas = await trocasDoJogo(jogo.id);
+    expect(trocas).toHaveLength(1);
+    expect(trocas[0]).toMatchObject({
+      playerId: trocado.id,
+      deLado: "A",
+      paraLado: "B",
+      createdByPlayerId: s.admin.id,
+    });
+  });
+
+  it("depois da troca, o gol sai pelo lado novo e o antigo é recusado", async () => {
+    const s = await montarSumula();
+    const jogo = await abrirJogo(s);
+    const trocado = s.ladoA[0];
+    // Um gol ANTES da troca: ele é do lado A e assim tem que ficar.
+    await lancarGol(s.fut.id, jogo.id, formDeGol("A", trocado.id));
+
+    await trocarDeLado(s.fut.id, jogo.id, trocado.id);
+    await lancarGol(s.fut.id, jogo.id, formDeGol("B", trocado.id));
+    const url = await esperaRedirect(
+      lancarGol(s.fut.id, jogo.id, formDeGol("A", trocado.id)),
+    );
+
+    expect(url).toBe(`/fut/${s.fut.id}/sumula?erro=artilheiro-fora-do-jogo`);
+    // 1×1: o gol de antes continua do A, o de depois é do B, e o recusado não
+    // mexeu em placar nenhum.
+    expect(await jogoDoBanco(jogo.id)).toMatchObject({ scoreA: 1, scoreB: 1 });
+    expect((await golsDoJogo(jogo.id)).map((g) => g.side)).toEqual(["A", "B"]);
+  });
+
+  it("trocar de volta é outra troca — as duas linhas ficam", async () => {
+    const s = await montarSumula();
+    const jogo = await abrirJogo(s);
+    const trocado = s.ladoA[0];
+
+    await trocarDeLado(s.fut.id, jogo.id, trocado.id);
+    await trocarDeLado(s.fut.id, jogo.id, trocado.id);
+
+    expect(await ladoNoJogo(jogo.id, trocado.id)).toBe("A");
+    expect(await timeDoJogador(s.fut.id, trocado.id)).toBe(s.timeAId);
+    expect((await trocasDoJogo(jogo.id)).map((t) => `${t.deLado}${t.paraLado}`)).toEqual([
+      "AB",
+      "BA",
+    ]);
+  });
+
+  it("o próximo jogo nasce com o jogador no time novo", async () => {
+    const s = await montarSumula();
+    const primeiro = await abrirJogo(s);
+    const trocado = s.ladoA[0];
+    await trocarDeLado(s.fut.id, primeiro.id, trocado.id);
+    await finalizarJogo(s.fut.id, primeiro.id);
+
+    await iniciarJogo(s.fut.id, formDeTimes(s.timeAId, s.timeBId));
+
+    const [, segundo] = await db
+      .select()
+      .from(games)
+      .where(eq(games.matchDayId, s.fut.id))
+      .orderBy(asc(games.id));
+    expect(await ladoNoJogo(segundo.id, trocado.id)).toBe("B");
+    // E o colete não some de ninguém: o snapshot continua com os quatro.
+    expect(
+      await db.select().from(gamePlayers).where(eq(gamePlayers.gameId, segundo.id)),
+    ).toHaveLength(4);
+  });
+
+  it("delegado troca; quem não opera cai no 404 do guard", async () => {
+    const s = await montarSumula();
+    const delegado = await criarDelegado(s.fut);
+    const jogo = await abrirJogo(s);
+
+    await logarComo(delegado.conta);
+    await trocarDeLado(s.fut.id, jogo.id, s.ladoA[0].id);
+    expect(await ladoNoJogo(jogo.id, s.ladoA[0].id)).toBe("B");
+
+    const { conta } = await criarJogadorComConta();
+    await logarComo(conta);
+    await esperaNotFound(trocarDeLado(s.fut.id, jogo.id, s.ladoA[1].id));
+    expect(await ladoNoJogo(jogo.id, s.ladoA[1].id)).toBe("A");
+  });
+
+  it("não esvazia um lado — a mesma regra que o encerramento cobra depois", async () => {
+    const s = await montarSumula();
+    const jogo = await abrirJogo(s);
+    await trocarDeLado(s.fut.id, jogo.id, s.ladoA[0].id);
+
+    const url = await esperaRedirect(trocarDeLado(s.fut.id, jogo.id, s.ladoA[1].id));
+
+    expect(url).toBe(`/fut/${s.fut.id}/sumula?erro=jogo-sem-time`);
+    expect(await ladoNoJogo(jogo.id, s.ladoA[1].id)).toBe("A");
+    expect(await trocasDoJogo(jogo.id)).toHaveLength(1);
+  });
+
+  it("recusa quem não está na escalação e o jogo já finalizado", async () => {
+    const s = await montarSumula();
+    const jogo = await abrirJogo(s);
+    const forasteiro = await criarJogador();
+
+    expect(await esperaRedirect(trocarDeLado(s.fut.id, jogo.id, forasteiro.id))).toBe(
+      `/fut/${s.fut.id}/sumula?erro=jogador-fora-do-jogo`,
+    );
+
+    await finalizarJogo(s.fut.id, jogo.id);
+    expect(await esperaRedirect(trocarDeLado(s.fut.id, jogo.id, s.ladoA[0].id))).toBe(
+      `/fut/${s.fut.id}/sumula?erro=jogo-nao-esta-aberto`,
+    );
+    expect(await trocasDoJogo(jogo.id)).toHaveLength(0);
+    expect(await ladoNoJogo(jogo.id, s.ladoA[0].id)).toBe("A");
+  });
+
+  // O mesmo desenho do "escopo por fut" mais abaixo: o fut alheio nasce
+  // primeiro, e o montarSumula seguinte já deixa o admin do MEU fut logado.
+  it("operador de um fut não troca ninguém no jogo de outro", async () => {
+    const alheio = await montarSumula();
+    const jogoAlheio = await abrirJogo(alheio);
+
+    const meu = await montarSumula();
+    await abrirJogo(meu);
+
+    const url = await esperaRedirect(
+      trocarDeLado(meu.fut.id, jogoAlheio.id, alheio.ladoA[0].id),
+    );
+
+    expect(url).toBe(`/fut/${meu.fut.id}/sumula?erro=jogo-nao-esta-aberto`);
+    expect(await ladoNoJogo(jogoAlheio.id, alheio.ladoA[0].id)).toBe("A");
+    expect(await trocasDoJogo(jogoAlheio.id)).toHaveLength(0);
+  });
+
+  it("fut encerrado recusa", async () => {
+    const s = await montarSumula();
+    const jogo = await abrirJogo(s);
+    await db
+      .update(matchDays)
+      .set({ status: "finished", finishedAt: sql`now()` })
+      .where(eq(matchDays.id, s.fut.id));
+
+    const url = await esperaRedirect(trocarDeLado(s.fut.id, jogo.id, s.ladoA[0].id));
+
+    expect(url).toBe(`/fut/${s.fut.id}/sumula?erro=fut-encerrado`);
+    expect(await trocasDoJogo(jogo.id)).toHaveLength(0);
+  });
+});
+
+/**
+ * O que a troca significa DEPOIS do apito: quem trocou termina contado no time
+ * em que acabou — no V/E/D e na lista de quem ele avalia —, enquanto os gols
+ * dele continuam somando para ele, tenham saído por qual lado for.
+ */
+describe("a troca de lado nas estatísticas do fut encerrado", () => {
+  it("V/E/D e companheiros seguem o lado final; a artilharia soma os dois", async () => {
+    const s = await montarSumula({ comContas: true });
+    const jogo = await abrirJogo(s);
+    const trocado = s.ladoA[0];
+
+    // Um gol para cada lado, do mesmo jogador, com a troca no meio. O B vence
+    // por 2×1 — e o trocado termina no B.
+    await lancarGol(s.fut.id, jogo.id, formDeGol("A", trocado.id));
+    await trocarDeLado(s.fut.id, jogo.id, trocado.id);
+    await lancarGol(s.fut.id, jogo.id, formDeGol("B", trocado.id));
+    await lancarGol(s.fut.id, jogo.id, formDeGol("B", s.ladoB[0].id));
+    await finalizarJogo(s.fut.id, jogo.id);
+    await esperaRedirect(confirmarEncerramento(s.fut.id));
+
+    expect(await jogoDoBanco(jogo.id)).toMatchObject({ scoreA: 1, scoreB: 2 });
+
+    // Artilharia: os dois gols contam, sem olhar o lado de cada um.
+    const artilharia = await getTopScorers();
+    expect(artilharia.find((a) => a.playerId === trocado.id)).toMatchObject({ total: 2 });
+
+    // V/E/D: venceu, porque terminou no B. Quem ficou no A, perdeu.
+    const records = await getPlayerRecords();
+    expect(records.find((r) => r.playerId === trocado.id)).toMatchObject({
+      wins: 1,
+      losses: 0,
+      gamesPlayed: 1,
+    });
+    expect(records.find((r) => r.playerId === s.ladoA[1].id)).toMatchObject({
+      wins: 0,
+      losses: 1,
+    });
+
+    // Avaliação: os companheiros são os do B, e quem ficou no A não está lá.
+    const companheiros = companheirosPorJogador(await getEscalacaoDoFut(db, s.fut.id));
+    expect([...(companheiros.get(trocado.id) ?? [])].sort()).toEqual(
+      s.ladoB.map((p) => p.id).sort(),
+    );
+    // E o inverso: o lado B agora enxerga quem chegou.
+    expect(companheiros.get(s.ladoB[0].id)).toContain(trocado.id);
+    expect(companheiros.get(s.ladoA[1].id)).not.toContain(trocado.id);
   });
 });
 

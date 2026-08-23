@@ -5,7 +5,12 @@ import { LinkButton } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
 import { requireOperadorSumula } from "@/lib/require-operador-sumula";
-import { marcarPodeDesfazer, sumulaDisponivel, tempoAtras } from "@/lib/sumula";
+import {
+  marcarPodeDesfazer,
+  montarLinhaDoTempo,
+  sumulaDisponivel,
+  tempoAtras,
+} from "@/lib/sumula";
 import { carregarSumula } from "./dados";
 import { PainelSumula, type JogoAberto } from "./painel";
 
@@ -53,16 +58,30 @@ export default async function SumulaPage({ params, searchParams }: PageProps<"/f
       ladoB: dados.lineupRows
         .filter((m) => m.side === "B")
         .map((m) => ({ playerId: m.playerId, rotulo: m.apelido ?? m.nome })),
-      lancamentos: lancamentos.map((l) => ({
-        id: l.id,
-        lado: l.side,
-        autor: l.autorApelido ?? l.autorNome,
-        lancadoPor: l.lancadoPorApelido ?? l.lancadoPor,
-        tempoAtras: tempoAtras(l.segundosAtras),
-        desfeito: l.desfeito,
-        desfeitoPor: l.desfeitoPorApelido ?? l.desfeitoPor,
-        podeDesfazer: l.podeDesfazer,
-      })),
+      // Gols e trocas de lado numa lista só, ordenada pelo relógio do banco —
+      // o id não serve de relógio entre duas tabelas (ver montarLinhaDoTempo).
+      eventos: montarLinhaDoTempo(
+        lancamentos.map((l) => ({
+          id: l.id,
+          criadoEm: l.criadoEm,
+          lado: l.side,
+          autor: l.autorApelido ?? l.autorNome,
+          lancadoPor: l.lancadoPorApelido ?? l.lancadoPor,
+          tempoAtras: tempoAtras(l.segundosAtras),
+          desfeito: l.desfeito,
+          desfeitoPor: l.desfeitoPorApelido ?? l.desfeitoPor,
+          podeDesfazer: l.podeDesfazer,
+        })),
+        dados.trocaRows.map((t) => ({
+          id: t.id,
+          criadoEm: t.criadoEm,
+          jogador: t.jogadorApelido ?? t.jogadorNome,
+          de: t.de,
+          para: t.para,
+          por: t.porApelido ?? t.porNome,
+          tempoAtras: tempoAtras(t.segundosAtras),
+        })),
+      ),
     };
   }
 

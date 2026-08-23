@@ -10,6 +10,7 @@ import {
   attendances,
   gamePlayers,
   games,
+  goals,
   groupMembers,
   invites,
   matchDays,
@@ -29,7 +30,7 @@ import {
   promoverDaEspera,
   updateMatchDay,
 } from "@/app/fut/[id]/gerenciar/actions";
-import { incluirNoJogo } from "@/app/fut/[id]/gerenciar/encerrar/actions";
+import { incluirNoJogo, moverLado } from "@/app/fut/[id]/gerenciar/encerrar/actions";
 import {
   confirmarPresenca,
   criarJogador,
@@ -443,6 +444,51 @@ describe("incluirNoJogo", () => {
       .where(and(eq(gamePlayers.gameId, jogo.id), eq(gamePlayers.playerId, faltoso.id)));
     expect(escalado?.side).toBe("A");
     expect((await linhaDe(fut, faltoso))?.status).toBe("in");
+  });
+});
+
+describe("moverLado", () => {
+  // Correção depois do jogo: a escalação estava errada, e o `side` que o
+  // lançamento copiou dela também. Os dois viram juntos — senão o chip do gol
+  // (que lê o `side` gravado antes da escalação) não mostraria o conserto. O
+  // gol sem lado gravado é de antes da súmula e continua derivado da escalação.
+  it("vira a escalação e os gols com lado gravado; o gol sem lado fica nulo", async () => {
+    const { fut } = await futComAdminLogado({ status: "teams_drawn" });
+    const jogador = await criarJogador();
+    await confirmarPresenca(fut, jogador, { status: "in", minutosAtras: 10 });
+
+    const [timeA] = await db
+      .insert(teams)
+      .values({ matchDayId: fut.id, name: "Preto", sortOrder: 0 })
+      .returning();
+    const [timeB] = await db
+      .insert(teams)
+      .values({ matchDayId: fut.id, name: "Branco", sortOrder: 1 })
+      .returning();
+    const [jogo] = await db
+      .insert(games)
+      .values({ matchDayId: fut.id, teamAId: timeA.id, teamBId: timeB.id })
+      .returning();
+    await db.insert(gamePlayers).values({ gameId: jogo.id, playerId: jogador.id, side: "A" });
+    await db.insert(goals).values([
+      { gameId: jogo.id, playerId: jogador.id, quantity: 1, side: "A" },
+      { gameId: jogo.id, playerId: jogador.id, quantity: 1, side: null },
+    ]);
+
+    await moverLado(fut.id, jogo.id, jogador.id);
+
+    const [escalado] = await db
+      .select({ side: gamePlayers.side })
+      .from(gamePlayers)
+      .where(and(eq(gamePlayers.gameId, jogo.id), eq(gamePlayers.playerId, jogador.id)));
+    expect(escalado?.side).toBe("B");
+
+    const gols = await db
+      .select({ side: goals.side })
+      .from(goals)
+      .where(and(eq(goals.gameId, jogo.id), eq(goals.playerId, jogador.id)))
+      .orderBy(goals.id);
+    expect(gols.map((g) => g.side)).toEqual(["B", null]);
   });
 });
 
