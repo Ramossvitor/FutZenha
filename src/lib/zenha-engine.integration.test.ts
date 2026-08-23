@@ -3,10 +3,9 @@
 // A aritmética das quatro fontes já está travada em zenha.test.ts — o alvo aqui
 // é a composição: os FATOS saírem certos do Postgres e chegarem ao motor puro.
 // Quatro coisas só existem deste lado e não têm como ser exercitadas fora do
-// banco: a MATURIDADE do fut (rodada fechada, prazo de contestação vencido,
-// nenhuma denúncia aberta), o teto semanal pelo `date_trunc('week')`, a
-// sequência de presenças lida de trás para frente e o extrato que sobrevive ao
-// fut apagado.
+// banco: o PONTO DE PAGAMENTO do fut (a rodada de avaliação fechada, e só isso),
+// o teto semanal pelo `date_trunc('week')`, a sequência de presenças lida de
+// trás para frente e o extrato que sobrevive ao fut apagado.
 //
 // E, ao fim de todo cenário que paga, o mesmo fecho que
 // carteira.integration.test.ts cobra: `saldo == sum(amount)`.
@@ -30,9 +29,10 @@ import {
   type Player,
 } from "@/db/schema";
 import { apagarFut } from "@/lib/deletion";
+import { resolverDenuncia } from "@/lib/reports";
 import { AJUSTES_PADRAO, ZENHA_DESDE, type Ajustes } from "@/lib/zenha";
 import { salvarAjuste } from "@/lib/zenha-config";
-import { futsALiquidar, liquidarFut, liquidarFutsMaduros } from "@/lib/zenha-engine";
+import { futsALiquidar, liquidarFut, liquidarFutsProntos } from "@/lib/zenha-engine";
 import { confirmarPresenca, criarFut, criarJogadorComConta } from "@/test/fixtures";
 import { criarJogo } from "@/test/fixtures-avaliacao";
 import { criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
@@ -107,8 +107,7 @@ async function criarElenco(
  * `min_contas_para_pagar`. Uma a menos e o fut não paga nada a ninguém.
  *
  * Sai daqui ainda ABERTO: quem encerra e empurra o relógio é `amadurecer`, e
- * separar os dois é o que deixa os testes de maturidade escolherem em que ponto
- * do amadurecimento o fut para.
+ * separar os dois é o que deixa os testes escolherem em que ponto o fut para.
  */
 async function montarFutPago(
   opcoes: { groupId?: number; elenco?: Player[]; emCampo?: Player[]; data?: string } = {},
@@ -132,6 +131,10 @@ async function montarFutPago(
  * dentro da janela de liquidação, rodada no estado pedido e prazo de contestação
  * vencido ou correndo. Devolve o id da rodada, ou null quando o fut encerrou sem
  * avaliação nenhuma.
+ *
+ * `contestacao` NÃO decide mais se o fut paga — quem decide é `rodada`. Ela
+ * continua aqui porque é o que monta o cenário em que a contestação chega depois
+ * do dinheiro, que é a troca que o pagamento no fechamento aceita.
  *
  * Tudo pelo relógio do BANCO — o `finished_at` e os dois prazos são comparados
  * com `now()` dentro da query, e skew entre o runner e o container viraria flake.
@@ -258,7 +261,7 @@ async function denunciar(roundId: number, autor: Player, alvo: Player): Promise<
 const liquidar = (fut: MatchDay, ajustes: Ajustes = AJUSTES_PADRAO) =>
   db.transaction((tx) => liquidarFut(tx, fut.id, ajustes));
 
-const varrer = () => db.transaction((tx) => liquidarFutsMaduros(tx));
+const varrer = () => db.transaction((tx) => liquidarFutsProntos(tx));
 
 async function linhasDe(jogador: Player) {
   return db
@@ -307,11 +310,11 @@ async function conferirFecho(jogadores: readonly Player[]): Promise<void> {
   }
 }
 
-// ── Maturidade ──────────────────────────────────────────────────────────────
+// ── O ponto de pagamento ────────────────────────────────────────────────────
 
 describe("futsALiquidar", () => {
-  // Enquanto a rodada corre, a nota e o MVP ainda não existem: pagar aqui seria
-  // pagar por fato que vai mudar, e o ledger é append-only.
+  // A ÚNICA coisa que segura o pagamento. Enquanto a rodada corre, a nota e o
+  // MVP não existem — não há o que pagar, não é uma espera prudente.
   it("segura o fut cuja rodada de avaliação ainda está aberta", async () => {
     const { fut } = await montarFutPago();
     await amadurecer(fut, { rodada: "aberta" });
@@ -319,36 +322,23 @@ describe("futsALiquidar", () => {
     expect(await futsALiquidar(db)).toEqual([]);
   });
 
-  // O prazo de contestação é o que separa "a rodada fechou" de "a nota é final":
-  // uma denúncia aberta dentro dele ainda pode descartar avaliação e mudar quem
-  // recebe. Só depois de ele vencer o fato está congelado.
-  it("segura o fut enquanto o prazo de contestação corre, e solta quando ele vence", async () => {
+  // A rodada fechada basta. O prazo de contestação começa a correr no fechamento
+  // e por definição ainda está aberto quando a zenha sai — esperá-lo é o que esta
+  // versão deixou de fazer, e é o que aproxima o pagamento do gesto.
+  it("paga com o prazo de contestação ainda correndo", async () => {
     const { fut } = await montarFutPago();
     await amadurecer(fut, { contestacao: "correndo" });
-
-    expect(await futsALiquidar(db)).toEqual([]);
-
-    await db
-      .update(ratingRounds)
-      .set({ reportDeadlineAt: sql`now() - interval '1 minute'` })
-      .where(eq(ratingRounds.matchDayId, fut.id));
 
     expect(await futsALiquidar(db)).toEqual([fut.id]);
   });
 
-  // Uma denúncia aceita descarta a avaliação e reescreve a nota de quem já teria
-  // sido pago. Sem estorno no ledger, o único desfecho seguro é esperar.
-  it("segura o fut com denúncia aberta sobre a rodada, e solta quando ela é resolvida", async () => {
+  // A troca aceita, do lado da fila: denúncia em aberto não segura mais nada.
+  // O que ela pode mudar é a nota — nunca o extrato (ver o teste do desfecho
+  // abaixo).
+  it("paga mesmo com denúncia aberta sobre a rodada", async () => {
     const { fut, elenco } = await montarFutPago();
     const roundId = (await amadurecer(fut))!;
-    const denunciaId = await denunciar(roundId, elenco[0], elenco[1]);
-
-    expect(await futsALiquidar(db)).toEqual([]);
-
-    await db
-      .update(ratingReports)
-      .set({ status: "accepted", resolvedAt: sql`now()`, resolvedBy: "admin" })
-      .where(eq(ratingReports.id, denunciaId));
+    await denunciar(roundId, elenco[0], elenco[1]);
 
     expect(await futsALiquidar(db)).toEqual([fut.id]);
   });
@@ -819,6 +809,53 @@ describe("ajustes do admin", () => {
     expect(await motivosDoFut(elenco[0], antes.fut)).toEqual({ participacao: PARTICIPACAO });
     expect(await motivosDoFut(elenco[0], depois.fut)).toEqual({ participacao: 250 });
     expect(await saldoDe(elenco[0])).toBe(PARTICIPACAO + 250);
+    await conferirFecho(elenco);
+  });
+});
+
+// ── A contestação que chega depois do dinheiro ──────────────────────────────
+
+describe("denúncia aceita depois da liquidação", () => {
+  // O desfecho da troca, e o teste que a documenta: pagar no fechamento põe a
+  // zenha na frente da contestação. Aceitar a denúncia recalcula a NOTA — e não
+  // estorna, não devolve e não completa nada no extrato, porque não existe código
+  // de desfazimento em lugar nenhum do sistema. É a propriedade inteira.
+  it("recalcula a nota e não move nem o extrato nem o saldo", async () => {
+    const { fut, elenco } = await montarFutPago();
+    const roundId = (await amadurecer(fut))!;
+    await registrarRaters(roundId, ritualCompleto(elenco, elenco[0], elenco[1]));
+    const premiado = elenco[2];
+    await registrarNota(roundId, premiado, 5, 5.3);
+
+    expect(await varrer()).toBe(1);
+    const extratoAntes = await linhasDe(premiado);
+    expect(await motivosDe(premiado)).toEqual({
+      participacao: PARTICIPACAO,
+      nota: 3 * POR_DECIMO,
+    });
+
+    // A avaliação denunciada é a que `premiado` recebeu — o caminho real: quem
+    // apanhou na nota é quem contesta.
+    const denunciaId = await denunciar(roundId, elenco[3], premiado);
+    expect(
+      await db.transaction((tx) => resolverDenuncia(tx, denunciaId, true, { tipo: "auto" })),
+    ).toBe(true);
+
+    // O replay reescreve `skill_history` do zero (ele apaga a tabela inteira e
+    // reprojeta a partir das avaliações válidas), então a subida de 0,3 que
+    // pagou a fonte "nota" some do histórico. É exatamente o fato pelo qual
+    // ninguém é cobrado de volta — e é o que torna a asserção seguinte um
+    // contrato, e não uma coincidência.
+    expect(
+      await db.select().from(skillHistory).where(eq(skillHistory.playerId, premiado.id)),
+    ).toHaveLength(0);
+
+    expect(await linhasDe(premiado)).toEqual(extratoAntes);
+    expect(await saldoDe(premiado)).toBe(PARTICIPACAO + 3 * POR_DECIMO);
+    // E o fut não volta para a fila: `liquidado_em` já está carimbado, então nem
+    // uma varredura seguinte reabre a conta.
+    expect(await futsALiquidar(db)).toEqual([]);
+    expect(await varrer()).toBe(0);
     await conferirFecho(elenco);
   });
 });

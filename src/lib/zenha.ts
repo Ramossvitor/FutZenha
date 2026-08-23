@@ -441,9 +441,9 @@ export function presencasSeguidas(futs: readonly FutDaSequencia[]): number {
  * O múltiplo, e não um contador que zera: "a cada 5 presenças seguidas" é
  * exatamente `seguidas % 5 === 0`, e derivar isso da contagem em vez de guardar
  * estado torna a resposta a mesma sempre que for recalculada. Importa porque a
- * liquidação pode acontecer fora de ordem — um fut segurado por denúncia é pago
- * depois de outro mais recente —, e com contador materializado a ordem mudaria
- * quem recebe.
+ * liquidação pode acontecer fora de ordem — um fut cuja rodada de avaliação
+ * ainda corre é pago depois de outro mais recente que já fechou —, e com
+ * contador materializado a ordem mudaria quem recebe.
  */
 export function fechouSequencia(seguidas: number, ajustes: Ajustes): boolean {
   return seguidas > 0 && seguidas % ajustes.streak_tamanho === 0;

@@ -373,10 +373,16 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         seria pagar por engano.
       </Banner>
       <p>
-        <strong className="text-fg">A zenha do fut não cai na hora.</strong> Ela entra quando o
-        fut amadurece: o placar trava, a avaliação fecha e o prazo de contestação das notas
-        passa — na prática, um a dois dias depois. É o que garante que ninguém receba por uma
-        nota que uma contestação ainda vai mudar. Quando cair, chega um aviso com o total.
+        <strong className="text-fg">A zenha cai quando a avaliação fecha</strong> — e a
+        avaliação fecha no instante em que o último companheiro avalia, ou quando as{" "}
+        {PRAZO_AVALIACAO_HORAS}h do prazo vencem, o que vier primeiro. É o primeiro momento
+        em que as quatro fontes existem ao mesmo tempo: antes disso não há nota nem melhor em
+        campo para pagar. Quando cair, chega um aviso com o total.
+      </p>
+      <p>
+        Ou seja: avaliar rápido não adianta só para você.{" "}
+        <strong className="text-fg">Quando todo mundo avalia, todo mundo recebe na hora</strong>{" "}
+        — e quem enrola segura o pagamento do grupo inteiro até o prazo estourar.
       </p>
       <p>
         Faltou? A sequência quebra e a contagem recomeça. Ficar na lista de espera{" "}
@@ -585,6 +591,12 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         Aceita a contestação, aquelas avaliações saem da conta e a nota é recalculada desde o
         começo — a sua e a de todo mundo que jogou com você dali em diante.
       </p>
+      <Banner tom="aviso">
+        A contestação corrige a <strong className="text-fg">nota</strong>, nunca a{" "}
+        <strong className="text-fg">zenha</strong>. A zenha do fut já foi paga quando a
+        avaliação fechou, e nada no extrato é desfeito: ninguém perde saldo por uma
+        contestação, e ninguém ganha a diferença por causa dela.
+      </Banner>
     </>
   ),
 

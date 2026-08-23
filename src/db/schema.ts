@@ -954,9 +954,9 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "fut_encerrado",
   "fut_encerrado_no_grupo",
   // A zenha creditada por um fut, num aviso só. O crédito não sai no
-  // encerramento — sai na liquidação, um a dois dias depois, quando placar e
-  // notas param de mudar (ver src/lib/zenha-engine.ts) —, então ele não tinha
-  // como pegar carona no `fut_encerrado`, que já foi embora.
+  // encerramento — sai quando a rodada de avaliação fecha, que é onde a nota e o
+  // MVP nascem (ver src/lib/zenha-engine.ts) —, então ele não tinha como pegar
+  // carona no `fut_encerrado`, que já foi embora.
   //
   // O consumo do multiplicador NÃO tem tipo próprio: vai no corpo deste
   // mesmo aviso. Já a devolução tem, porque contraria a expectativa de quem
@@ -1251,8 +1251,9 @@ export const matchDayDeletionVoters = pgTable(
 // 1. O ledger é APPEND-ONLY e nunca é recalculado. A nota é o oposto — ela é
 //    replay completo desde 5,0 a cada denúncia aceita (ver src/lib/skill.ts) —,
 //    mas dinheiro já pode ter virado item, e não existe replay de um gasto. Por
-//    isso o crédito só sai quando o fut amadurece: placar travado, prazo de
-//    contestação vencido, nenhuma denúncia aberta. Sem estorno, sem
+//    isso o crédito só sai quando a rodada de avaliação fecha — antes disso não
+//    há nota nem MVP para pagar — e, uma vez fora, não volta: uma denúncia
+//    aceita depois reescreve a NOTA e não o extrato. Sem estorno, sem
 //    complemento, sem ratchet.
 // 2. O saldo é MATERIALIZADO em `zenha_carteiras`, e não derivado de
 //    `sum(amount)`. Duas coisas que a soma não dá: uma linha para o UPDATE
@@ -1512,8 +1513,9 @@ export const zenhaCarteiras = pgTable(
  * promessa que sustenta o resto do desenho. A nota faz o oposto (replay
  * completo desde 5,0 a cada denúncia aceita, ver src/lib/skill.ts), mas a nota
  * é um número; zenha vira badge, e não existe replay de um gasto. Por isso o
- * crédito espera o fut amadurecer — placar travado, prazo de contestação
- * vencido, nenhuma denúncia aberta — e sai UMA vez, já sobre fato congelado.
+ * crédito espera a rodada de avaliação FECHAR — antes disso não há nota nem MVP
+ * para pagar — e sai UMA vez, definitivo: a contestação que vier depois corrige
+ * a nota, nunca o extrato.
  *
  * `unique(player_id, dedupe_key)` é a idempotência: o varredor pode passar duas
  * vezes pelo mesmo fut que o segundo insert não faz nada. As chaves são
