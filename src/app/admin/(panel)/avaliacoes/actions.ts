@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
+import { agendarProcessamento } from "@/lib/pendencias";
 import { podeJulgarDenuncia } from "@/lib/permissions";
 import { fecharRodada } from "@/lib/ratings-engine";
 import { julgadorImpedido, resolverDenuncia } from "@/lib/reports";
@@ -74,7 +75,12 @@ export async function julgarDenuncia(reportId: number, formData: FormData) {
  */
 export async function apurarAgora(roundId: number) {
   await requirePlatformAdmin();
-  await db.transaction((tx) => fecharRodada(tx, roundId, "admin"));
+  // Fechou aqui, a zenha do fut já pode ser paga (src/lib/zenha-engine.ts): a
+  // varredura é forçada para não deixar o pagamento pendurado no throttle de um
+  // minuto do layout. Idempotente — se não sair agora, sai no próximo pageview.
+  if (await db.transaction((tx) => fecharRodada(tx, roundId, "admin"))) {
+    agendarProcessamento(true);
+  }
   revalidarTudo();
   redirect("/admin/avaliacoes");
 }

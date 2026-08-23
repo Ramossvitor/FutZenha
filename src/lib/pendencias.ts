@@ -10,7 +10,7 @@ import { notificar } from "./notifications";
 import { fecharRodada, LOCK_NOTA } from "./ratings-engine";
 import { resolverDenunciasVencidas } from "./reports";
 import { soltarArmesDeFutsAbandonados } from "./multiplicador-engine";
-import { liquidarFutsMaduros } from "./zenha-engine";
+import { liquidarFutsProntos } from "./zenha-engine";
 
 export type ResultadoVarredura = {
   rodadasFechadas: number;
@@ -85,7 +85,7 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
     //
     // Também depois das denúncias: um aceite recalcula a nota, e a nota é uma
     // das quatro fontes. Nesta ordem, o que a liquidação lê já é o valor final.
-    const futsLiquidados = await liquidarFutsMaduros(tx);
+    const futsLiquidados = await liquidarFutsProntos(tx);
 
     // Depois da liquidação, e não antes: quem vai ser liquidado tem o arme
     // resolvido lá (consumido ou devolvido), e soltar antes devolveria item que
@@ -159,12 +159,23 @@ const INTERVALO_MS = 60_000;
  * Agenda a varredura para depois da resposta. `after` vale em Server Component
  * e em Server Action, e roda mesmo quando a action termina em `redirect()`.
  *
+ * `forcar` pula o throttle, e existe para um caso só: quem ACABOU de fechar uma
+ * rodada de avaliação. O fechamento é o marco em que a zenha do fut é paga
+ * (ver src/lib/zenha-engine.ts), e esperar até um minuto pelo próximo pageview
+ * transformaria "recebeu ao terminar de avaliar" em "recebeu daqui a pouco".
+ * Nada além disso justifica furar a fila: o throttle é o que impede toda request
+ * de abrir uma transação.
+ *
+ * Furar o throttle não afrouxa nenhuma garantia — quem segura o
+ * exatamente-uma-vez é o advisory lock e cada transição ser
+ * `UPDATE ... WHERE <estado antigo> RETURNING`, nunca o intervalo.
+ *
  * O `.catch` é obrigatório: uma rejeição não tratada dentro do `after` derruba
  * o log da request inteira.
  */
-export function agendarProcessamento(): void {
+export function agendarProcessamento(forcar = false): void {
   const agora = Date.now();
-  if (agora - ultimaExecucao < INTERVALO_MS) return;
+  if (!forcar && agora - ultimaExecucao < INTERVALO_MS) return;
   ultimaExecucao = agora;
   after(() => {
     processarPendencias().catch((erro) => {

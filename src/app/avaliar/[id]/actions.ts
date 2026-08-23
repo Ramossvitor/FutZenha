@@ -6,6 +6,7 @@ import { and, eq, gt, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { ratingRoundRaters, ratingRounds, ratings } from "@/db/schema";
+import { agendarProcessamento } from "@/lib/pendencias";
 import { getCandidatosMvp, getCompanheiros } from "@/lib/ratings";
 import { fecharSeTodosAvaliaram } from "@/lib/ratings-engine";
 import { esquecerStats } from "@/lib/stats";
@@ -156,8 +157,13 @@ export async function enviarAvaliacoes(
   // ninguém precisa esperar as 36 horas. Uma falha AQUI não pode virar erro na
   // tela: as notas desta pessoa já commitaram, e o fechamento é idempotente —
   // o varredor de pendências fecha a rodada no prazo de qualquer jeito.
+  //
+  // Fechou? Então a zenha do fut já pode ser paga (src/lib/zenha-engine.ts), e a
+  // varredura é forçada para que ela caia nesta mesma navegação em vez de
+  // esperar o throttle de um minuto do layout. Idempotente igual: se falhar, o
+  // próximo pageview paga.
   try {
-    await fecharSeTodosAvaliaram(roundId);
+    if (await fecharSeTodosAvaliaram(roundId)) agendarProcessamento(true);
   } catch (erro) {
     console.error("[avaliar] falha ao fechar rodada após o último envio:", erro);
   }

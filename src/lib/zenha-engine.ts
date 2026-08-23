@@ -7,10 +7,8 @@ import {
   games,
   groupMembers,
   matchDays,
-  ratingReports,
   ratingRoundRaters,
   ratingRounds,
-  ratings,
   skillHistory,
   users,
   zenhaLedger,
@@ -35,17 +33,32 @@ import { getAjustes } from "./zenha-config";
 
 // A liquidação: onde a zenha de um fut é paga, uma vez só.
 //
-// ── Por que não sai no encerramento ────────────────────────────────────────
-// Nenhuma das quatro fontes está pronta quando o admin encerra o fut. A nota e
-// o MVP só existem depois que a rodada fecha; o placar e os gols continuam
-// editáveis por JANELA_CORRECAO_HORAS; e uma denúncia aceita ainda pode
-// descartar uma avaliação e mudar a nota de quem já teria sido pago. Pagar cedo
-// exigiria estorno — e estorno é impossível num ledger append-only cujo dinheiro
-// já pode ter virado badge.
+// ── Por que o marco é o FECHAMENTO DA RODADA ───────────────────────────────
+// Não o encerramento do fut: quando o admin encerra, nenhuma das quatro fontes
+// existe ainda — a nota e o MVP nascem no fechamento da rodada de avaliação.
+// Fechar a rodada é o primeiro instante em que as quatro estão prontas ao mesmo
+// tempo, e é o instante que o jogador reconhece: ou ele acabou de ser o último a
+// avaliar, ou o PRAZO_AVALIACAO_HORAS venceu. Pagar ali é o que aproxima a
+// recompensa do gesto que a gerou.
 //
-// Então a liquidação espera o fut AMADURECER e paga sobre fato congelado. O
-// preço é a zenha chegar um a dois dias depois do fut; o ganho é não existir
-// nenhum código de desfazimento em lugar nenhum do sistema.
+// ── A troca que isso aceita ────────────────────────────────────────────────
+// A contestação de nota (PRAZO_DENUNCIA_HORAS) só começa a correr DEPOIS do
+// fechamento, então ela chega depois do dinheiro. Uma denúncia aceita descarta a
+// avaliação e reescreve a nota — mas não reescreve o ledger, que é append-only e
+// não tem estorno. A decisão de produto é essa, e é explícita:
+//
+//   **a contestação corrige a NOTA, nunca a ZENHA já paga.**
+//
+// Só a fonte `nota` corre esse risco. Participação, MVP e streak são fatos
+// congelados no fechamento e nenhuma denúncia os move. Ninguém perde saldo em
+// nenhum cenário; o custo é que quem contestou com razão não recebe pela subida,
+// e que alguém pode ter recebido algumas dezenas de zenhas a mais. Em troca, não
+// existe uma linha de código de desfazimento em lugar nenhum do sistema — que é
+// a mesma propriedade que a espera pelo PRAZO_DENUNCIA_HORAS comprava antes,
+// agora comprada de graça.
+//
+// Placar e gols seguem sem pagar nada (ver src/lib/zenha.ts): eles continuam
+// editáveis por JANELA_CORRECAO_HORAS, e é justamente por isso que não são fonte.
 //
 // ── Por que aqui e não em aplicarReplay ────────────────────────────────────
 // `aplicarReplay` devolve o histórico do replay INTEIRO, de todas as rodadas de
@@ -77,22 +90,28 @@ const JANELA_DA_SEQUENCIA = 100;
  * Sem este corte, toda passada do varredor reexaminaria fut encerrado de dois
  * anos atrás. Com ele, o conjunto candidato é sempre pequeno e drena sozinho:
  * `liquidado_em` tira quem já foi pago, e a janela tira quem envelheceu demais.
- * Um fut que fique preso por mais de 30 dias (denúncia sem resolução, por
- * exemplo) simplesmente não paga — e não pagar é melhor que pagar errado.
+ * Com o pagamento no fechamento da rodada, quase nada segura um fut até aqui —
+ * a rodada fecha sozinha no prazo. O que sobra é o varredor ter ficado 30 dias
+ * sem rodar, e nesse caso o fut simplesmente não paga: não pagar é melhor que
+ * pagar errado.
  */
 const JANELA_DE_LIQUIDACAO_DIAS = 30;
 
 /**
  * Os futs prontos para pagar.
  *
- * "Maduro" é o coração da decisão: o fut encerrou, ainda não foi liquidado, é de
+ * "Pronto" é o coração da decisão: o fut encerrou, ainda não foi liquidado, é de
  * grupo, é posterior à estreia da economia, e — o que importa de verdade — ou
- * nunca teve rodada de avaliação, ou a rodada já fechou, o prazo de contestação
- * já venceu e não há nenhuma denúncia em aberto sobre ela.
+ * nunca teve rodada de avaliação, ou a rodada já fechou.
+ *
+ * A rodada AINDA ABERTA é a única coisa que segura o pagamento, e é o contrato
+ * inteiro: enquanto ela corre, a nota e o MVP do fut simplesmente não existem.
+ * O prazo de contestação e as denúncias em aberto deixaram de entrar aqui de
+ * propósito — ver a nota sobre a troca no cabeçalho do arquivo.
  *
  * `finished_at` nulo cai fora pela comparação com a janela, e isso é
  * intencional: fut encerrado sem marco temporal (os anteriores a essa coluna)
- * não tem como provar que amadureceu.
+ * não tem como provar que está dentro dela.
  */
 export async function futsALiquidar(exec: Executor): Promise<number[]> {
   const rodadaDoFut = eq(ratingRounds.matchDayId, matchDays.id);
@@ -101,21 +120,9 @@ export async function futsALiquidar(exec: Executor): Promise<number[]> {
     select 1 from ${ratingRounds} where ${rodadaDoFut}
   )`;
 
-  // A rodada fechou, o prazo de contestação venceu, e nenhuma denúncia daquela
-  // rodada continua aberta. As três condições juntas são o que garante que a
-  // nota lida aqui é a nota final.
-  const rodadaMadura = sql`exists (
+  const rodadaFechada = sql`exists (
     select 1 from ${ratingRounds}
-    where ${rodadaDoFut}
-      and ${ratingRounds.status} = 'closed'
-      and ${ratingRounds.reportDeadlineAt} is not null
-      and ${ratingRounds.reportDeadlineAt} < now()
-      and not exists (
-        select 1 from ${ratingReports}
-          join ${ratings} on ${ratings.id} = ${ratingReports.ratingId}
-        where ${ratings.roundId} = ${ratingRounds.id}
-          and ${ratingReports.status} = 'open'
-      )
+    where ${rodadaDoFut} and ${ratingRounds.status} = 'closed'
   )`;
 
   const linhas = await exec
@@ -128,7 +135,7 @@ export async function futsALiquidar(exec: Executor): Promise<number[]> {
         isNotNull(matchDays.groupId),
         gte(matchDays.date, ZENHA_DESDE),
         sql`${matchDays.finishedAt} > now() - make_interval(days => ${JANELA_DE_LIQUIDACAO_DIAS}::int)`,
-        or(semRodada, rodadaMadura),
+        or(semRodada, rodadaFechada),
       ),
     )
     .orderBy(asc(matchDays.date), asc(matchDays.id));
@@ -306,9 +313,9 @@ export async function liquidarFut(
  * Quantos futs JÁ pagaram a cada jogador na semana deste fut.
  *
  * A semana é a do fut (`match_days.date`), não a do pagamento: a liquidação
- * acontece dias depois, e contar pela data do crédito colocaria dois futs da
- * mesma semana em semanas diferentes — ou o contrário. `date_trunc('week')` no
- * Postgres começa na segunda-feira.
+ * só sai no fechamento da rodada de avaliação, e contar pela data do crédito
+ * colocaria dois futs da mesma semana em semanas diferentes — ou o contrário.
+ * `date_trunc('week')` no Postgres começa na segunda-feira.
  *
  * Conta `match_day_id` distintos, e não linhas: um fut paga até quatro fontes.
  */
@@ -433,19 +440,19 @@ async function lerSequencias(
 }
 
 /**
- * Liquida todos os futs maduros. Devolve quantos foram pagos.
+ * Liquida todos os futs prontos. Devolve quantos foram pagos.
  *
  * Os ajustes são lidos UMA vez por varredura: dois futs liquidados na mesma
  * passada valem o mesmo, e reler entre eles só abriria a porta para o admin
  * salvar o painel no meio e dois futs da mesma noite pagarem diferente.
  */
-export async function liquidarFutsMaduros(exec: Executor): Promise<number> {
-  const maduros = await futsALiquidar(exec);
-  if (maduros.length === 0) return 0;
+export async function liquidarFutsProntos(exec: Executor): Promise<number> {
+  const prontos = await futsALiquidar(exec);
+  if (prontos.length === 0) return 0;
 
   const ajustes = await getAjustes(exec);
   let liquidados = 0;
-  for (const matchDayId of maduros) {
+  for (const matchDayId of prontos) {
     await liquidarFut(exec, matchDayId, ajustes);
     liquidados += 1;
   }
