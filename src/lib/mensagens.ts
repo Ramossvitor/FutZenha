@@ -48,6 +48,10 @@ export const MENSAGENS: Record<string, string> = {
   "poucos-jogadores": "Confirmados insuficientes para esse número de times.",
   "jogos-lancados": "Já existem jogos lançados — apague os jogos antes de re-sortear.",
   "jogo-sem-time": "Todo jogo precisa de pelo menos um jogador de cada lado.",
+  "time-vazio": "Cada time precisa de pelo menos um jogador.",
+  "jogador-sem-time":
+    "Todo confirmado precisa de um time — quem não vai jogar, marque fora da lista.",
+  "jogador-fora-da-lista": "Só quem está confirmado entra num time.",
   "artilheiro-fora-do-jogo":
     "Só quem entrou nesse jogo pode marcar gol nele. Ajuste a escalação primeiro.",
   "precisa-confirmar":
