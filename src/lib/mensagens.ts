@@ -83,6 +83,8 @@ export const MENSAGENS: Record<string, string> = {
   "operador-invalido":
     "Só quem está na lista deste fut e tem conta ativa pode receber a súmula.",
   "fut-encerrado": "Este fut já foi encerrado — a súmula ao vivo não está mais disponível.",
+  "jogador-fora-do-jogo": "Só quem entrou nesse jogo pode trocar de lado nele.",
+  "troca-ja-feita": "Alguém já trocou essa pessoa de lado — confira a escalação.",
 
   // Multiplicador. Os dois textos explicam o PRAZO, e não o botão, porque é o
   // prazo que a pessoa não vê: o corte é o horário de início do fut, e não o

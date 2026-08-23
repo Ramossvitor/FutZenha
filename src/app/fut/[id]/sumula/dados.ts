@@ -9,6 +9,7 @@ import {
   players,
   sumulaOperadores,
   teams,
+  trocasDeLado,
   type MatchDay,
 } from "@/db/schema";
 import { jogoEmAndamento } from "@/lib/sumula";
@@ -47,7 +48,7 @@ export async function carregarSumula(matchDay: MatchDay, ehAdminDoFut: boolean) 
 
   const aberto = gameList.find(jogoEmAndamento) ?? null;
 
-  const [lineupRows, lancamentoRows] = await Promise.all([
+  const [lineupRows, lancamentoRows, trocaRows] = await Promise.all([
     aberto
       ? db
           .select({
@@ -62,6 +63,7 @@ export async function carregarSumula(matchDay: MatchDay, ehAdminDoFut: boolean) 
           .orderBy(asc(players.name))
       : Promise.resolve([]),
     aberto ? carregarLancamentos(aberto.id) : Promise.resolve([]),
+    aberto ? carregarTrocas(aberto.id) : Promise.resolve([]),
   ]);
 
   const jaOperam = new Set(operadores.map((o) => o.playerId));
@@ -71,6 +73,7 @@ export async function carregarSumula(matchDay: MatchDay, ehAdminDoFut: boolean) 
     aberto,
     lineupRows,
     lancamentoRows,
+    trocaRows,
     operadores,
     // Quem já tem a súmula (ou é o próprio admin) sai do select de delegação.
     candidatos: presentes.filter(
@@ -121,6 +124,15 @@ async function carregarLancamentos(gameId: number) {
       desfeitoPor: desfazedor.name,
       desfeitoPorApelido: desfazedor.nickname,
       segundosAtras: sql<number>`extract(epoch from (now() - ${goals.createdAt}))::int`,
+      // O instante do lançamento, para intercalar com as trocas de lado — as
+      // duas tabelas têm sequências próprias, então o id não serve de relógio
+      // entre elas (ver montarLinhaDoTempo em src/lib/sumula.ts).
+      //
+      // `float8`, e não o `::int` dos segundos aí em cima: `extract(epoch ...)`
+      // devolve `numeric`, que o driver entrega como STRING — e uma string aqui
+      // faria a ordenação comparar texto. O float ainda guarda a fração de
+      // segundo, que é o que separa dois toques dentro do mesmo segundo.
+      criadoEm: sql<number>`extract(epoch from ${goals.createdAt})::float8`,
     })
     .from(goals)
     .leftJoin(autor, eq(goals.playerId, autor.id))
@@ -128,4 +140,36 @@ async function carregarLancamentos(gameId: number) {
     .leftJoin(desfazedor, eq(goals.desfeitoPorPlayerId, desfazedor.id))
     .where(and(eq(goals.gameId, gameId), eq(goals.somadoNoPlacar, true)))
     .orderBy(desc(goals.id));
+}
+
+/**
+ * As trocas de lado do jogo aberto — o outro evento que a linha do tempo mostra.
+ *
+ * Tudo o que aconteceu, sem filtro: a troca não tem desfazer (voltar é trocar
+ * de novo), e é justamente a sequência das idas e vindas que conta a história
+ * de um jogo remendado.
+ */
+async function carregarTrocas(gameId: number) {
+  const jogador = alias(players, "trocado");
+  const operador = alias(players, "trocador");
+  return db
+    .select({
+      id: trocasDeLado.id,
+      playerId: trocasDeLado.playerId,
+      de: trocasDeLado.deLado,
+      para: trocasDeLado.paraLado,
+      jogadorNome: jogador.name,
+      jogadorApelido: jogador.nickname,
+      porNome: operador.name,
+      porApelido: operador.nickname,
+      segundosAtras: sql<number>`extract(epoch from (now() - ${trocasDeLado.createdAt}))::int`,
+      // Ver o `criadoEm` dos lançamentos: `float8` porque `numeric` chega como
+      // string, e é este número que ordena a linha do tempo.
+      criadoEm: sql<number>`extract(epoch from ${trocasDeLado.createdAt})::float8`,
+    })
+    .from(trocasDeLado)
+    .innerJoin(jogador, eq(trocasDeLado.playerId, jogador.id))
+    .leftJoin(operador, eq(trocasDeLado.createdByPlayerId, operador.id))
+    .where(eq(trocasDeLado.gameId, gameId))
+    .orderBy(desc(trocasDeLado.id));
 }

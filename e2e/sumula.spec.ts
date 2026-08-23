@@ -46,7 +46,10 @@ test("súmula ao vivo: iniciar, lançar, desfazer, finalizar e encerrar", async 
 
   // Abre o jogo — os selects já vêm com os dois primeiros times.
   await page.getByRole("button", { name: "Iniciar jogo" }).click();
-  await expect(page.getByText(/em andamento/)).toBeVisible();
+  // Ancorado no início: o selo do jogo aberto é o único texto que COMEÇA com
+  // "em andamento". Os textos de ajuda do painel também citam a expressão no
+  // meio da frase, e um locator solto colidia com eles.
+  await expect(page.getByText(/^em andamento/)).toBeVisible();
   await expect(page.getByText("0 × 0")).toBeVisible();
 
   // Gol contra / sem autor: soma no placar sem creditar artilharia — e é o
@@ -73,6 +76,14 @@ test("súmula ao vivo: iniciar, lançar, desfazer, finalizar e encerrar", async 
   await page.getByRole("button", { name: "Confirma?" }).click();
   await expect(page.getByText("1 × 0")).toBeVisible();
   await expect(page.getByText(/desfeito por/)).toBeVisible();
+
+  // Trocar de lado no meio do jogo: também dois toques, e a confirmação diz o
+  // destino. A troca entra na mesma linha do tempo dos gols, sem Desfazer —
+  // voltar é trocar de novo.
+  await page.getByRole("button", { name: "Trocar de lado" }).first().click();
+  await page.getByRole("button", { name: /^Vai para o / }).click();
+  await expect(page.getByText(/foi para o /)).toBeVisible();
+  await expect(page.getByText(/^saiu do /)).toBeVisible();
 
   // O print do painel no meio do jogo — mobile, tema escuro, com placar,
   // botões gigantes, lançamento ativo e lançamento desfeito.

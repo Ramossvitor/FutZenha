@@ -107,6 +107,41 @@ export function marcarPodeDesfazer<T extends LancamentoDesfazivel>(
 }
 
 /**
+ * A linha do tempo do painel: os gols e as trocas de lado do jogo aberto numa
+ * lista só, do mais recente para o mais antigo.
+ *
+ * A ordenação é por `criadoEm` (epoch que o POSTGRES calculou) e não por id:
+ * as duas tabelas têm sequências próprias, então um id 7 de `trocas_de_lado`
+ * não diz nada sobre um id 7 de `goals`.
+ *
+ * O empate desce para o id porque o segundo é grosso demais para um painel em
+ * que dois toques seguidos cabem no mesmo — e, entre tabelas diferentes, o gol
+ * vem primeiro: quem lê a lista está conferindo placar, e o gol é o evento que
+ * o placar explica.
+ *
+ * Genérica nas duas pontas para a página decidir o formato das linhas: aqui só
+ * se sabe ordenar, e um tipo concreto obrigaria este módulo puro a conhecer
+ * apelido, rótulo e tudo o mais que a UI monta.
+ */
+export type EventoDaSumula<G, T> = ({ tipo: "gol" } & G) | ({ tipo: "troca" } & T);
+
+export function montarLinhaDoTempo<
+  G extends { id: number; criadoEm: number },
+  T extends { id: number; criadoEm: number },
+>(gols: readonly G[], trocas: readonly T[]): EventoDaSumula<G, T>[] {
+  const eventos: EventoDaSumula<G, T>[] = [
+    ...gols.map((g) => ({ tipo: "gol" as const, ...g })),
+    ...trocas.map((t) => ({ tipo: "troca" as const, ...t })),
+  ];
+  return eventos.sort(
+    (a, b) =>
+      b.criadoEm - a.criadoEm ||
+      // Gol antes de troca no mesmo instante.
+      (a.tipo === b.tipo ? b.id - a.id : a.tipo === "gol" ? -1 : 1),
+  );
+}
+
+/**
  * "há N min" a partir de segundos que o POSTGRES contou — a página nunca olha o
  * relógio da aplicação (regra de pureza do render), e por isso o rótulo congela
  * até o próximo refresh, o que para uma súmula é o comportamento certo: quem

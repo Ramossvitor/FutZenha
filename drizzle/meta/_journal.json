@@ -239,6 +239,13 @@
       "when": 1787372636276,
       "tag": "0033_vitrine_da_loja",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787493853827,
+      "tag": "0034_troca_de_lado",
+      "breakpoints": true
     }
   ]
 }

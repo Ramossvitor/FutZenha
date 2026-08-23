@@ -10,7 +10,7 @@ import { db } from "@/db";
 import { sumulaOperadores, users } from "@/db/schema";
 import { confirmarPresenca, criarJogadorComConta } from "@/test/fixtures";
 import { criarDelegado, formDeGol, formDeTimes, golsDoJogo, montarSumula } from "@/test/fixtures-sumula";
-import { desfazerLancamento, iniciarJogo, lancarGol } from "./actions";
+import { desfazerLancamento, iniciarJogo, lancarGol, trocarDeLado } from "./actions";
 import { carregarSumula } from "./dados";
 
 describe("carregarSumula: candidatos à delegação", () => {
@@ -117,6 +117,9 @@ describe("carregarSumula: o jogo aberto e seus lançamentos", () => {
       side: "B",
     });
     expect(dados.lancamentoRows[1]).toMatchObject({ desfeito: false, lancadoPor: s.admin.name });
+    // NÚMERO, não string: é o que ordena a linha do tempo contra as trocas, e
+    // `extract(epoch ...)` sem cast chega como numeric — string no driver.
+    expect(typeof dados.lancamentoRows[0].criadoEm).toBe("number");
   });
 
   it("gol lançado pelo /gerenciar fica fora do painel", async () => {
@@ -143,5 +146,45 @@ describe("carregarSumula: o jogo aberto e seus lançamentos", () => {
     expect(dados.aberto).toBeNull();
     expect(dados.lancamentoRows).toEqual([]);
     expect(dados.lineupRows).toEqual([]);
+    expect(dados.trocaRows).toEqual([]);
+  });
+
+  it("traz as trocas de lado com o jogador, o operador e o carimbo", async () => {
+    const s = await montarSumula();
+    await iniciarJogo(s.fut.id, formDeTimes(s.timeAId, s.timeBId));
+    const abertoId = (await carregarSumula(s.fut, true)).aberto!.id;
+    const trocado = s.ladoA[0];
+
+    await trocarDeLado(s.fut.id, abertoId, trocado.id);
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(dados.trocaRows).toHaveLength(1);
+    expect(dados.trocaRows[0]).toMatchObject({
+      playerId: trocado.id,
+      de: "A",
+      para: "B",
+      jogadorNome: trocado.name,
+      porNome: s.admin.name,
+    });
+    // O `criadoEm` é o que a linha do tempo usa para intercalar com os gols —
+    // epoch do Postgres, e não o relógio da aplicação.
+    expect(dados.trocaRows[0].criadoEm).toBeGreaterThan(0);
+    // E a escalação do painel já mostra o jogador do lado novo.
+    expect(dados.lineupRows.find((m) => m.playerId === trocado.id)?.side).toBe("B");
+  });
+
+  // Ida e volta: as duas linhas ficam, da mais recente para a mais antiga (é a
+  // ordem em que o painel monta a linha do tempo).
+  it("lista as trocas do jogo aberto, da mais recente para a mais antiga", async () => {
+    const s = await montarSumula();
+    await iniciarJogo(s.fut.id, formDeTimes(s.timeAId, s.timeBId));
+    const abertoId = (await carregarSumula(s.fut, true)).aberto!.id;
+    await trocarDeLado(s.fut.id, abertoId, s.ladoA[0].id);
+    await trocarDeLado(s.fut.id, abertoId, s.ladoA[0].id);
+
+    const dados = await carregarSumula(s.fut, true);
+
+    expect(dados.trocaRows.map((t) => `${t.de}${t.para}`)).toEqual(["BA", "AB"]);
   });
 });

@@ -388,6 +388,7 @@ async function main() {
   await db.delete(schema.invites);
   await db.delete(schema.users);
   await db.delete(schema.goals);
+  await db.delete(schema.trocasDeLado);
   await db.delete(schema.gamePlayers);
   await db.delete(schema.games);
   await db.delete(schema.teamPlayers);

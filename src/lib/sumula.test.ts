@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   jogoEmAndamento,
   marcarPodeDesfazer,
+  montarLinhaDoTempo,
   podeDesfazerLancamento,
   sumulaDisponivel,
   tempoAtras,
@@ -141,6 +142,50 @@ describe("marcarPodeDesfazer", () => {
   it("preserva os campos da linha original", () => {
     const [marcado] = marcarPodeDesfazer([{ id: 1, side: "A" as const, desfeito: false }], true);
     expect(marcado).toMatchObject({ id: 1, side: "A", desfeito: false, podeDesfazer: true });
+  });
+});
+
+describe("montarLinhaDoTempo", () => {
+  const gol = (id: number, criadoEm: number) => ({ id, criadoEm, autor: `gol ${id}` });
+  const troca = (id: number, criadoEm: number) => ({ id, criadoEm, jogador: `troca ${id}` });
+
+  it("intercala gols e trocas do mais recente para o mais antigo", () => {
+    const linha = montarLinhaDoTempo(
+      [gol(1, 100), gol(2, 300)],
+      [troca(1, 200), troca(2, 400)],
+    );
+
+    expect(linha.map((e) => `${e.tipo}${e.id}`)).toEqual(["troca2", "gol2", "troca1", "gol1"]);
+  });
+
+  // O id não é relógio entre tabelas: as duas sequências correm separadas, e um
+  // gol id 9 pode ser mais velho que uma troca id 1.
+  it("ordena por criadoEm, não por id", () => {
+    const linha = montarLinhaDoTempo([gol(9, 100)], [troca(1, 500)]);
+
+    expect(linha.map((e) => e.tipo)).toEqual(["troca", "gol"]);
+  });
+
+  it("no mesmo instante, o gol vem antes da troca", () => {
+    const linha = montarLinhaDoTempo([gol(1, 100)], [troca(1, 100)]);
+
+    expect(linha.map((e) => e.tipo)).toEqual(["gol", "troca"]);
+  });
+
+  it("no mesmo instante e na mesma tabela, o id maior vem primeiro", () => {
+    const linha = montarLinhaDoTempo([gol(1, 100), gol(2, 100)], []);
+
+    expect(linha.map((e) => e.id)).toEqual([2, 1]);
+  });
+
+  it("listas vazias dão linha vazia", () => {
+    expect(montarLinhaDoTempo([], [])).toEqual([]);
+  });
+
+  it("preserva os campos de cada lado da união", () => {
+    const [primeiro] = montarLinhaDoTempo([], [troca(7, 10)]);
+
+    expect(primeiro).toEqual({ tipo: "troca", id: 7, criadoEm: 10, jogador: "troca 7" });
   });
 });
 

@@ -100,9 +100,26 @@ describe("montarResumo — placar e jogos", () => {
 });
 
 describe("montarResumo — o colete de cada gol", () => {
-  it("sai da escalação DAQUELE jogo, que é quem sabe o lado", () => {
+  it("sem side gravado, sai da escalação DAQUELE jogo", () => {
     const resumo = montarResumo(entrada({ gols: [gol({ playerId: 200 })] }));
     expect(resumo.jogos[0].gols[0].time).toBe("Azul");
+  });
+
+  // A troca de lado no meio do jogo (súmula ao vivo) é onde as duas fontes
+  // divergem de propósito: a escalação passa a dizer onde a pessoa TERMINOU, e
+  // o gol continua sendo do time que o marcou. Se a escalação vencesse, o gol
+  // trocaria de dono junto com o jogador e o placar pararia de bater com os
+  // chips ao lado dele.
+  it("o side gravado vence a escalação (troca de lado no meio do jogo)", () => {
+    const resumo = montarResumo(
+      entrada({
+        // Terminou no B (Azul), mas marcou enquanto ainda era do A (Verde).
+        escalacao: [{ gameId: 10, playerId: 100, side: "B" }],
+        gols: [gol({ playerId: 100, side: "A" })],
+      }),
+    );
+
+    expect(resumo.jogos[0].gols[0].time).toBe("Verde");
   });
 
   // A mesma pessoa pode trocar de colete entre jogos — por isso a chave é o par

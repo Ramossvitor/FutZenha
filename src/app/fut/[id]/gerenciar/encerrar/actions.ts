@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, isNotNull, isNull, ne, notExists, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
-import { attendances, gamePlayers, games, matchDays } from "@/db/schema";
+import { attendances, gamePlayers, games, goals, matchDays } from "@/db/schema";
 import { formatDate } from "@/lib/format";
 import { revalidateMatchDay } from "../../revalidate";
 import { agendarResumoDoFut } from "@/lib/email-resumo";
@@ -51,15 +51,39 @@ function exigirIdsInteiros(matchDayId: number, ...ids: number[]): void {
   }
 }
 
+/**
+ * A correção da escalação DEPOIS do jogo, na tela de encerramento: troca o lado
+ * e pronto. É a irmã de `trocarDeLado` (src/app/fut/[id]/sumula/actions.ts) e as
+ * duas não se fundem de propósito — lá é evento de jogo em andamento, com log
+ * visível na súmula, o colete do fut movido junto e operador (não só admin);
+ * aqui é conserto de admin sobre jogo parado, sem nada disso.
+ *
+ * E uma diferença a mais: os gols da pessoa neste jogo TROCAM junto. Lá a troca
+ * é um evento — o gol saiu pelo lado em que ela estava na hora, e fica. Aqui é
+ * correção: a escalação estava errada, e o `goals.side` que o lançamento copiou
+ * dela estava errado pelo mesmo motivo. Como o `coleteDoGol` (src/lib/resumo.ts)
+ * lê o `side` gravado antes da escalação, deixar o gol parado faria o conserto
+ * não aparecer no chip do gol.
+ */
 export async function moverLado(matchDayId: number, gameId: number, playerId: number) {
   await requireFutAdmin(matchDayId);
   exigirIdsInteiros(matchDayId, gameId, playerId);
   await assertEditavel(matchDayId, gameId);
 
-  await db
-    .update(gamePlayers)
-    .set({ side: sql`case when ${gamePlayers.side} = 'A' then 'B'::game_side else 'A'::game_side end` })
-    .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerId, playerId)));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(gamePlayers)
+      .set({ side: sql`case when ${gamePlayers.side} = 'A' then 'B'::game_side else 'A'::game_side end` })
+      .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerId, playerId)));
+    // Só os gols com lado gravado: o nulo é de antes da súmula e continua sendo
+    // derivado da escalação, que acabou de mudar.
+    await tx
+      .update(goals)
+      .set({ side: sql`case when ${goals.side} = 'A' then 'B'::game_side else 'A'::game_side end` })
+      .where(
+        and(eq(goals.gameId, gameId), eq(goals.playerId, playerId), isNotNull(goals.side)),
+      );
+  });
   revalidar(matchDayId);
 }
 

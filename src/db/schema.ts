@@ -637,6 +637,12 @@ export const games = pgTable("games", {
 // dos times do fut na criação do jogo, então trocar alguém de colete depois
 // não reescreve quem jogou os jogos anteriores. É daqui que saem os
 // "companheiros de equipe" da avaliação e o V/E/D de cada jogador.
+//
+// A súmula ao vivo move esta linha com o jogo em andamento (`trocarDeLado`), e
+// aí o lado gravado passa a ser aquele em que a pessoa TERMINOU o jogo — que é
+// o que o V/E/D e a avaliação querem dizer. O gol continua com o lado do
+// momento em que saiu, gravado em `goals.side`: os dois divergem de propósito
+// depois de uma troca (ver `coleteDoGol` em src/lib/resumo.ts).
 export const gamePlayers = pgTable(
   "game_players",
   {
@@ -733,6 +739,50 @@ export const sumulaOperadores = pgTable(
   (t) => [
     primaryKey({ columns: [t.matchDayId, t.playerId] }),
     index("sumula_operadores_player_idx").on(t.playerId),
+  ],
+);
+
+// Troca de lado no meio de um jogo da súmula ao vivo — alguém sai de um colete e
+// entra no outro sem o jogo parar (lesão, time desfalcado, chegou gente).
+//
+// É LOG, não estado. O estado mora em dois lugares que a `trocarDeLado` escreve
+// no mesmo commit: `game_players.side`, que passa a dizer o lado em que a pessoa
+// TERMINOU o jogo (e por isso o V/E/D e os companheiros de avaliação seguem a
+// troca sozinhos), e `team_players`, o colete do fut, para o jogo seguinte
+// nascer com ela no time novo. Esta tabela existe para a auditoria visível do
+// painel — quem moveu quem, de onde para onde e quando —, no mesmo espírito do
+// soft-delete de `goals`: todo operador vê o que todo operador fez.
+//
+// Sem "desfazer": voltar é trocar de novo, e as duas linhas ficam. O histórico
+// de um jogo confuso é justamente o que se quer ler depois.
+//
+// Sem `match_day_id` (deriva de `games`) e sem unique — a mesma pessoa pode
+// trocar quantas vezes o jogo pedir.
+export const trocasDeLado = pgTable(
+  "trocas_de_lado",
+  {
+    id: serial("id").primaryKey(),
+    gameId: integer("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    deLado: gameSideEnum("de_lado").notNull(),
+    paraLado: gameSideEnum("para_lado").notNull(),
+    // Quem operou a súmula na hora. `set null` — apagar o operador não apaga a
+    // troca de quem jogou.
+    createdByPlayerId: integer("created_by_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // A linha do tempo do painel lê as trocas do jogo aberto, por jogo.
+    index("trocas_de_lado_game_idx").on(t.gameId),
+    // De um lado para o OUTRO: uma linha que não move ninguém seria auditoria
+    // mentindo sobre um evento que não houve.
+    check("trocas_de_lado_lados_distintos", sql`${t.deLado} <> ${t.paraLado}`),
   ],
 );
 
@@ -1726,6 +1776,7 @@ export type Game = typeof games.$inferSelect;
 export type GamePlayer = typeof gamePlayers.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type SumulaOperador = typeof sumulaOperadores.$inferSelect;
+export type TrocaDeLado = typeof trocasDeLado.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type RatingRound = typeof ratingRounds.$inferSelect;

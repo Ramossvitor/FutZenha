@@ -141,10 +141,16 @@ export function montarResumo(entrada: EntradaDoResumo): ResumoDoFut {
  * De que colete saiu este gol, com os dois fallbacks — a regra que existia
  * inline em /fut/[id] e que este módulo veio unificar.
  *
- * A escalação do jogo é a fonte boa: é o lado em que a pessoa jogou NAQUELE
- * jogo, que é o que permite ler o placar de relance. Quando ela não responde —
- * gol sem autor (não há escalação para consultar) ou quem marcou sem linha de
- * escalação —, vale o `side` que a súmula ao vivo gravou. Sem os dois, string
+ * O `side` GRAVADO no gol manda. Ele é o lado no instante do gol, e a súmula ao
+ * vivo (e o addGoal de hoje) sempre o grava. A escalação do jogo diz outra
+ * coisa — o lado em que a pessoa TERMINOU o jogo —, e depois de uma troca de
+ * lado no meio da partida (`trocarDeLado`) as duas divergem de propósito: o gol
+ * pertence ao time que o marcou, não ao time em que o autor acabou. Enquanto a
+ * escalação vinha na frente, o gol trocava de dono junto com o jogador, e o
+ * placar do resumo parava de bater com os chips ao lado dele.
+ *
+ * A escalação fica de fallback para o que veio antes da súmula, quando
+ * `goals.side` era nulo e o lado só era derivável por ela. Sem os dois, string
  * vazia: o chip neutro é mais honesto do que chutar um lado.
  */
 function coleteDoGol(
@@ -155,8 +161,8 @@ function coleteDoGol(
   timeB: string,
 ): string {
   const lado =
-    (gol.playerId === null ? undefined : ladoNoJogo.get(`${gameId}:${gol.playerId}`)) ??
-    gol.side;
+    gol.side ??
+    (gol.playerId === null ? undefined : ladoNoJogo.get(`${gameId}:${gol.playerId}`));
   if (lado === null || lado === undefined) return "";
   return lado === "A" ? timeA : timeB;
 }

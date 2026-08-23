@@ -13,9 +13,17 @@
 // e o toque, e a action recusa em vez de escrever por cima.
 
 import { redirect } from "next/navigation";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { gamePlayers, games, goals, sumulaOperadores, teams } from "@/db/schema";
+import {
+  gamePlayers,
+  games,
+  goals,
+  sumulaOperadores,
+  teamPlayers,
+  teams,
+  trocasDeLado,
+} from "@/db/schema";
 import { criarJogoComEscalacao } from "@/lib/jogos";
 import { travarFut } from "@/lib/presenca";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
@@ -124,23 +132,6 @@ export async function lancarGol(matchDayId: number, gameId: number, formData: Fo
     redirect(`/fut/${matchDayId}/sumula?erro=dados-invalidos`);
   }
 
-  if (playerId !== null) {
-    // A mesma trava do addGoal, mais o lado: gol creditado a quem não está
-    // escalado — ou escalado do outro lado — é placar inventado na artilharia.
-    //
-    // O join com `games` escopa o `gameId`, que vem do cliente, pelos jogos
-    // deste fut: sem ele, a diferença entre os dois redirects daqui viraria um
-    // oráculo da escalação de fut alheio para qualquer operador logado.
-    const [escalado] = await db
-      .select({ side: gamePlayers.side })
-      .from(gamePlayers)
-      .innerJoin(games, and(eq(games.id, gamePlayers.gameId), eq(games.matchDayId, matchDayId)))
-      .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerId, playerId)));
-    if (!escalado || escalado.side !== side) {
-      redirect(`/fut/${matchDayId}/sumula?erro=artilheiro-fora-do-jogo`);
-    }
-  }
-
   await db.transaction(async (tx) => {
     // O incremento atômico com o predicado de "em andamento" é o guard de
     // corrida: se outro operador finalizou o jogo entre o render e o toque,
@@ -164,6 +155,31 @@ export async function lancarGol(matchDayId: number, gameId: number, formData: Fo
       )
       .returning({ id: games.id });
     if (!aberto) redirect(`/fut/${matchDayId}/sumula?erro=jogo-nao-esta-aberto`);
+
+    if (playerId !== null) {
+      // A mesma trava do addGoal, mais o lado: gol creditado a quem não está
+      // escalado — ou escalado do outro lado — é placar inventado na artilharia.
+      //
+      // DENTRO da transação e DEPOIS do update acima, de propósito: o
+      // `trocarDeLado` trava a linha de `games` com `for update`, então este
+      // update espera o commit da troca e a escalação lida aqui já é a de
+      // depois dela. Enquanto a leitura era pré-transação, um gol tocado no
+      // instante da troca nascia com o lado velho — o placar subia de um lado
+      // e o autor já jogava no outro.
+      //
+      // O join com `games` escopa o `gameId`, que vem do cliente, pelos jogos
+      // deste fut: sem ele, a diferença entre os dois redirects daqui viraria um
+      // oráculo da escalação de fut alheio para qualquer operador logado. O
+      // redirect desfaz o incremento junto, porque lança de dentro da transação.
+      const [escalado] = await tx
+        .select({ side: gamePlayers.side })
+        .from(gamePlayers)
+        .innerJoin(games, and(eq(games.id, gamePlayers.gameId), eq(games.matchDayId, matchDayId)))
+        .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerId, playerId)));
+      if (!escalado || escalado.side !== side) {
+        redirect(`/fut/${matchDayId}/sumula?erro=artilheiro-fora-do-jogo`);
+      }
+    }
 
     // `somadoNoPlacar` é o que autoriza o desfazer a decrementar depois: só
     // esta action incrementa o placar junto, então só as linhas dela podem
@@ -269,6 +285,140 @@ export async function desfazerLancamento(matchDayId: number, goalId: number) {
       )
       .returning({ id: goals.id });
     if (!desfeito) redirect(`/fut/${matchDayId}/sumula?erro=desfazer-indisponivel`);
+  });
+  revalidateMatchDay(matchDayId);
+}
+
+/**
+ * Passa um jogador para o outro lado com o jogo rolando — o que acontece na
+ * quadra quando um time fica desfalcado, alguém se machuca ou chega gente.
+ *
+ * Escreve TRÊS coisas no mesmo commit, e cada uma responde por uma pergunta
+ * diferente:
+ *
+ * - `game_players.side` — o lado em que a pessoa TERMINOU o jogo. É de onde
+ *   saem o V/E/D (src/lib/stats.ts) e os companheiros da avaliação
+ *   (src/lib/ratings.ts), então os dois seguem a troca sem nenhum código novo.
+ *   Os gols já lançados NÃO se mexem: `goals.side` guarda o lado do momento em
+ *   que cada um saiu, e é por isso que ele passa na frente da escalação no
+ *   `coleteDoGol` (src/lib/resumo.ts).
+ * - `team_players` — o colete do fut, para o PRÓXIMO jogo nascer com ela no
+ *   time novo (`criarJogoComEscalacao` tira o snapshot daqui).
+ * - `trocas_de_lado` — o log que o painel mostra na linha do tempo.
+ *
+ * Sem desfazer: voltar é trocar de novo, e as duas linhas ficam no histórico.
+ *
+ * Delegado também troca — quem está com o celular é quem vê a quadra. A regra
+ * do "último do lado" do desfazer não tem análogo aqui: trocar não reescreve
+ * placar nem artilharia de ninguém, e a troca errada se conserta com outra.
+ */
+export async function trocarDeLado(matchDayId: number, gameId: number, playerId: number) {
+  const { session } = await requireOperadorSumula(matchDayId);
+  if (!Number.isInteger(gameId) || !Number.isInteger(playerId)) {
+    redirect(`/fut/${matchDayId}/sumula?erro=dados-invalidos`);
+  }
+
+  await db.transaction(async (tx) => {
+    // O mesmo lock de `iniciarJogo` e do encerramento: ou a troca entra antes
+    // (e o encerramento recusa por jogo aberto), ou o fut encerra antes e o
+    // re-check aqui recusa. Os redirects daqui de dentro lançam e desfazem a
+    // transação, como nas irmãs.
+    const fut = await travarFut(tx, matchDayId);
+    if (fut.status === "finished") {
+      redirect(`/fut/${matchDayId}/sumula?erro=fut-encerrado`);
+    }
+
+    // `for update` na linha do jogo, e não só o predicado no WHERE: é o que
+    // serializa a troca contra o `lancarGol`, cujo incremento de placar é um
+    // UPDATE nesta mesma linha. Sem ele, um gol tocado no mesmo instante leria
+    // a escalação velha e nasceria com o lado errado.
+    const [jogo] = await tx
+      .select({ id: games.id, teamAId: games.teamAId, teamBId: games.teamBId })
+      .from(games)
+      .where(
+        and(
+          eq(games.id, gameId),
+          // Escopo pelo fut: `gameId` vem do cliente.
+          eq(games.matchDayId, matchDayId),
+          isNotNull(games.startedAt),
+          isNull(games.finishedAt),
+        ),
+      )
+      .for("update");
+    if (!jogo) redirect(`/fut/${matchDayId}/sumula?erro=jogo-nao-esta-aberto`);
+
+    const [escalado] = await tx
+      .select({ side: gamePlayers.side })
+      .from(gamePlayers)
+      .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerId, playerId)));
+    if (!escalado) redirect(`/fut/${matchDayId}/sumula?erro=jogador-fora-do-jogo`);
+
+    const de = escalado.side;
+    const para = de === "A" ? ("B" as const) : ("A" as const);
+
+    // Lado vazio é jogo que o encerramento recusa depois (`jogo-sem-time`, ver
+    // confirmarEncerramento) — melhor barrar aqui, onde dá para dizer o que
+    // aconteceu, do que travar o admin no fim do fut sem ele saber qual jogo.
+    const [{ restam }] = await tx
+      .select({ restam: sql<number>`count(*)::int` })
+      .from(gamePlayers)
+      .where(
+        and(
+          eq(gamePlayers.gameId, gameId),
+          eq(gamePlayers.side, de),
+          ne(gamePlayers.playerId, playerId),
+        ),
+      );
+    if (restam === 0) redirect(`/fut/${matchDayId}/sumula?erro=jogo-sem-time`);
+
+    // O lado de origem no WHERE: se outro operador trocou esta mesma pessoa
+    // entre a leitura e aqui, nenhuma linha volta e a transação desfaz tudo em
+    // vez de gravar uma troca que já aconteceu. O erro diz isso — "dados
+    // inválidos" soaria como bug do app para quem só perdeu a corrida.
+    const [movido] = await tx
+      .update(gamePlayers)
+      .set({ side: para })
+      .where(
+        and(
+          eq(gamePlayers.gameId, gameId),
+          eq(gamePlayers.playerId, playerId),
+          eq(gamePlayers.side, de),
+        ),
+      )
+      .returning({ playerId: gamePlayers.playerId });
+    if (!movido) redirect(`/fut/${matchDayId}/sumula?erro=troca-ja-feita`);
+
+    // O colete: sai de QUALQUER time deste fut e entra no do lado destino. O
+    // delete amplo (e não um update do team_id) é o que conserta o caso em que
+    // a escalação do jogo e o colete já divergiam — alguém escalado pelo
+    // /encerrar num lado sem nunca ter tido linha de sorteio, por exemplo.
+    const timesDoFut = await tx
+      .select({ id: teams.id })
+      .from(teams)
+      .where(eq(teams.matchDayId, matchDayId));
+    await tx
+      .delete(teamPlayers)
+      .where(
+        and(
+          eq(teamPlayers.playerId, playerId),
+          inArray(
+            teamPlayers.teamId,
+            timesDoFut.map((t) => t.id),
+          ),
+        ),
+      );
+    await tx
+      .insert(teamPlayers)
+      .values({ teamId: para === "A" ? jogo.teamAId : jogo.teamBId, playerId })
+      .onConflictDoNothing();
+
+    await tx.insert(trocasDeLado).values({
+      gameId,
+      playerId,
+      deLado: de,
+      paraLado: para,
+      createdByPlayerId: session.player.id,
+    });
   });
   revalidateMatchDay(matchDayId);
 }
