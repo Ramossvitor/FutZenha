@@ -10,6 +10,7 @@ import { notificar } from "./notifications";
 import { fecharRodada, LOCK_NOTA } from "./ratings-engine";
 import { resolverDenunciasVencidas } from "./reports";
 import { soltarArmesDeFutsAbandonados } from "./multiplicador-engine";
+import { processarRecargas } from "./recarga";
 import { liquidarFutsProntos } from "./zenha-engine";
 
 export type ResultadoVarredura = {
@@ -177,9 +178,15 @@ export function agendarProcessamento(forcar = false): void {
   const agora = Date.now();
   if (!forcar && agora - ultimaExecucao < INTERVALO_MS) return;
   ultimaExecucao = agora;
-  after(() => {
-    processarPendencias().catch((erro) => {
+  after(async () => {
+    await processarPendencias().catch((erro) => {
       console.error("[pendencias] falha na varredura:", erro);
+    });
+    // Depois, e por FORA, da transação das pendências: a varredura da recarga
+    // faz chamadas HTTP ao gateway, e segurar uma conexão do pool (max 5)
+    // durante um fetch de até 10s esfolaria o pool — ver src/lib/recarga.ts.
+    await processarRecargas().catch((erro) => {
+      console.error("[recarga] falha na varredura:", erro);
     });
   });
 }

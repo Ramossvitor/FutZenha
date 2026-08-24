@@ -193,9 +193,11 @@ export function IconeLivro(props: Icone) {
 /**
  * A moeda: a zenha, a loja e o extrato.
  *
- * Um círculo com o "Z" dentro, e não um cifrão nem um carrinho de compras — a
- * zenha não é dinheiro de verdade e não se compra com cartão. O traço é o mesmo
- * dos outros ícones, então ela ainda lê como moeda a 16px no chip do cabeçalho.
+ * Um círculo com o "Z" dentro, e não um cifrão nem um carrinho de compras: a
+ * zenha tem símbolo próprio porque é a moeda DESTE lugar — dá para comprá-la
+ * com Pix (ver /zenhas/recarga), mas ela não volta a ser dinheiro, e o ícone
+ * não deve prometer isso. O traço é o mesmo dos outros ícones, então ela ainda
+ * lê como moeda a 16px no chip do cabeçalho.
  */
 export function IconeZenha(props: Icone) {
   return (

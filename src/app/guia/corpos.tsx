@@ -14,6 +14,7 @@ import {
   PRAZO_ADMIN_HORAS,
   PRAZO_AVALIACAO_HORAS,
   PRAZO_DENUNCIA_HORAS,
+  RECARGA_EXPIRA_MINUTOS,
   TIMES_MAX,
   TIMES_MIN,
   VALIDADE_CONVITE_DIAS,
@@ -352,7 +353,10 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         um deles anda junto do seu nome no ranking e na escalação), na moldura do seu avatar, na
         cor do seu nome, num título e no multiplicador.
       </p>
-      <p>São quatro formas de ganhar, e só quatro:</p>
+      <p>
+        Jogando, são quatro formas de ganhar, e só quatro (comprar por Pix existe também — é o
+        capítulo &ldquo;A recarga&rdquo;):
+      </p>
       <ValoresDaZenha />
       <p>
         A <strong className="text-fg">participação</strong> é o pacote: entrar em campo,
@@ -436,6 +440,35 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         exatamente o tipo de pressão que a avaliação secreta existe para tirar da mesa. Depois
         que a rodada fecha, o histórico da sua nota mostra o selo naquele fut: a nota é o que os
         companheiros acharam de você, e acelerá-la com moeda não pode acontecer escondido.
+      </p>
+    </>
+  ),
+
+  "a-recarga": (
+    <>
+      <p>
+        Além de ganhar zenha jogando, dá para{" "}
+        <strong className="text-fg">comprar zenhas por Pix</strong>, em &ldquo;Minhas
+        zenhas&rdquo;. Você escolhe um pacote, o app gera um código Pix que vale por{" "}
+        {RECARGA_EXPIRA_MINUTOS} minutos, e o saldo sobe sozinho assim que o pagamento cai —
+        normalmente em segundos, com um aviso junto.
+      </p>
+      <p>
+        Zenha comprada é <strong className="text-fg">igualzinha à ganhada em campo</strong>:
+        gasta na loja, aparece no mesmo extrato, e vale as mesmas regras. A escada de preço do
+        multiplicador continua subindo a cada compra do mês — ter saldo não muda isso.
+      </p>
+      <Banner tom="aviso">
+        <strong className="text-fg">Zenha não vira dinheiro de volta.</strong> Não existe
+        saque, transferência entre jogadores nem estorno de saldo — o caminho é de mão única,
+        como o extrato inteiro. Pagou por engano? Fale com o admin da plataforma em até 7
+        dias, <strong className="text-fg">antes de gastar</strong>: com o saldo intacto, o
+        reembolso do Pix é resolvido na mão.
+      </Banner>
+      <p>
+        O código expirou sem pagar? Nada foi cobrado — é só gerar outro. E se o Pix cair no
+        último instante, o crédito entra do mesmo jeito, alguns minutos depois: pagamento
+        confirmado não se perde.
       </p>
     </>
   ),

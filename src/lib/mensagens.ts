@@ -117,6 +117,13 @@ export const MENSAGENS: Record<string, string> = {
   "vitrine-cheia":
     "Sua vitrine já tem cinco badges. Tire um da vitrine para pôr este no lugar — o que sair continua no seu inventário.",
 
+  // Recarga (compra de zenhas por Pix). Os dois dizem o que NÃO aconteceu com
+  // o dinheiro — a primeira pergunta de quem tentou pagar e voltou para a tela.
+  "pacote-indisponivel": "Esse pacote não está mais à venda. Nada foi cobrado — escolha outro.",
+  "gateway-indisponivel":
+    "O sistema de pagamento não respondeu e o Pix não foi gerado. Nada foi cobrado — tente de novo em instantes.",
+  "pacote-nao-encontrado": "Esse pacote não existe mais.",
+
   // Cadastro da loja (painel do admin). Os três da imagem dizem o que fazer, e
   // não só o que deu errado: quem está cadastrando tem o arquivo na mão.
   "imagem-ausente": "Badge precisa de imagem — é ela que o jogador vai ostentar no perfil.",
@@ -177,6 +184,12 @@ export const MENSAGENS: Record<string, string> = {
   "item-fora-da-vitrine": "Saiu da vitrine. Continua seu, guardado no inventário.",
   "destaque-definido":
     "Em destaque: é ele que anda junto do seu nome no ranking, na escalação e na lista de presença.",
+  // Pacotes de recarga (painel do admin). "Vale daqui para frente" é a mesma
+  // promessa da loja: o que já virou pedido está congelado.
+  "pacote-criado": "Pacote criado. Ele já aparece na tela de recarga.",
+  "pacote-salvo": "Pacote salvo. Vale daqui para frente — pedidos já criados não mudam.",
+  "pacote-retirado": "Pacote fora de venda. Pedidos antigos continuam legíveis.",
+  "pacote-republicado": "Pacote de volta à venda.",
   "item-criado": "Item criado. Ele já está na loja.",
   "item-salvo": "Item salvo. Vale daqui para frente — quem já comprou não muda.",
   "item-retirado": "Item fora de venda. Some da vitrine e continua no perfil de quem comprou.",

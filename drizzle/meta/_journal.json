@@ -253,6 +253,13 @@
       "when": 1787519629152,
       "tag": "0035_rotas_com_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787612415846,
+      "tag": "0036_a_recarga",
+      "breakpoints": true
     }
   ]
 }

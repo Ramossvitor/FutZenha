@@ -5,7 +5,7 @@ import { PedidoDePush } from "@/components/push/pedido-de-push";
 import { SubmitButton } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { IconeAlerta, IconeBola, IconeGrafico, IconeGrupo } from "@/components/ui/icons";
+import { IconeAlerta, IconeBola, IconeGrafico, IconeGrupo, IconeZenha } from "@/components/ui/icons";
 import { cx } from "@/lib/cx";
 import { formatDateShort } from "@/lib/format";
 import { listarNotificacoes } from "@/lib/notifications";
@@ -57,6 +57,12 @@ const ICONE: Record<TipoDeAviso, { icone: React.ReactNode; cor: string }> = {
   // que a pessoa combinou ao armar, e é o único aviso da moeda em warn.
   zenha_creditada: { icone: <IconeGrafico />, cor: "text-accent-ink" },
   multiplicador_devolvido: { icone: <IconeAlerta />, cor: "text-warn-ink" },
+  // A recarga. A confirmação leva o símbolo da própria moeda — é a única vez em
+  // que a zenha chega por dinheiro, e o aviso deve parecer com o saldo que ele
+  // anuncia. O estorno só aparece para admins, e é alerta como todo aviso que
+  // pede decisão de alguém.
+  recarga_confirmada: { icone: <IconeZenha />, cor: "text-accent-ink" },
+  recarga_estornada: { icone: <IconeAlerta />, cor: "text-warn-ink" },
 };
 
 export const metadata: Metadata = { title: "Avisos" };

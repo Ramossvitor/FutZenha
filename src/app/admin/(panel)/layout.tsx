@@ -10,6 +10,7 @@ const adminLinks = [
   { href: "/admin/avaliacoes", label: "Avaliações" },
   { href: "/admin/loja", label: "Loja" },
   { href: "/admin/zenhas", label: "Zenhas" },
+  { href: "/admin/recargas", label: "Recargas" },
 ] as const;
 
 // O guard aqui é rede, não garantia: layout não re-renderiza a cada navegação
