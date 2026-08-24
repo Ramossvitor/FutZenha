@@ -62,7 +62,12 @@ async function ocuparCotaDeResumo(quantos: number): Promise<void> {
   const enchendo = await criarFut();
   const inseridos = await db
     .insert(players)
-    .values(Array.from({ length: quantos }, (_, i) => ({ name: `Cota resumo ${i}` })))
+    .values(
+      Array.from({ length: quantos }, (_, i) => ({
+        name: `Cota resumo ${i}`,
+        slug: `cota-resumo-${i}`,
+      })),
+    )
     .returning({ id: players.id });
   await db.insert(attendances).values(
     inseridos.map((p) => ({
@@ -95,7 +100,7 @@ async function ocuparCotaDeAgenda(quantos: number): Promise<void> {
 /** Fut de grupo com placar e gols, pronto para encerrar. */
 async function montarFutComPlacar() {
   const admin = await criarJogadorComConta();
-  const groupId = await criarGrupo();
+  const groupId = (await criarGrupo()).id;
   await entrarNoGrupo(groupId, admin.jogador, "admin");
   const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
 
@@ -141,7 +146,7 @@ describe("e-mail de resumo do fut", () => {
 
   it("quem jogou sem conta não recebe", async () => {
     const admin = await criarJogadorComConta();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await entrarNoGrupo(groupId, admin.jogador, "admin");
     const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
     const timeA = await criarTrioComConta();
@@ -179,7 +184,7 @@ describe("e-mail de resumo do fut", () => {
   // sem a chamada, e com o link do fut.
   it("quem jogou e não avalia recebe o link do fut, sem a cobrança", async () => {
     const admin = await criarJogadorComConta();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await entrarNoGrupo(groupId, admin.jogador, "admin");
     const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
     const um = await criarJogadorComConta();
@@ -228,7 +233,7 @@ describe("e-mail de resumo do fut", () => {
 
   it("fut sem jogo lançado não gera e-mail", async () => {
     const admin = await criarJogadorComConta();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await entrarNoGrupo(groupId, admin.jogador, "admin");
     const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
     const fetchMock = stubResend();

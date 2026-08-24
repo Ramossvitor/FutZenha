@@ -184,7 +184,7 @@ export function gruposVisiveisNoPerfil<G extends GrupoVisivel & { id: number }>(
  * grupo é o RANKING daquele grupo — servido um jogador por vez em vez de em
  * lista, e nada mais. As duas perguntas têm respostas diferentes para o mesmo
  * grupo público, e usar a primeira nas duas entregava a quem não é membro
- * exatamente o que `/grupo/[id]/ranking` responde com 404: bastava percorrer
+ * exatamente o que `/grupo/[slug]/ranking` responde com 404: bastava percorrer
  * com `?grupo=` os membros que a página pública do grupo já mostra.
  *
  * O papel entra como `"member"` porque só o vínculo importa aqui — o predicado

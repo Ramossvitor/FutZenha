@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { lojaItens, zenhaEquipados, zenhaInventario } from "@/db/schema";
 import { listarGruposDoSeletor, listarMeusGrupos, type MeuGrupo } from "@/lib/grupos";
 import { gruposVisiveisNoPerfil, podeFiltrarPerfilPorGrupo } from "@/lib/grupos-permissions";
-import { getJogador, type PerfilJogador } from "@/lib/jogadores";
+import type { PerfilJogador } from "@/lib/jogadores";
 import type { ItemDaLoja } from "@/lib/item-da-loja";
 import { lerVitrine, type BadgeNaVitrine } from "@/lib/loja";
 import type { Ator } from "@/lib/permissions";
@@ -145,19 +145,23 @@ async function carregarVitrine(playerId: number): Promise<VitrineDoJogador> {
  */
 export async function carregarPerfil(
   visitante: Ator,
-  alvoId: number,
+  // O jogador chega resolvido, e não como id: quem entra pela rota já teve que
+  // traduzir o slug da URL para achá-lo (`getJogadorPorSlug`), e receber a
+  // linha pronta evita repetir a consulta. É também o que deixa "não existe"
+  // morrer na borda, no notFound() da página, em vez de virar um `undefined`
+  // que atravessa daqui.
+  jogador: PerfilJogador,
   grupoParam: string | string[] | undefined,
-): Promise<DadosDoPerfil | undefined> {
-  const [jogador, gruposDoAlvo, gruposDoVisitante, vitrine] = await Promise.all([
-    getJogador(alvoId),
+): Promise<DadosDoPerfil> {
+  const alvoId = jogador.id;
+  const [gruposDoAlvo, gruposDoVisitante, vitrine] = await Promise.all([
     listarMeusGrupos(alvoId),
     listarGruposDoSeletor(visitante.playerId),
-    // No mesmo lote das outras três: a vitrine não depende de permissão
-    // nenhuma, e esperar o jogador para só então pedir os cosméticos
-    // acrescentaria um ida-e-volta ao banco no caminho crítico da página.
+    // No mesmo lote das outras duas: a vitrine não depende de permissão
+    // nenhuma, e pedi-la em sequência acrescentaria um ida-e-volta ao banco no
+    // caminho crítico da página.
     carregarVitrine(alvoId),
   ]);
-  if (!jogador) return undefined;
 
   const idsDoVisitante = new Set(gruposDoVisitante.map((g) => g.id));
   const gruposVisiveis = gruposVisiveisNoPerfil(visitante, gruposDoAlvo, idsDoVisitante);

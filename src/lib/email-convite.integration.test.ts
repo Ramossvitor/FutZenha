@@ -137,7 +137,7 @@ describe("enviarConvitePorEmail", () => {
     it("aviso de grupo recente para a mesma caixa também bloqueia", async () => {
       const dono = await criarJogador();
       await criarConta(dono, { email: EMAIL });
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       await criarConviteDeGrupo(groupId, dono, { emailEnviadoHaMinutos: 5 });
       const alvo = await criarJogador();
       const convite = await criarConvite(alvo, { email: EMAIL });
@@ -207,7 +207,7 @@ describe("enviarConvitePorEmail", () => {
     it("o teto soma os avisos de grupo: 50 + 50 barra o convite de plataforma", async () => {
       const volume = await criarJogador();
       await criarVolumeDeConvites(volume, 50, { enviadoHaUmaHora: true });
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       await criarVolumeDeAvisosDeGrupo(groupId, volume, 50);
       const alvo = await criarJogador();
       const convite = await criarConvite(alvo, { email: EMAIL });

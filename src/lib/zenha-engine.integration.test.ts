@@ -112,7 +112,7 @@ async function criarElenco(
 async function montarFutPago(
   opcoes: { groupId?: number; elenco?: Player[]; emCampo?: Player[]; data?: string } = {},
 ): Promise<{ fut: MatchDay; groupId: number; elenco: Player[]; emCampo: Player[] }> {
-  const groupId = opcoes.groupId ?? (await criarGrupo());
+  const groupId = opcoes.groupId ?? (await criarGrupo()).id;
   const elenco = opcoes.elenco ?? (await criarElenco(groupId, MIN_CONTAS));
   const emCampo = opcoes.emCampo ?? elenco;
   const data = opcoes.data ?? diaDoFut(0);
@@ -357,7 +357,7 @@ describe("futsALiquidar", () => {
   // ele acontece normalmente e não paga.
   it("nunca liquida fut avulso, por mais maduro que esteja", async () => {
     const fut = await criarFut({ date: diaDoFut(0), groupId: null });
-    const elenco = await criarElenco(await criarGrupo(), MIN_CONTAS);
+    const elenco = await criarElenco((await criarGrupo()).id, MIN_CONTAS);
     await criarJogo(fut, elenco.slice(0, 3), elenco.slice(3));
     await amadurecer(fut, { rodada: "sem" });
 
@@ -387,7 +387,7 @@ describe("futsALiquidar", () => {
   // do varredor reexaminaria fut encerrado de dois anos atrás. Um fut preso
   // além dela simplesmente não paga — e não pagar é melhor que pagar errado.
   it("ignora fut encerrado há mais de 30 dias, e ainda pega o de 29", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const elenco = await criarElenco(grupo, MIN_CONTAS);
     const velho = await montarFutPago({ groupId: grupo, elenco, data: diaDoFut(0) });
     const recente = await montarFutPago({ groupId: grupo, elenco, data: diaDoFut(1) });
@@ -446,7 +446,7 @@ describe("liquidarFut", () => {
   // quem jogou, o outro é uma intenção. Quem ficou de fora do jogo não recebe
   // nem participação.
   it("quem confirmou presença mas não entrou em campo não recebe nada", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const elenco = await criarElenco(grupo, MIN_CONTAS + 1);
     const arquibancada = elenco[MIN_CONTAS];
     const { fut } = await montarFutPago({
@@ -467,7 +467,7 @@ describe("liquidarFut", () => {
   // O mesmo filtro de todos os rankings: quem joga sem conta ativa conta para
   // placar e presença, mas não pontua em lugar nenhum — e não teria carteira.
   it("jogador com a conta desativada não recebe, e os outros seis recebem normalmente", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const ativos = await criarElenco(grupo, MIN_CONTAS);
     const [desligado] = await criarElenco(grupo, 1, { active: false });
     const { fut } = await montarFutPago({
@@ -488,7 +488,7 @@ describe("liquidarFut", () => {
   // vira admin dele, e convidar cria jogador na própria tela. Cinco contas — ou
   // cinco contas e dois fantasmas — não bastam.
   it("fut com cinco contas em campo não paga nada a ninguém", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const ativos = await criarElenco(grupo, MIN_CONTAS - 1);
     const desligados = await criarElenco(grupo, 2, { active: false });
     const emCampo = [...ativos, ...desligados];
@@ -634,7 +634,7 @@ describe("teto de futs pagos por semana", () => {
   // mesma semana em semanas diferentes. O corte é o `date_trunc('week')` do
   // Postgres — de segunda a domingo.
   it("o terceiro fut da mesma semana não paga; o da semana seguinte volta a pagar", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const elenco = await criarElenco(grupo, MIN_CONTAS);
     const semana = [];
     for (const dia of [0, 2, 4]) {
@@ -688,7 +688,7 @@ describe("sequência de presenças", () => {
   }
 
   it("o prêmio sai no quinto fut seguido, e não antes", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const elenco = await criarElenco(grupo, MIN_CONTAS);
     const futs = await temporada(grupo, elenco, TAMANHO_DA_SEQUENCIA);
 
@@ -709,7 +709,7 @@ describe("sequência de presenças", () => {
   // Faltar tendo vaga quebra, e "nunca respondi" quebra igual: os dois são a
   // mesma ausência para quem estava esperando o time.
   it("uma ausência no meio quebra: o quinto fut não paga sequência", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const elenco = await criarElenco(grupo, MIN_CONTAS + 1);
     const faltoso = elenco[MIN_CONTAS];
     const futs = await temporada(grupo, elenco, TAMANHO_DA_SEQUENCIA, (semana) =>
@@ -733,7 +733,7 @@ describe("sequência de presenças", () => {
   // contagem dela. Cobrar por isso seria punir quem chegou tarde numa lista
   // cheia — e por isso a sequência dela fecha um fut depois, não nunca.
   it("ficar na lista de espera não quebra a sequência — só não conta como presença", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const elenco = await criarElenco(grupo, MIN_CONTAS + 1);
     const esperando = elenco[MIN_CONTAS];
     const futs = await temporada(grupo, elenco, TAMANHO_DA_SEQUENCIA + 1, (semana) =>
@@ -762,13 +762,13 @@ describe("sequência de presenças", () => {
   // meio da semana apareceria como ausência e quebraria a corrida de quem nem é
   // de lá — e quanto mais grupos a pessoa tivesse, menos prêmio ela veria.
   it("fut de outro grupo no meio não entra na conta", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const elenco = await criarElenco(grupo, MIN_CONTAS);
     const futs = await temporada(grupo, elenco, TAMANHO_DA_SEQUENCIA);
 
     // Fut de outro grupo, encerrado, entre o terceiro e o quarto — e sem
     // ninguém deste elenco em campo.
-    const outroGrupo = await criarGrupo("Outro Grupo");
+    const outroGrupo = (await criarGrupo("Outro Grupo")).id;
     const intrusos = await criarElenco(outroGrupo, MIN_CONTAS);
     const { fut: intruso } = await montarFutPago({
       groupId: outroGrupo,
@@ -794,7 +794,7 @@ describe("ajustes do admin", () => {
   // está no ledger append-only, e é essa ausência de reprocessamento que torna o
   // painel do admin seguro.
   it("a sobrescrita muda o próximo fut liquidado e não mexe no que já foi pago", async () => {
-    const grupo = await criarGrupo();
+    const grupo = (await criarGrupo()).id;
     const elenco = await criarElenco(grupo, MIN_CONTAS);
     const antes = await montarFutPago({ groupId: grupo, elenco, data: diaDoFut(0) });
     await amadurecer(antes.fut, { rodada: "sem" });

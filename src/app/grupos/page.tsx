@@ -1,4 +1,4 @@
-import { responderConvite } from "@/app/grupo/[id]/actions";
+import { responderConvite } from "@/app/grupo/[slug]/actions";
 import { Badge } from "@/components/ui/badge";
 import { BannerDaQuery } from "@/components/ui/banner";
 import { Button, LinkButton, SubmitButton } from "@/components/ui/button";
@@ -106,6 +106,7 @@ export default async function GruposPage({ searchParams }: PageProps<"/grupos">)
             titulo="Todos os futs"
             meta="Tudo junto, inclusive os futs sem grupo"
             groupId={null}
+            slugDoGrupo={null}
           />
 
           {meus.map((g) => (
@@ -117,6 +118,7 @@ export default async function GruposPage({ searchParams }: PageProps<"/grupos">)
               descricao={g.description}
               privado={g.visibility === "private"}
               groupId={g.id}
+              slugDoGrupo={g.slug}
             />
           ))}
 
@@ -165,7 +167,7 @@ export default async function GruposPage({ searchParams }: PageProps<"/grupos">)
         >
           {paraDescobrir.map((g) => (
             <li key={g.id}>
-              <HairlineRowLink href={`/grupo/${g.id}`}>
+              <HairlineRowLink href={`/grupo/${g.slug}`}>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-display font-bold text-fg">{g.name}</span>
                   {g.description && (
@@ -198,13 +200,17 @@ function CartaoDeContexto({
   descricao,
   privado = false,
   groupId,
+  slugDoGrupo,
 }: {
   ativo: boolean;
   titulo: string;
   meta: string;
   descricao?: string | null;
   privado?: boolean;
+  /** Para o `.bind` da action, que fala id. `null` = o contexto "todos os futs". */
   groupId: number | null;
+  /** Para o link, que fala slug. Anda junto com o `groupId`. */
+  slugDoGrupo: string | null;
 }) {
   return (
     <Card className={ativo ? "border-accent-edge" : undefined}>
@@ -235,10 +241,10 @@ function CartaoDeContexto({
         </SubmitDeCartao>
       </form>
 
-      {groupId !== null && (
+      {slugDoGrupo !== null && (
         <div className="border-t border-line px-4 py-2">
           <HairlineRowLink
-            href={`/grupo/${groupId}`}
+            href={`/grupo/${slugDoGrupo}`}
             className="-mx-4 -my-2 bg-transparent text-[12.5px] text-accent-ink hover:bg-transparent hover:underline"
           >
             Ver a página do grupo

@@ -66,12 +66,14 @@ async function jaCriou(
     } else if (tabela === "groups") {
       await db.insert(groups).values({
         name: `Grupo ${playerId}-${i}-${horasAtras}`,
+        slug: `grupo-${playerId}-${i}-${horasAtras}`,
         createdByPlayerId: playerId,
         createdAt: sql`now() - make_interval(hours => ${horasAtras})`,
       });
     } else {
       await db.insert(players).values({
         name: `Convidado ${playerId}-${i}-${horasAtras}`,
+        slug: `convidado-${playerId}-${i}-${horasAtras}`,
         createdByPlayerId: playerId,
         createdAt: sql`now() - make_interval(hours => ${horasAtras})`,
       });
@@ -148,7 +150,8 @@ describe("teto de grupos por dia", () => {
 
     const url = await esperaRedirect(criarGrupoAction(formDeGrupo("Grupo que entra")));
 
-    expect(url).toMatch(/^\/grupo\/\d+\/gerenciar$/);
+    // Slug, não id: a URL do grupo deixou de ser numérica (ver src/lib/slug.ts).
+    expect(url).toMatch(/^\/grupo\/[a-z0-9._-]+\/gerenciar$/);
   });
 });
 

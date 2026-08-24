@@ -1,7 +1,7 @@
 // A rota que serve a arte dos badges.
 //
 // Ela é PÚBLICA por construção (não está no matcher do src/proxy.ts), porque o
-// badge em destaque aparece em /rankings, /fut/[id] e /grupo/[id] — telas que
+// badge em destaque aparece em /rankings, /fut/[id] e /grupo/[slug] — telas que
 // qualquer um abre. Se um dia ela entrar num prefixo protegido, o sintoma será
 // badge quebrado só para quem NÃO está logado, e ninguém descobre isso testando
 // logado. Daí este arquivo existir.

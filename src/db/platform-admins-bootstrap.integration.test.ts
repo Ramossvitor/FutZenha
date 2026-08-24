@@ -37,6 +37,10 @@ describe("provisionarPlatformAdmins", () => {
     const [convite] = await db.select().from(invites).where(eq(invites.playerId, conta.playerId));
     expect(convite).toBeDefined();
     expect(convite.usedAt).toBeNull();
+    // O insert daqui é SQL cru e roda em TODO build de produção: uma coluna nova
+    // NOT NULL esquecida nele derruba o deploy, e não há typecheck que perceba.
+    const [jogador] = await db.select().from(players).where(eq(players.id, conta.playerId));
+    expect(jogador.slug).toBe(NOME_DO_ADMIN);
   });
 
   it("adota o jogador que já existe, quando ele está limpo", async () => {

@@ -1,13 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { revalidateGrupo } from "@/app/grupo/[slug]/revalidate";
 import { db } from "@/db";
 import { groupInviteLinks, groupMembers } from "@/db/schema";
 import { condicaoLinkVivo } from "@/lib/grupos-link";
-import { fecharPedidoPendente } from "@/lib/grupos";
+import { fecharPedidoPendente, getGrupo } from "@/lib/grupos";
 import { requirePlayer } from "@/lib/require-player";
 
 /**
@@ -65,7 +65,12 @@ export async function resgatarLinkDoGrupo(token: string) {
 
   if (resultado.estado === "invalido") redirect("/grupos?erro=link-invalido");
 
-  revalidatePath("/grupos");
-  revalidatePath(`/grupo/${resultado.groupId}`);
-  redirect(`/grupo/${resultado.groupId}?ok=entrou`);
+  // O link carrega o id; a URL de destino é o slug. Sem esta tradução o redirect
+  // levaria para um endereço que não existe mais, e o revalidate não invalidaria
+  // nada — calado, porque `revalidatePath` de caminho inexistente não é erro.
+  const grupo = await getGrupo(resultado.groupId);
+  if (!grupo) redirect("/grupos?erro=link-invalido");
+
+  revalidateGrupo(grupo.slug);
+  redirect(`/grupo/${grupo.slug}?ok=entrou`);
 }

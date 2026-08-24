@@ -10,7 +10,7 @@ import { criarJogadorComConta, logarComo } from "./fixtures";
 
 describe("harness de integração", () => {
   it("insere e lê no banco de teste", async () => {
-    const [jogador] = await db.insert(players).values({ name: "Fumaça" }).returning();
+    const [jogador] = await db.insert(players).values({ name: "Fumaça", slug: "fumaca" }).returning();
     const lidos = await db.select().from(players);
     expect(lidos).toHaveLength(1);
     expect(lidos[0].id).toBe(jogador.id);

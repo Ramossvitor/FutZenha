@@ -714,7 +714,7 @@ describe("o guard da súmula", () => {
 
   it("em fut de grupo, o admin do grupo opera sem delegação", async () => {
     const s = await montarSumula();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await db.update(matchDays).set({ groupId }).where(eq(matchDays.id, s.fut.id));
 
     const doGrupo = await criarJogadorComConta();
@@ -734,7 +734,7 @@ describe("o guard da súmula", () => {
 
   it("organizador e membro do grupo continuam de fora", async () => {
     const s = await montarSumula();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await db.update(matchDays).set({ groupId }).where(eq(matchDays.id, s.fut.id));
 
     for (const papel of ["organizer", "member"] as const) {

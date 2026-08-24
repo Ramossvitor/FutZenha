@@ -23,10 +23,12 @@ export const metadata = { title: "Ranking do grupo" };
 export default async function RankingDoGrupoPage({
   params,
   searchParams,
-}: PageProps<"/grupo/[id]/ranking">) {
-  const { id } = await params;
-  const groupId = Number(id);
-  const { grupo, session } = await requireGrupoMembro(groupId);
+}: PageProps<"/grupo/[slug]/ranking">) {
+  const { slug } = await params;
+  // O guard recebe o slug da URL e devolve o grupo resolvido; daqui para baixo
+  // o escopo dos rankings é `grupo.id`, que é o que as consultas falam.
+  const { grupo, session } = await requireGrupoMembro(slug);
+  const groupId = grupo.id;
   const { aba, ano } = await searchParams;
 
   return (
@@ -36,13 +38,13 @@ export default async function RankingDoGrupoPage({
         selos={<span className="eyebrow">Ranking do grupo</span>}
         descricao="Só os futs deste grupo entram nesta conta."
         acao={
-          <LinkButton href={`/grupo/${groupId}`} variante="secondary" tamanho="sm">
+          <LinkButton href={`/grupo/${grupo.slug}`} variante="secondary" tamanho="sm">
             Ver o grupo
           </LinkButton>
         }
       />
       <Rankings
-        base={`/grupo/${groupId}/ranking`}
+        base={`/grupo/${grupo.slug}/ranking`}
         aba={abaValida(aba, groupId)}
         ano={anoValido(ano)}
         groupId={groupId}

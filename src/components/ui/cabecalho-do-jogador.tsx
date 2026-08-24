@@ -9,7 +9,7 @@ import { Nota } from "./nota";
  * O cabeçalho de quem é o assunto da tela: avatar, apelido gigante, nome de
  * batismo, os badges de status e a nota.
  *
- * Hoje quem desenha isto é só /jogador/[id]. Mora em `components/ui/` — e não
+ * Hoje quem desenha isto é só /jogador/[slug]. Mora em `components/ui/` — e não
  * colocado na rota — porque é onde os três cosméticos de slot único aparecem
  * juntos como o comprador os vê: moldura no avatar, cor no apelido, título ao
  * lado. Quando a prévia do inventário existir, ela tem que ser ESTE componente,

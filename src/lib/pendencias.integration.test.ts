@@ -132,7 +132,7 @@ describe("processarPendencias — lembrete de véspera", () => {
   });
 
   it("fut de grupo lembra só os membros do grupo", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await criarFut({ date: AMANHA_SP, groupId });
     const { jogador: doGrupo } = await criarJogadorComConta();
     const { jogador: deFora } = await criarJogadorComConta();

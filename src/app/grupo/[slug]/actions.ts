@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { groupInvitations, groupJoinRequests, groupMembers } from "@/db/schema";
 import { podeEntrarNoGrupo, podeSairDoGrupo } from "@/lib/grupos-permissions";
-import { fecharPedidoPendente } from "@/lib/grupos";
+import { fecharPedidoPendente, getGrupo } from "@/lib/grupos";
 import { notificar } from "@/lib/notifications";
 import { requireGrupoMembro, requireGrupoVisivel } from "@/lib/require-grupo";
 import { revalidateGrupo } from "./revalidate";
@@ -30,7 +30,7 @@ async function adminDoGrupo(groupId: number): Promise<number | undefined> {
 export async function entrarNoGrupo(groupId: number) {
   const { session, grupo, papel } = await requireGrupoVisivel(groupId);
   if (podeEntrarNoGrupo(grupo, papel) !== "entra-direto") {
-    redirect(`/grupo/${groupId}?erro=entrada-fechada`);
+    redirect(`/grupo/${grupo.slug}?erro=entrada-fechada`);
   }
 
   await db.transaction(async (tx) => {
@@ -41,15 +41,15 @@ export async function entrarNoGrupo(groupId: number) {
     await fecharPedidoPendente(tx, groupId, session.player.id);
   });
 
-  revalidateGrupo(groupId);
-  redirect(`/grupo/${groupId}?ok=entrou`);
+  revalidateGrupo(grupo.slug);
+  redirect(`/grupo/${grupo.slug}?ok=entrou`);
 }
 
 /** Pedido de entrada: só em grupo público sob aprovação. */
 export async function pedirEntrada(groupId: number) {
   const { session, grupo, papel } = await requireGrupoVisivel(groupId);
   if (podeEntrarNoGrupo(grupo, papel) !== "pede-entrada") {
-    redirect(`/grupo/${groupId}?erro=entrada-fechada`);
+    redirect(`/grupo/${grupo.slug}?erro=entrada-fechada`);
   }
 
   const admin = await adminDoGrupo(groupId);
@@ -77,22 +77,28 @@ export async function pedirEntrada(groupId: number) {
           playerId: admin,
           type: "group_join_request",
           title: `${session.player.name} quer entrar em ${grupo.name}`,
-          href: `/grupo/${groupId}/gerenciar`,
+          href: `/grupo/${grupo.slug}/gerenciar`,
           dedupeKey: `grupo:${groupId}:pedido:${pedido.id}`,
         },
       ]);
     }
   });
 
-  revalidateGrupo(groupId);
-  redirect(`/grupo/${groupId}?ok=pedido-enviado`);
+  revalidateGrupo(grupo.slug);
+  redirect(`/grupo/${grupo.slug}?ok=pedido-enviado`);
 }
 
 export async function cancelarPedido(groupId: number) {
   const session = await requirePlayer();
   if (!Number.isInteger(groupId)) redirect("/grupos");
 
-  await db
+  // Sem guard de grupo, de propósito: quem cancela o próprio pedido não precisa
+  // enxergar o grupo (ele pode ter virado privado no meio do caminho). Mas a
+  // tradução id→slug só acontece DEPOIS da prova de que o pedido existia — quem
+  // pediu entrada viu o grupo um dia. Traduzir para qualquer id chutado
+  // devolveria no redirect o endereço (derivado do nome) de grupo privado a
+  // quem nunca o viu: o oráculo de enumeração que a URL por slug veio fechar.
+  const [cancelado] = await db
     .delete(groupJoinRequests)
     .where(
       and(
@@ -102,10 +108,17 @@ export async function cancelarPedido(groupId: number) {
         eq(groupJoinRequests.playerId, session.player.id),
         eq(groupJoinRequests.status, "pending"),
       ),
-    );
+    )
+    .returning({ groupId: groupJoinRequests.groupId });
+  if (!cancelado) redirect("/grupos");
 
-  revalidateGrupo(groupId);
-  redirect(`/grupo/${groupId}?ok=pedido-cancelado`);
+  // O grupo é buscado só para saber o endereço de volta — sem ele não há para
+  // onde redirecionar nem o que revalidar.
+  const grupo = await getGrupo(groupId);
+  if (!grupo) redirect("/grupos");
+
+  revalidateGrupo(grupo.slug);
+  redirect(`/grupo/${grupo.slug}?ok=pedido-cancelado`);
 }
 
 /**
@@ -146,10 +159,20 @@ export async function responderConvite(groupId: number, invitationId: number, ac
     return true;
   });
 
+  // Id de grupo inexistente morre aqui também (o `groupId` do `where` não casa
+  // convite nenhum), com a MESMA resposta de convite inválido: um `getGrupo`
+  // antes da validação responderia "esse id existe?" para qualquer chute — o
+  // meio-vazamento 403-vs-404 que src/lib/require-grupo.ts documenta.
   if (!entrou) redirect("/grupos?erro=convite-invalido");
 
-  revalidateGrupo(groupId);
-  if (aceitar) redirect(`/grupo/${groupId}?ok=entrou`);
+  // Como no `cancelarPedido`: sem guard (responder convite de grupo privado é
+  // justamente o caso normal), e o grupo — lido só para saber o endereço de
+  // volta — só é buscado depois de o convite valer.
+  const grupo = await getGrupo(groupId);
+  if (!grupo) redirect("/grupos");
+
+  revalidateGrupo(grupo.slug);
+  if (aceitar) redirect(`/grupo/${grupo.slug}?ok=entrou`);
   redirect("/grupos?ok=convite-recusado");
 }
 
@@ -160,13 +183,13 @@ export async function responderConvite(groupId: number, invitationId: number, ac
  * ninguém encerra e uma fila de pedidos que ninguém decide.
  */
 export async function sairDoGrupo(groupId: number) {
-  const { session, papel } = await requireGrupoMembro(groupId);
-  if (!podeSairDoGrupo(papel)) redirect(`/grupo/${groupId}?erro=admin-precisa-transferir`);
+  const { session, grupo, papel } = await requireGrupoMembro(groupId);
+  if (!podeSairDoGrupo(papel)) redirect(`/grupo/${grupo.slug}?erro=admin-precisa-transferir`);
 
   await db
     .delete(groupMembers)
     .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.playerId, session.player.id)));
 
-  revalidateGrupo(groupId);
+  revalidateGrupo(grupo.slug);
   redirect("/grupos?ok=saiu");
 }

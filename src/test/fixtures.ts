@@ -25,6 +25,7 @@ import {
 } from "@/db/schema";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
+import { slugBase } from "@/lib/slug";
 import { cookieJar } from "./cookie-store";
 
 export const SENHA_DE_TESTE = "senha-de-teste-123";
@@ -44,9 +45,13 @@ type Usuario = typeof users.$inferSelect;
 export async function criarJogador(
   extra: Partial<typeof players.$inferInsert> = {},
 ): Promise<Player> {
+  // O slug sai do nome, como na criação de verdade (`criarJogadorComConvite`).
+  // `proximoNome` já entrega nome único por execução — "Jogador-7" vira
+  // "jogador-7" —, então não há colisão a desempatar aqui.
+  const name = extra.name ?? proximoNome("Jogador");
   const [jogador] = await db
     .insert(players)
-    .values({ name: proximoNome("Jogador"), ...extra })
+    .values({ name, slug: slugBase(name, "jogador"), ...extra })
     .returning();
   return jogador;
 }

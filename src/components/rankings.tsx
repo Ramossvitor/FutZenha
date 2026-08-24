@@ -71,7 +71,7 @@ function Posicao({ n }: { n: number }) {
 
 /**
  * Os quatro rankings, servindo três rotas: /rankings (escopo = grupo do
- * contexto), /grupo/[id]/ranking (escopo = grupo da URL) e a artilharia.
+ * contexto), /grupo/[slug]/ranking (escopo = grupo da URL) e a artilharia.
  *
  * Antes eram três páginas com consultas quase iguais e resultados que
  * divergiam — /rankings nem tinha artilharia, e o mínimo de jogos era uma
@@ -174,7 +174,7 @@ export async function Rankings({
               <HairlineRow as="li" key={n.playerId} destaque={n.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(notas, (x) => x.skill)[i]} />
                 <LinkJogador
-                  playerId={n.playerId}
+                  slug={n.slug}
                   apelido={n.nickname}
                   nome={n.name}
                   destaque={destaques.get(n.playerId)}
@@ -215,7 +215,7 @@ export async function Rankings({
               <HairlineRow as="li" key={a.playerId} destaque={a.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(artilheiros, (x) => x.total)[i]} />
                 <LinkJogador
-                  playerId={a.playerId}
+                  slug={a.slug}
                   apelido={a.nickname}
                   nome={a.name}
                   destaque={destaques.get(a.playerId)}
@@ -290,7 +290,7 @@ export async function Rankings({
                           o nome não levava a lugar nenhum. */}
                       <td className="text-left font-display font-bold text-fg">
                         <Link
-                          href={`/jogador/${r.playerId}`}
+                          href={`/jogador/${r.slug}`}
                           className="inline-flex items-center gap-1.5 hover:underline"
                         >
                           <DestaqueNoNome destaque={destaques.get(r.playerId)} />
@@ -341,7 +341,7 @@ export async function Rankings({
                       precisam ser as DELE: divergir aqui é como o nome já
                       chegou em cinco tamanhos diferentes uma vez. */}
                   <Link
-                    href={`/jogador/${p.playerId}`}
+                    href={`/jogador/${p.slug}`}
                     className="flex items-center gap-1.5 font-display text-[14px] leading-[1.2] font-bold text-fg hover:underline"
                   >
                     <DestaqueNoNome destaque={destaques.get(p.playerId)} />
@@ -406,7 +406,7 @@ export async function Rankings({
               <HairlineRow as="li" key={m.playerId} destaque={m.playerId === destaquePlayerId}>
                 <Posicao n={posicoes(mvps, (x) => x.titulos)[i]} />
                 <LinkJogador
-                  playerId={m.playerId}
+                  slug={m.slug}
                   apelido={m.nickname}
                   nome={m.name}
                   destaque={destaques.get(m.playerId)}

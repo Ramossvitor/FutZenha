@@ -13,7 +13,7 @@ const EMAIL = "convidado@example.com";
 
 describe("convitesEnviados", () => {
   it("convite pendente de conta ativa com e-mail tem destino", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const jogador = await criarJogador({ name: "Fulano", nickname: "Fu" });
     await criarConta(jogador, { email: EMAIL });
     const convite = await criarConviteDeGrupo(groupId, jogador);
@@ -33,7 +33,7 @@ describe("convitesEnviados", () => {
   // contato, o selo "e-mail não saiu" e o botão de reenviar têm que valer aqui
   // também — senão a tela mente sobre o que o botão faz.
   it("só com e-mail de contato também tem destino", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const jogador = await criarJogador();
     await criarConta(jogador, { contactEmail: "so-contato@example.com" });
     await criarConviteDeGrupo(groupId, jogador);
@@ -44,7 +44,7 @@ describe("convitesEnviados", () => {
   });
 
   it("conta sem endereço nenhum não tem destino", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const jogador = await criarJogador();
     await criarConta(jogador);
     await criarConviteDeGrupo(groupId, jogador);
@@ -55,7 +55,7 @@ describe("convitesEnviados", () => {
   });
 
   it("conta desativada não tem destino — o botão de reenviar não aparece", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const jogador = await criarJogador();
     await criarConta(jogador, { email: EMAIL, active: false });
     await criarConviteDeGrupo(groupId, jogador);
@@ -66,7 +66,7 @@ describe("convitesEnviados", () => {
   });
 
   it("jogador sem conta não tem destino", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const semConta = await criarJogador();
     await criarConviteDeGrupo(groupId, semConta);
 
@@ -76,7 +76,7 @@ describe("convitesEnviados", () => {
   });
 
   it("sem envio nenhum, emailSentAt é nulo", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const jogador = await criarJogador();
     await criarConta(jogador, { email: EMAIL });
     await criarConviteDeGrupo(groupId, jogador);
@@ -90,7 +90,7 @@ describe("convitesEnviados", () => {
   // automático olha o histórico do par, então revogar e reconvidar não pode
   // fazer a tela dizer "e-mail não saiu" para quem recebeu e-mail há uma hora.
   it("o envio de um convite anterior do mesmo par aparece na linha atual", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const jogador = await criarJogador();
     await criarConta(jogador, { email: EMAIL });
     await criarConviteDeGrupo(groupId, jogador, {
@@ -109,9 +109,9 @@ describe("convitesEnviados", () => {
   it("o envio por outro grupo não aparece na linha deste", async () => {
     const jogador = await criarJogador();
     await criarConta(jogador, { email: EMAIL });
-    const outroGrupo = await criarGrupo("Grupo Alheio");
+    const outroGrupo = (await criarGrupo("Grupo Alheio")).id;
     await criarConviteDeGrupo(outroGrupo, jogador, { emailEnviadoHaMinutos: 60 });
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await criarConviteDeGrupo(groupId, jogador);
 
     const [linha] = await convitesEnviados(groupId);
@@ -120,7 +120,7 @@ describe("convitesEnviados", () => {
   });
 
   it("convite respondido sai da lista", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const jogador = await criarJogador();
     await criarConta(jogador, { email: EMAIL });
     await criarConviteDeGrupo(groupId, jogador, { status: "declined" });

@@ -23,12 +23,15 @@ import { esquecerStats } from "@/lib/stats";
 import { requireGrupoAdmin, requireGrupoOrganizador } from "@/lib/require-grupo";
 import { revalidateGrupo } from "../revalidate";
 
-function erro(groupId: number, slug: string): never {
-  redirect(`/grupo/${groupId}/gerenciar?erro=${slug}`);
+// Dois "slug" diferentes se encontram aqui: o do GRUPO, que é o endereço da
+// tela, e o da MENSAGEM, que é o código que o BannerDaQuery traduz (ver
+// src/lib/mensagens.ts). Daí os nomes explícitos.
+function erro(slugDoGrupo: string, mensagem: string): never {
+  redirect(`/grupo/${slugDoGrupo}/gerenciar?erro=${mensagem}`);
 }
 
-function ok(groupId: number, slug: string): never {
-  redirect(`/grupo/${groupId}/gerenciar?ok=${slug}`);
+function ok(slugDoGrupo: string, mensagem: string): never {
+  redirect(`/grupo/${slugDoGrupo}/gerenciar?ok=${mensagem}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -45,10 +48,10 @@ function ok(groupId: number, slug: string): never {
  * porta que acabou de ser trancada.
  */
 export async function atualizarGrupo(groupId: number, formData: FormData) {
-  await requireGrupoAdmin(groupId);
+  const { grupo } = await requireGrupoAdmin(groupId);
 
   const parsed = parseGrupoForm(formData);
-  if (!parsed.success) erro(groupId, "dados-invalidos");
+  if (!parsed.success) erro(grupo.slug, "dados-invalidos");
 
   await db.transaction(async (tx) => {
     await tx.update(groups).set(parsed.data).where(eq(groups.id, groupId));
@@ -62,8 +65,8 @@ export async function atualizarGrupo(groupId: number, formData: FormData) {
     }
   });
 
-  revalidateGrupo(groupId);
-  ok(groupId, "grupo-atualizado");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "grupo-atualizado");
 }
 
 /**
@@ -81,7 +84,7 @@ export async function excluirGrupo(groupId: number, formData: FormData) {
 
   const confirmacao = formData.get("confirmacao");
   if (typeof confirmacao !== "string" || confirmacao.trim() !== grupo.name) {
-    erro(groupId, "confirmacao-nao-confere");
+    erro(grupo.slug, "confirmacao-nao-confere");
   }
 
   await db.delete(groups).where(eq(groups.id, groupId));
@@ -104,18 +107,17 @@ const papelSchema = z.enum(["organizer", "member"]);
 
 /** Promover a organizador ou rebaixar a membro. Nunca toca no papel `admin`. */
 export async function definirPapel(groupId: number, playerId: number, novoPapel: string) {
-  const { session, papel: papelDoAtor } = await requireGrupoAdmin(groupId);
-  if (!Number.isInteger(playerId)) erro(groupId, "dados-invalidos");
+  const { session, grupo, papel: papelDoAtor } = await requireGrupoAdmin(groupId);
+  if (!Number.isInteger(playerId)) erro(grupo.slug, "dados-invalidos");
 
   const parsed = papelSchema.safeParse(novoPapel);
-  if (!parsed.success) erro(groupId, "dados-invalidos");
+  if (!parsed.success) erro(grupo.slug, "dados-invalidos");
 
   const papelAtual = await papelNoGrupo(groupId, playerId);
   const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
   const alvo = { papelAtual, ehOAtor: playerId === session.player.id };
-  if (!podePromover(ator, papelDoAtor, alvo)) erro(groupId, "sem-permissao");
+  if (!podePromover(ator, papelDoAtor, alvo)) erro(grupo.slug, "sem-permissao");
 
-  const [grupo] = await db.select({ name: groups.name }).from(groups).where(eq(groups.id, groupId));
   const agora = new Date();
 
   await db.transaction(async (tx) => {
@@ -138,7 +140,7 @@ export async function definirPapel(groupId: number, playerId: number, novoPapel:
           parsed.data === "organizer"
             ? "Você já pode marcar futs do grupo e convidar gente."
             : "Você voltou a ser membro do grupo.",
-        href: `/grupo/${groupId}`,
+        href: `/grupo/${grupo.slug}`,
         // A chave marca o EVENTO, não o estado. Carregar só o papel de destino
         // cobre um ciclo e para: promover → rebaixar → promover reencontraria
         // `...:organizer` no índice (player_id, dedupe_key) e o
@@ -149,8 +151,8 @@ export async function definirPapel(groupId: number, playerId: number, novoPapel:
     ]);
   });
 
-  revalidateGrupo(groupId);
-  ok(groupId, "papel-alterado");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "papel-alterado");
 }
 
 /**
@@ -165,8 +167,8 @@ export async function definirPapel(groupId: number, playerId: number, novoPapel:
  */
 export async function transferirAdministracao(groupId: number, playerId: number) {
   const { session, grupo } = await requireGrupoAdmin(groupId);
-  if (!Number.isInteger(playerId)) erro(groupId, "dados-invalidos");
-  if (playerId === session.player.id) erro(groupId, "transferencia-para-si");
+  if (!Number.isInteger(playerId)) erro(grupo.slug, "dados-invalidos");
+  if (playerId === session.player.id) erro(grupo.slug, "transferencia-para-si");
 
   const agora = new Date();
 
@@ -221,7 +223,7 @@ export async function transferirAdministracao(groupId: number, playerId: number)
         type: "group_role_changed",
         title: `Você agora administra ${grupo.name}`,
         body: "Papéis, convites, pedidos de entrada e os dados do grupo são seus.",
-        href: `/grupo/${groupId}/gerenciar`,
+        href: `/grupo/${grupo.slug}/gerenciar`,
         // Mesma razão de `definirPapel`: a administração pode ir e voltar para a
         // mesma pessoa, e uma chave só de estado silenciaria o segundo aviso.
         dedupeKey: `grupo:${groupId}:papel:${playerId}:admin:${agora.toISOString()}`,
@@ -230,23 +232,23 @@ export async function transferirAdministracao(groupId: number, playerId: number)
     return "ok" as const;
   });
 
-  if (resultado === "alvo-nao-e-membro") erro(groupId, "alvo-nao-e-membro");
-  if (resultado === "alvo-ja-e-admin") erro(groupId, "alvo-ja-e-admin");
-  if (resultado === "alvo-sem-conta") erro(groupId, "alvo-sem-conta");
-  if (resultado === "nao-e-o-admin") erro(groupId, "nao-e-o-admin");
+  if (resultado === "alvo-nao-e-membro") erro(grupo.slug, "alvo-nao-e-membro");
+  if (resultado === "alvo-ja-e-admin") erro(grupo.slug, "alvo-ja-e-admin");
+  if (resultado === "alvo-sem-conta") erro(grupo.slug, "alvo-sem-conta");
+  if (resultado === "nao-e-o-admin") erro(grupo.slug, "nao-e-o-admin");
 
-  revalidateGrupo(groupId);
-  ok(groupId, "administracao-transferida");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "administracao-transferida");
 }
 
 export async function removerMembro(groupId: number, playerId: number) {
-  const { session, papel: papelDoAtor } = await requireGrupoAdmin(groupId);
-  if (!Number.isInteger(playerId)) erro(groupId, "dados-invalidos");
+  const { session, grupo, papel: papelDoAtor } = await requireGrupoAdmin(groupId);
+  if (!Number.isInteger(playerId)) erro(grupo.slug, "dados-invalidos");
 
   const papelAtual = await papelNoGrupo(groupId, playerId);
   const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
   const alvo = { papelAtual, ehOAtor: playerId === session.player.id };
-  if (!podeRemoverMembro(ator, papelDoAtor, alvo)) erro(groupId, "sem-permissao");
+  if (!podeRemoverMembro(ator, papelDoAtor, alvo)) erro(grupo.slug, "sem-permissao");
 
   // Remover só a linha de `group_members` não expulsa ninguém de verdade: o link
   // do grupo continua vivo no WhatsApp, e `resgatarLinkDoGrupo` valida apenas
@@ -268,8 +270,8 @@ export async function removerMembro(groupId: number, playerId: number) {
       .where(and(eq(groupInviteLinks.groupId, groupId), isNull(groupInviteLinks.revokedAt)));
   });
 
-  revalidateGrupo(groupId);
-  ok(groupId, "membro-removido");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "membro-removido");
 }
 
 // ---------------------------------------------------------------------------
@@ -280,21 +282,21 @@ const maxUsesSchema = z.union([z.literal(""), z.coerce.number().int().min(1).max
 
 /** Gera o link do grupo e revoga o anterior (ver gerarLink em src/lib/grupos.ts). */
 export async function gerarLinkDoGrupo(groupId: number, formData: FormData) {
-  const { session } = await requireGrupoOrganizador(groupId);
+  const { session, grupo } = await requireGrupoOrganizador(groupId);
 
   const parsed = maxUsesSchema.safeParse(formData.get("maxUses") ?? "");
-  if (!parsed.success) erro(groupId, "dados-invalidos");
+  if (!parsed.success) erro(grupo.slug, "dados-invalidos");
   const maxUses = parsed.data === "" ? null : parsed.data;
 
   await db.transaction((tx) => gerarLink(tx, groupId, session.player.id, maxUses));
 
-  revalidateGrupo(groupId);
-  ok(groupId, "link-gerado");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "link-gerado");
 }
 
 export async function revogarLinkDoGrupo(groupId: number, linkId: number) {
-  await requireGrupoOrganizador(groupId);
-  if (!Number.isInteger(linkId)) erro(groupId, "dados-invalidos");
+  const { grupo } = await requireGrupoOrganizador(groupId);
+  if (!Number.isInteger(linkId)) erro(grupo.slug, "dados-invalidos");
 
   await db
     .update(groupInviteLinks)
@@ -303,8 +305,8 @@ export async function revogarLinkDoGrupo(groupId: number, linkId: number) {
     // outro grupo — de gente que nem conhece este admin — seria revogado daqui.
     .where(and(eq(groupInviteLinks.id, linkId), eq(groupInviteLinks.groupId, groupId)));
 
-  revalidateGrupo(groupId);
-  ok(groupId, "link-revogado");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "link-revogado");
 }
 
 /**
@@ -319,15 +321,15 @@ export async function convidarJogador(groupId: number, formData: FormData) {
   const { session, grupo } = await requireGrupoOrganizador(groupId);
 
   const playerId = Number(formData.get("playerId"));
-  if (!Number.isInteger(playerId)) erro(groupId, "dados-invalidos");
+  if (!Number.isInteger(playerId)) erro(grupo.slug, "dados-invalidos");
 
   const [conta] = await db
     .select({ id: users.id })
     .from(users)
     .where(and(eq(users.playerId, playerId), eq(users.active, true)));
-  if (!conta) erro(groupId, "sem-conta");
+  if (!conta) erro(grupo.slug, "sem-conta");
 
-  if ((await papelNoGrupo(groupId, playerId)) !== null) erro(groupId, "ja-membro");
+  if ((await papelNoGrupo(groupId, playerId)) !== null) erro(grupo.slug, "ja-membro");
 
   const conviteId = await db.transaction(async (tx) => {
     const [convite] = await tx
@@ -360,8 +362,8 @@ export async function convidarJogador(groupId: number, formData: FormData) {
     agendarAvisoDeConviteDeGrupo(groupId, conviteId);
   }
 
-  revalidateGrupo(groupId);
-  ok(groupId, "convite-enviado");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "convite-enviado");
 }
 
 /**
@@ -371,17 +373,17 @@ export async function convidarJogador(groupId: number, formData: FormData) {
  * banner, como no "Reenviar e-mail" do admin de plataforma.
  */
 export async function reenviarEmailDoConvite(groupId: number, invitationId: number) {
-  await requireGrupoOrganizador(groupId);
-  if (!Number.isInteger(invitationId)) erro(groupId, "dados-invalidos");
+  const { grupo } = await requireGrupoOrganizador(groupId);
+  if (!Number.isInteger(invitationId)) erro(grupo.slug, "dados-invalidos");
 
   const envio = await reenviarAvisoDeGrupo(groupId, invitationId);
-  revalidateGrupo(groupId);
-  redirectPosEnvio(`/grupo/${groupId}/gerenciar`, envio);
+  revalidateGrupo(grupo.slug);
+  redirectPosEnvio(`/grupo/${grupo.slug}/gerenciar`, envio);
 }
 
 export async function revogarConvite(groupId: number, invitationId: number) {
-  await requireGrupoOrganizador(groupId);
-  if (!Number.isInteger(invitationId)) erro(groupId, "dados-invalidos");
+  const { grupo } = await requireGrupoOrganizador(groupId);
+  if (!Number.isInteger(invitationId)) erro(grupo.slug, "dados-invalidos");
 
   await db
     .update(groupInvitations)
@@ -394,8 +396,8 @@ export async function revogarConvite(groupId: number, invitationId: number) {
       ),
     );
 
-  revalidateGrupo(groupId);
-  ok(groupId, "convite-revogado");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "convite-revogado");
 }
 
 // ---------------------------------------------------------------------------
@@ -406,7 +408,7 @@ export async function revogarConvite(groupId: number, invitationId: number) {
  *  dele e, por tabela, quem aparece no ranking do grupo. */
 export async function aprovarPedido(groupId: number, requestId: number) {
   const { session, grupo } = await requireGrupoAdmin(groupId);
-  if (!Number.isInteger(requestId)) erro(groupId, "dados-invalidos");
+  if (!Number.isInteger(requestId)) erro(grupo.slug, "dados-invalidos");
 
   await db.transaction(async (tx) => {
     const [pedido] = await tx
@@ -435,19 +437,19 @@ export async function aprovarPedido(groupId: number, requestId: number) {
         playerId: pedido.playerId,
         type: "group_join_request_resolved",
         title: `Você entrou em ${grupo.name}`,
-        href: `/grupo/${groupId}`,
+        href: `/grupo/${grupo.slug}`,
         dedupeKey: `grupo:${groupId}:pedido-resolvido:${pedido.id}`,
       },
     ]);
   });
 
-  revalidateGrupo(groupId);
-  ok(groupId, "pedido-aprovado");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "pedido-aprovado");
 }
 
 export async function recusarPedido(groupId: number, requestId: number) {
   const { session, grupo } = await requireGrupoAdmin(groupId);
-  if (!Number.isInteger(requestId)) erro(groupId, "dados-invalidos");
+  if (!Number.isInteger(requestId)) erro(grupo.slug, "dados-invalidos");
 
   await db.transaction(async (tx) => {
     const [pedido] = await tx
@@ -473,6 +475,6 @@ export async function recusarPedido(groupId: number, requestId: number) {
     ]);
   });
 
-  revalidateGrupo(groupId);
-  ok(groupId, "pedido-recusado");
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "pedido-recusado");
 }

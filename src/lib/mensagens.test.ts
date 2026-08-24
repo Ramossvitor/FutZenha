@@ -17,7 +17,7 @@ function arquivos(dir: string): string[] {
 
 // Duas formas de emitir slug no app:
 //   redirect(`/rota?erro=slug`)          — literal na query string
-//   erro(groupId, "slug")                — helper do grupo/[id]/gerenciar
+//   erro(grupo.slug, "slug")             — helper do grupo/[slug]/gerenciar
 const NA_QUERY = /[?&](?:erro|ok)=([a-z0-9-]+)/g;
 const NO_HELPER = /\b(?:erro|ok)\(\s*[A-Za-z0-9_.]+\s*,\s*"([a-z0-9-]+)"\s*\)/g;
 

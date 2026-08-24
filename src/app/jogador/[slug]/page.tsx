@@ -13,10 +13,11 @@ import { ImagemDoItem } from "@/components/ui/imagem-do-item";
 import { StatGrid, StatTile } from "@/components/ui/stat";
 import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
 import { papelLabel } from "@/lib/grupos-permissions";
-import { getJogador } from "@/lib/jogadores";
+import { getJogadorPorSlug } from "@/lib/jogadores";
 import { requirePlayer } from "@/lib/require-player";
 import { getSession } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
+import { ehSlug } from "@/lib/slug";
 import { carregarPerfil } from "./dados";
 
 export const dynamic = "force-dynamic";
@@ -28,19 +29,24 @@ export const dynamic = "force-dynamic";
  * redirect do `requirePlayer()` de lá: sem este teste, a resposta para quem
  * está deslogado sairia com `<title>Rodrigo — FutZenha</title>` no HTML.
  * Quem varresse os ids montava a lista de nomes da plataforma inteira sem
- * nunca ter feito login. Mesmo buraco que /grupo/[id] documenta.
+ * nunca ter feito login. Mesmo buraco que /grupo/[slug] documenta.
+ *
+ * O slug no lugar do id tornou essa varredura impraticável — não há mais
+ * sequência a percorrer —, mas a checagem fica: ela é o que garante que
+ * adivinhar UM endereço não valha um nome de graça.
  */
-export async function generateMetadata({ params }: PageProps<"/jogador/[id]">): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps<"/jogador/[slug]">): Promise<Metadata> {
   const generico = { title: "Jogador" };
 
   const session = await getSession();
   if (!session) return generico;
 
-  const { id } = await params;
-  const playerId = Number(id);
-  if (!Number.isInteger(playerId)) return generico;
+  const { slug } = await params;
+  if (!ehSlug(slug)) return generico;
 
-  const jogador = await getJogador(playerId);
+  const jogador = await getJogadorPorSlug(slug);
   return jogador ? { title: jogador.nickname ?? jogador.name } : generico;
 }
 
@@ -53,22 +59,25 @@ export async function generateMetadata({ params }: PageProps<"/jogador/[id]">): 
  * entra é o que é do dono: as estrelas recebidas (que o anonimato de
  * src/lib/anonimato.ts protege) e os dados de conta ficam no /perfil.
  */
-export default async function JogadorPage({ params, searchParams }: PageProps<"/jogador/[id]">) {
+export default async function JogadorPage({ params, searchParams }: PageProps<"/jogador/[slug]">) {
   const session = await requirePlayer();
 
-  const { id } = await params;
-  const playerId = Number(id);
-  if (!Number.isInteger(playerId)) notFound();
+  // Aqui o endereço vira jogador, e é o único lugar da página que fala slug: o
+  // resto do caminho segue com `jogador.id`. `/jogador/17` — a URL antiga — não
+  // passa do `ehSlug` e nem chega ao banco.
+  const { slug } = await params;
+  if (!ehSlug(slug)) notFound();
+  const jogador = await getJogadorPorSlug(slug);
+  if (!jogador) notFound();
 
   const { grupo } = await searchParams;
   const dados = await carregarPerfil(
     { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin },
-    playerId,
+    jogador,
     grupo,
   );
-  if (!dados) notFound();
 
-  const { jogador, gruposVisiveis, gruposFiltraveis, grupoSelecionado, numeros, vitrine } = dados;
+  const { gruposVisiveis, gruposFiltraveis, grupoSelecionado, numeros, vitrine } = dados;
   const comoChamam = jogador.nickname ?? jogador.name;
   const souEu = session.player.id === jogador.id;
 
@@ -136,7 +145,7 @@ export default async function JogadorPage({ params, searchParams }: PageProps<"/
       <div className="flex flex-wrap items-center gap-2">
         <WhatsAppShareButton
           rotulo="Compartilhar perfil"
-          texto={`Perfil de ${comoChamam} no FutZenha: ${siteUrl()}/jogador/${jogador.id}`}
+          texto={`Perfil de ${comoChamam} no FutZenha: ${siteUrl()}/jogador/${jogador.slug}`}
         />
         {souEu && (
           <LinkButton variante="ghost" tamanho="sm" href="/perfil">
@@ -162,14 +171,14 @@ export default async function JogadorPage({ params, searchParams }: PageProps<"/
             pior do que controle nenhum. */}
         {gruposFiltraveis.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            <Pilula ativo={!grupoSelecionado} href={`/jogador/${jogador.id}`}>
+            <Pilula ativo={!grupoSelecionado} href={`/jogador/${jogador.slug}`}>
               Geral
             </Pilula>
             {gruposFiltraveis.map((g) => (
               <Pilula
                 key={g.id}
                 ativo={grupoSelecionado?.id === g.id}
-                href={`/jogador/${jogador.id}?grupo=${g.id}`}
+                href={`/jogador/${jogador.slug}?grupo=${g.id}`}
               >
                 {g.name}
               </Pilula>
@@ -234,7 +243,7 @@ export default async function JogadorPage({ params, searchParams }: PageProps<"/
         >
           {gruposVisiveis.map((g) => (
             <li key={g.id}>
-              <HairlineRowLink href={`/grupo/${g.id}`}>
+              <HairlineRowLink href={`/grupo/${g.slug}`}>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-display text-[14px] leading-[1.2] font-bold text-fg">
                     {g.name}

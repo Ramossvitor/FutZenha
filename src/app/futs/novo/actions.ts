@@ -41,6 +41,9 @@ export async function createMatchDay(formData: FormData) {
 
   const bruto = formData.get("groupId");
   let groupId: number | null = null;
+  // Guardado da checagem logo abaixo: o revalidate no fim precisa do slug, e
+  // buscar o grupo de novo lá seria a segunda consulta pela mesma linha.
+  let slugDoGrupo: string | null = null;
   if (typeof bruto === "string" && bruto !== "") {
     groupId = Number(bruto);
     if (!Number.isInteger(groupId)) redirect("/futs/novo?erro=dados-invalidos");
@@ -50,7 +53,9 @@ export async function createMatchDay(formData: FormData) {
     // distingue "grupo apagado" de "não sou membro" — os dois dão null. Sem isto,
     // um groupId morto passava pela permissão e só estourava na FK, virando 500
     // em vez do ?erro= que o resto da action usa.
-    if (!(await getGrupo(groupId))) redirect("/futs/novo?erro=dados-invalidos");
+    const grupo = await getGrupo(groupId);
+    if (!grupo) redirect("/futs/novo?erro=dados-invalidos");
+    slugDoGrupo = grupo.slug;
 
     const papel = await papelNoGrupo(groupId, session.player.id);
     if (!podeCriarFutNoGrupo(ator, papel)) {
@@ -98,6 +103,6 @@ export async function createMatchDay(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/futs");
-  if (groupId) revalidatePath(`/grupo/${groupId}`);
+  if (slugDoGrupo) revalidatePath(`/grupo/${slugDoGrupo}`);
   redirect(`/fut/${created.id}/gerenciar`);
 }

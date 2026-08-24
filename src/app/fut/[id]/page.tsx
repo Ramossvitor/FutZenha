@@ -71,7 +71,7 @@ function Bloco({
   titulo: string;
   legenda?: string;
   linhas: LinhaExibida[];
-  jogadorPorId: Map<number, { id: number; name: string; nickname: string | null }>;
+  jogadorPorId: Map<number, { id: number; slug: string; name: string; nickname: string | null }>;
   meuPlayerId: number | null;
   /** O badge que cada um escolheu levar para fora do perfil. Ver `lerDestaques`. */
   destaques: Map<number, DestaqueDoJogador>;
@@ -110,7 +110,7 @@ function Bloco({
                 />
               )}
               <LinkJogador
-                playerId={jogador.id}
+                slug={jogador.slug}
                 apelido={jogador.nickname}
                 nome={jogador.name}
                 destaque={destaques.get(jogador.id)}
@@ -197,6 +197,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
           .select({
             teamId: teamPlayers.teamId,
             playerId: players.id,
+            slug: players.slug,
             name: players.name,
             nickname: players.nickname,
             skill: players.skill,
@@ -375,7 +376,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
               {STATUS_FUT[matchDay.status]}
             </Badge>
             {grupoVisivel && (
-              <Link href={`/grupo/${grupo.id}`}>
+              <Link href={`/grupo/${grupo.slug}`}>
                 <Badge tom="outline">{grupo.name}</Badge>
               </Link>
             )}
@@ -471,7 +472,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
                           </span>
                         )}
                         <LinkJogador
-                          playerId={m.playerId}
+                          slug={m.slug}
                           apelido={m.nickname}
                           nome={m.name}
                           destaque={destaques.get(m.playerId)}
@@ -539,7 +540,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             {mvps.map((m) => (
               <HairlineRow as="li" key={m.playerId} destaque={m.playerId === meuPlayerId}>
                 <LinkJogador
-                  playerId={m.playerId}
+                  slug={m.slug}
                   apelido={m.nickname}
                   nome={m.name}
                   destaque={destaques.get(m.playerId)}

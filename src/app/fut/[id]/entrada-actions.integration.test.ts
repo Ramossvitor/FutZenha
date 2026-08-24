@@ -319,7 +319,7 @@ describe("pedirParaEntrarNoFut", () => {
   });
 
   it("fut de grupo não é pedido — membro entra direto, e quem é de fora não vê", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const fut = await criarFut({ groupId });
     const membro = await criarJogadorComConta();
     await entrarNoGrupo(groupId, membro.jogador);

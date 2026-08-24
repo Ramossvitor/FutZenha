@@ -186,7 +186,7 @@ describe("apuração no fechamento", () => {
     expect(avisos[0].href).toBe(`/fut/${fut.id}`);
 
     expect(await getMvpDoFut(fut.id)).toEqual([
-      { playerId: eleito.id, name: eleito.name, nickname: eleito.nickname },
+      { playerId: eleito.id, slug: eleito.slug, name: eleito.name, nickname: eleito.nickname },
     ]);
   });
 
@@ -256,7 +256,7 @@ describe("apuração no fechamento", () => {
 
 describe("getMvpRanking", () => {
   it("conta títulos só do grupo, com filtro de ano, ignorando fut avulso e voto ausente", async () => {
-    const [grupo] = await db.insert(groups).values({ name: "Grupo do MVP" }).returning();
+    const [grupo] = await db.insert(groups).values({ name: "Grupo do MVP", slug: "grupo-do-mvp" }).returning();
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
     const [a1] = timeA.jogadores;
@@ -293,17 +293,17 @@ describe("getMvpRanking", () => {
 
     const geral = await getMvpRanking({ groupId: grupo.id });
     expect(geral).toEqual([
-      { playerId: a1.id, name: a1.name, nickname: a1.nickname, titulos: 2 },
+      { playerId: a1.id, slug: a1.slug, name: a1.name, nickname: a1.nickname, titulos: 2 },
     ]);
 
     const de2026 = await getMvpRanking({ groupId: grupo.id, year: 2026 });
     expect(de2026).toEqual([
-      { playerId: a1.id, name: a1.name, nickname: a1.nickname, titulos: 1 },
+      { playerId: a1.id, slug: a1.slug, name: a1.name, nickname: a1.nickname, titulos: 1 },
     ]);
   });
 
   it("título dividido conta para os dois, e o ranking ordena por títulos", async () => {
-    const [grupo] = await db.insert(groups).values({ name: "Grupo do empate" }).returning();
+    const [grupo] = await db.insert(groups).values({ name: "Grupo do empate", slug: "grupo-do-empate" }).returning();
     const timeA = await criarTrioComConta();
     const timeB = await criarTrioComConta();
     const [a1] = timeA.jogadores;

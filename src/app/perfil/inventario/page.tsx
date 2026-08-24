@@ -55,7 +55,7 @@ export default async function InventarioPage({ searchParams }: PageProps<"/perfi
           <div className="flex gap-2">
             {/* O perfil público é o resultado de tudo que se escolhe aqui — e é
                 a única tela onde dá para conferir se ficou como se queria. */}
-            <LinkButton href={`/jogador/${session.player.id}`} variante="ghost" tamanho="sm">
+            <LinkButton href={`/jogador/${session.player.slug}`} variante="ghost" tamanho="sm">
               Ver meu perfil
             </LinkButton>
             <LinkButton href="/loja" variante="secondary" tamanho="sm">
