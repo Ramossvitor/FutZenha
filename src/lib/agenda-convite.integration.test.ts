@@ -72,7 +72,7 @@ async function jogadorComEmail(email = EMAIL): Promise<Player> {
  * e estes testes são sobre o e-mail de agenda, não sobre a regra de entrada.
  */
 async function futQueAceitaEntrada(jogador: Player, extra: Record<string, unknown> = {}) {
-  const groupId = await criarGrupo();
+  const groupId = (await criarGrupo()).id;
   await entrarNoGrupo(groupId, jogador);
   return criarFut({ ...FUT_COM_HORA, groupId, ...extra });
 }

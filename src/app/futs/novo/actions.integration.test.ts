@@ -96,7 +96,7 @@ describe("createMatchDay — aviso de fut marcado", () => {
     const { jogador: criador, conta } = await criarJogadorComConta();
     const { jogador: doGrupo } = await criarJogadorComConta();
     const { jogador: deFora } = await criarJogadorComConta();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await entrarNoGrupo(groupId, criador, "admin");
     await entrarNoGrupo(groupId, doGrupo);
     await logarComo(conta);

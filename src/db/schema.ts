@@ -51,6 +51,12 @@ export const players = pgTable(
   {
     id: serial("id").primaryKey(),
     name: text("name").notNull().unique(),
+    // O que vai na URL do perfil público, no lugar do id. Derivado do nome na
+    // criação (ver src/lib/slug.ts) e ESTÁVEL daí em diante: renomear jogador
+    // não mexe aqui, porque a URL já foi compartilhada no zap e não há redirect
+    // do slug antigo. Nunca é puramente numérico — é isso que faz `/jogador/17`
+    // dar 404 em vez de continuar servindo o perfil de alguém.
+    slug: text("slug").notNull().unique(),
     nickname: text("nickname"),
     // A nota é calculada pelas avaliações dos companheiros (ver src/lib/skill.ts)
     // — o admin não digita mais. Todo jogador começa em 5,0.
@@ -121,6 +127,14 @@ export const groups = pgTable(
     // um grupo privado tentando criar um homônimo, que é justamente o que o 404
     // de `podeVerGrupo` esconde.
     name: text("name").notNull(),
+    // O que vai na URL do grupo, no lugar do id. Unique, ao contrário do `name`
+    // logo acima — e sem recriar o oráculo que aquele comentário evita: a
+    // colisão de slug é resolvida em silêncio com sufixo (`fut-da-firma-2`), sem
+    // erro nenhum chegando a quem cria. O que vaza é a existência de ALGUM
+    // homônimo, não qual nem de quem; o nome do grupo privado continua atrás do
+    // 404 de `podeVerGrupo`. Estável no rename, pelo mesmo motivo do slug de
+    // jogador.
+    slug: text("slug").notNull().unique(),
     description: text("description"),
     // `private` não é descobrível e só entra por convite. `public` aparece em
     // /grupos, e aí `join_policy` decide como se entra.

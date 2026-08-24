@@ -8,13 +8,13 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { criarJogador, criarJogadorComConta } from "@/test/fixtures";
-import { getJogador } from "./jogadores";
+import { getJogadorPorSlug } from "./jogadores";
 
-describe("getJogador", () => {
+describe("getJogadorPorSlug", () => {
   it("devolve a linha do jogador com temConta quando a conta está ativa", async () => {
     const { jogador } = await criarJogadorComConta();
 
-    const perfil = await getJogador(jogador.id);
+    const perfil = await getJogadorPorSlug(jogador.slug);
 
     expect(perfil).toMatchObject({
       id: jogador.id,
@@ -28,7 +28,7 @@ describe("getJogador", () => {
   it("jogador sem conta nenhuma tem perfil, com temConta false", async () => {
     const jogador = await criarJogador();
 
-    const perfil = await getJogador(jogador.id);
+    const perfil = await getJogadorPorSlug(jogador.slug);
 
     expect(perfil?.id).toBe(jogador.id);
     expect(perfil?.temConta).toBe(false);
@@ -38,7 +38,7 @@ describe("getJogador", () => {
     const { jogador, conta } = await criarJogadorComConta();
     await db.update(users).set({ active: false }).where(eq(users.id, conta.id));
 
-    const perfil = await getJogador(jogador.id);
+    const perfil = await getJogadorPorSlug(jogador.slug);
 
     expect(perfil?.temConta).toBe(false);
   });
@@ -46,12 +46,12 @@ describe("getJogador", () => {
   it("jogador fora das listas continua tendo perfil", async () => {
     const { jogador } = await criarJogadorComConta({ active: false });
 
-    const perfil = await getJogador(jogador.id);
+    const perfil = await getJogadorPorSlug(jogador.slug);
 
     expect(perfil?.active).toBe(false);
   });
 
-  it("id inexistente devolve undefined", async () => {
-    expect(await getJogador(999_999)).toBeUndefined();
+  it("slug inexistente devolve undefined", async () => {
+    expect(await getJogadorPorSlug("ninguem-com-esse-slug")).toBeUndefined();
   });
 });

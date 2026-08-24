@@ -67,7 +67,7 @@ export default async function ConviteGrupoPage({ params }: PageProps<"/convite-g
         titulo={`Você já está em ${grupo.name}`}
         descricao="Não precisa fazer nada — o convite já foi usado ou você entrou por outro caminho."
       >
-        <LinkButton href={`/grupo/${grupo.id}`} className="w-full">
+        <LinkButton href={`/grupo/${grupo.slug}`} className="w-full">
           Ver o grupo
         </LinkButton>
       </CartaoDeEntrada>

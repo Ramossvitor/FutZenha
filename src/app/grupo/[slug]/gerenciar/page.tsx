@@ -24,15 +24,15 @@ export const metadata = { title: "Gerenciar grupo" };
 export default async function GerenciarGrupoPage({
   params,
   searchParams,
-}: PageProps<"/grupo/[id]/gerenciar">) {
-  const { id } = await params;
-  const groupId = Number(id);
+}: PageProps<"/grupo/[slug]/gerenciar">) {
+  const { slug } = await params;
   // Organizador entra aqui, e não só o admin: `gerarLinkDoGrupo`,
   // `revogarLinkDoGrupo`, `convidarJogador` e `revogarConvite` guardam com
   // `requireGrupoOrganizador`, e esta é a única tela que renderiza os
   // formulários deles. Com o guard de admin, o poder de convidar que
   // `podeConvidarParaGrupo` concede ao organizador não tinha rota nenhuma.
-  const { session, grupo, papel } = await requireGrupoOrganizador(groupId);
+  const { session, grupo, papel } = await requireGrupoOrganizador(slug);
+  const groupId = grupo.id;
   const souAdmin = podeGerenciarGrupo(
     { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin },
     papel,
@@ -87,7 +87,7 @@ export default async function GerenciarGrupoPage({
         titulo={`Gerenciar ${grupo.name}`}
         descricao="Papéis, convites e quem entra. Organizadores marcam futs do grupo; membros confirmam presença e entram no ranking."
         acao={
-          <LinkButton href={`/grupo/${groupId}`} variante="secondary" tamanho="sm">
+          <LinkButton href={`/grupo/${grupo.slug}`} variante="secondary" tamanho="sm">
             Ver o grupo
           </LinkButton>
         }

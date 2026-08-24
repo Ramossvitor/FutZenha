@@ -31,7 +31,7 @@ describe("reenviarAvisoDeGrupo", () => {
   });
 
   it("sem RESEND_API_KEY devolve nao-configurado sem tocar a rede", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const convidado = await criarConvidado();
     const convite = await criarConviteDeGrupo(groupId, convidado);
     const fetchMock = vi.fn();
@@ -44,7 +44,7 @@ describe("reenviarAvisoDeGrupo", () => {
   });
 
   it("convite pendente com conta ativa envia, com o nome do grupo e de quem convidou", async () => {
-    const groupId = await criarGrupo("Pelada de Quinta");
+    const groupId = (await criarGrupo("Pelada de Quinta")).id;
     const convidado = await criarConvidado();
     const convidante = await criarJogador({ name: "Fulano Convidante" });
     const convite = await criarConviteDeGrupo(groupId, convidado, { convidadoPor: convidante });
@@ -64,7 +64,7 @@ describe("reenviarAvisoDeGrupo", () => {
   // A FK de quem convidou é set null (a pessoa pode ter sido apagada) — o texto
   // não pode quebrar nem sair com buraco.
   it("convidante apagado vira 'Alguém do grupo' no texto", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const convidado = await criarConvidado();
     const convite = await criarConviteDeGrupo(groupId, convidado);
     const fetchMock = stubResend();
@@ -77,7 +77,7 @@ describe("reenviarAvisoDeGrupo", () => {
 
   describe("elegibilidade", () => {
     it("convite revogado devolve convite-inelegivel sem enviar", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convidado = await criarConvidado();
       const convite = await criarConviteDeGrupo(groupId, convidado, { status: "revoked" });
       const fetchMock = stubResend();
@@ -91,8 +91,8 @@ describe("reenviarAvisoDeGrupo", () => {
     // O id vem do cliente no reenvio manual: sem o escopo pelo grupo, o
     // organizador de um grupo dispararia email pelo convite de outro.
     it("convite de outro grupo devolve convite-inelegivel", async () => {
-      const grupoA = await criarGrupo("Grupo A");
-      const grupoB = await criarGrupo("Grupo B");
+      const grupoA = (await criarGrupo("Grupo A")).id;
+      const grupoB = (await criarGrupo("Grupo B")).id;
       const convidado = await criarConvidado();
       const conviteDeB = await criarConviteDeGrupo(grupoB, convidado);
       const fetchMock = stubResend();
@@ -104,7 +104,7 @@ describe("reenviarAvisoDeGrupo", () => {
     });
 
     it("convidado sem conta devolve convite-inelegivel", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const semConta = await criarJogador();
       const convite = await criarConviteDeGrupo(groupId, semConta);
       const fetchMock = stubResend();
@@ -119,7 +119,7 @@ describe("reenviarAvisoDeGrupo", () => {
     // tem o endereço de contato, e antes caía aqui em convite-inelegivel — o
     // aviso simplesmente não saía, sem ninguém perceber.
     it("conta só com e-mail de contato recebe o aviso", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const jogador = await criarJogador();
       await criarConta(jogador, { contactEmail: "so-contato@example.com" });
       const convite = await criarConviteDeGrupo(groupId, jogador);
@@ -134,7 +134,7 @@ describe("reenviarAvisoDeGrupo", () => {
     // Precedência, não substituição: o verificado vence, senão um contato
     // digitado depois desviaria o correio de uma conta com endereço provado.
     it("com os dois endereços, manda para o do Google", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const jogador = await criarJogador();
       await criarConta(jogador, { email: EMAIL, contactEmail: "outro@example.com" });
       const convite = await criarConviteDeGrupo(groupId, jogador);
@@ -146,7 +146,7 @@ describe("reenviarAvisoDeGrupo", () => {
     });
 
     it("conta sem endereço nenhum continua inelegível", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const jogador = await criarJogador();
       await criarConta(jogador);
       const convite = await criarConviteDeGrupo(groupId, jogador);
@@ -159,7 +159,7 @@ describe("reenviarAvisoDeGrupo", () => {
     });
 
     it("conta desativada devolve convite-inelegivel", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const jogador = await criarJogador();
       await criarConta(jogador, { email: EMAIL, active: false });
       const convite = await criarConviteDeGrupo(groupId, jogador);
@@ -174,7 +174,7 @@ describe("reenviarAvisoDeGrupo", () => {
 
   describe("janela por destinatário (10 min no reenvio manual)", () => {
     it("aviso enviado há 5 minutos bloqueia e não re-escreve o carimbo", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convidado = await criarConvidado();
       const convite = await criarConviteDeGrupo(groupId, convidado, { emailEnviadoHaMinutos: 5 });
       const fetchMock = stubResend();
@@ -188,7 +188,7 @@ describe("reenviarAvisoDeGrupo", () => {
     });
 
     it("aviso enviado há 11 minutos está fora da janela e envia de novo", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convidado = await criarConvidado();
       const convite = await criarConviteDeGrupo(groupId, convidado, { emailEnviadoHaMinutos: 11 });
       const fetchMock = stubResend();
@@ -202,7 +202,7 @@ describe("reenviarAvisoDeGrupo", () => {
     // O dedupe olha QUALQUER linha do par (grupo, jogador), não só a atual:
     // revogar-e-reconvidar não zera a janela.
     it("o envio de um convite anterior do mesmo par também conta", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convidado = await criarConvidado();
       await criarConviteDeGrupo(groupId, convidado, {
         status: "revoked",
@@ -224,9 +224,9 @@ describe("reenviarAvisoDeGrupo", () => {
   describe("janela por destinatário (global, atravessa grupo e fluxo)", () => {
     it("aviso recente para a mesma caixa em outro grupo bloqueia", async () => {
       const convidado = await criarConvidado();
-      const grupoA = await criarGrupo("Grupo A");
+      const grupoA = (await criarGrupo("Grupo A")).id;
       await criarConviteDeGrupo(grupoA, convidado, { emailEnviadoHaMinutos: 5 });
-      const grupoB = await criarGrupo("Grupo B");
+      const grupoB = (await criarGrupo("Grupo B")).id;
       const convite = await criarConviteDeGrupo(grupoB, convidado);
       const fetchMock = stubResend();
 
@@ -242,9 +242,9 @@ describe("reenviarAvisoDeGrupo", () => {
     it("a janela também vale para quem só tem e-mail de contato", async () => {
       const jogador = await criarJogador();
       await criarConta(jogador, { contactEmail: "so-contato@example.com" });
-      const grupoA = await criarGrupo("Grupo A");
+      const grupoA = (await criarGrupo("Grupo A")).id;
       await criarConviteDeGrupo(grupoA, jogador, { emailEnviadoHaMinutos: 5 });
-      const grupoB = await criarGrupo("Grupo B");
+      const grupoB = (await criarGrupo("Grupo B")).id;
       const convite = await criarConviteDeGrupo(grupoB, jogador);
       const fetchMock = stubResend();
 
@@ -264,7 +264,7 @@ describe("reenviarAvisoDeGrupo", () => {
       const alvo = "vitima@example.com";
       const primeiro = await criarJogador();
       const contaDoPrimeiro = await criarConta(primeiro, { contactEmail: alvo });
-      const grupoA = await criarGrupo("Grupo A");
+      const grupoA = (await criarGrupo("Grupo A")).id;
       await criarConviteDeGrupo(grupoA, primeiro, {
         emailEnviadoHaMinutos: 5,
         emailEnviadoPara: alvo,
@@ -279,7 +279,7 @@ describe("reenviarAvisoDeGrupo", () => {
 
       const segundo = await criarJogador();
       await criarConta(segundo, { contactEmail: alvo });
-      const grupoB = await criarGrupo("Grupo B");
+      const grupoB = (await criarGrupo("Grupo B")).id;
       const convite = await criarConviteDeGrupo(grupoB, segundo);
       const fetchMock = stubResend();
 
@@ -292,7 +292,7 @@ describe("reenviarAvisoDeGrupo", () => {
     // O envio de verdade é quem alimenta o freio acima — se ele não gravar o
     // endereço, a proteção nasce morta na próxima janela.
     it("o envio grava para onde o aviso saiu", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const jogador = await criarJogador();
       await criarConta(jogador, { contactEmail: "so-contato@example.com" });
       const convite = await criarConviteDeGrupo(groupId, jogador);
@@ -309,9 +309,9 @@ describe("reenviarAvisoDeGrupo", () => {
 
     it("passada a janela, o outro grupo volta a poder avisar", async () => {
       const convidado = await criarConvidado();
-      const grupoA = await criarGrupo("Grupo A");
+      const grupoA = (await criarGrupo("Grupo A")).id;
       await criarConviteDeGrupo(grupoA, convidado, { emailEnviadoHaMinutos: 11 });
-      const grupoB = await criarGrupo("Grupo B");
+      const grupoB = (await criarGrupo("Grupo B")).id;
       const convite = await criarConviteDeGrupo(grupoB, convidado);
       const fetchMock = stubResend();
 
@@ -326,7 +326,7 @@ describe("reenviarAvisoDeGrupo", () => {
     it("convite de plataforma recente para a mesma caixa bloqueia o aviso", async () => {
       const convidado = await criarConvidado();
       await criarConvite(convidado, { email: EMAIL, emailEnviadoHaMinutos: 5 });
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convite = await criarConviteDeGrupo(groupId, convidado);
       const fetchMock = stubResend();
 
@@ -343,13 +343,13 @@ describe("reenviarAvisoDeGrupo", () => {
     // grupo: com ele no mesmo grupo, um filtro por groupId na consulta passaria
     // no teste e mataria a proteção em produção.
     it("40 avisos do mesmo convidante nas 24h barram, mesmo vindos de outro grupo", async () => {
-      const grupoDoVolume = await criarGrupo("Grupo do Volume");
+      const grupoDoVolume = (await criarGrupo("Grupo do Volume")).id;
       const convidante = await criarJogador();
       const alvoDoVolume = await criarJogador();
       await criarVolumeDeAvisosDeGrupo(grupoDoVolume, alvoDoVolume, 40, {
         convidadoPor: convidante,
       });
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convidado = await criarConvidado();
       const convite = await criarConviteDeGrupo(groupId, convidado, { convidadoPor: convidante });
       const fetchMock = stubResend();
@@ -361,13 +361,13 @@ describe("reenviarAvisoDeGrupo", () => {
     });
 
     it("com 39 avisos o convidante ainda envia", async () => {
-      const grupoDoVolume = await criarGrupo("Grupo do Volume");
+      const grupoDoVolume = (await criarGrupo("Grupo do Volume")).id;
       const convidante = await criarJogador();
       const alvoDoVolume = await criarJogador();
       await criarVolumeDeAvisosDeGrupo(grupoDoVolume, alvoDoVolume, 39, {
         convidadoPor: convidante,
       });
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convidado = await criarConvidado();
       const convite = await criarConviteDeGrupo(groupId, convidado, { convidadoPor: convidante });
       const fetchMock = stubResend();
@@ -381,7 +381,7 @@ describe("reenviarAvisoDeGrupo", () => {
     it("o teto diário combinado também barra o aviso de grupo", async () => {
       const volume = await criarJogador();
       await criarVolumeDeConvites(volume, 100, { enviadoHaUmaHora: true });
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convidado = await criarConvidado();
       const convite = await criarConviteDeGrupo(groupId, convidado);
       const fetchMock = stubResend();
@@ -395,7 +395,7 @@ describe("reenviarAvisoDeGrupo", () => {
 
   describe("resposta do transporte", () => {
     it("429 de cota devolve limite e email_sent_at continua nulo", async () => {
-      const groupId = await criarGrupo();
+      const groupId = (await criarGrupo()).id;
       const convidado = await criarConvidado();
       const convite = await criarConviteDeGrupo(groupId, convidado);
       const fetchMock = stubResend({ status: 429, corpo: { name: "daily_quota_exceeded" } });

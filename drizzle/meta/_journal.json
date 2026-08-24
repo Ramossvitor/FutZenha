@@ -246,6 +246,13 @@
       "when": 1787493853827,
       "tag": "0034_troca_de_lado",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1787519629152,
+      "tag": "0035_rotas_com_slug",
+      "breakpoints": true
     }
   ]
 }

@@ -4,20 +4,35 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { groupInvitations, groupMembers, groups, type Player } from "@/db/schema";
+import { groupInvitations, groupMembers, groups, type Group, type Player } from "@/db/schema";
+import { slugBase, variacaoDeSlug } from "@/lib/slug";
+
+// O nome default se repete entre chamadas (e `groups.name` não é unique), mas
+// `groups.slug` é — então o contador desempata, como `criarGrupo` de verdade faz
+// com o `slugLivreDeGrupo`. Primeiro grupo fica com a base limpa, os seguintes
+// numerados.
+let contador = 0;
 
 // `visibility` fica opcional e cai no default do schema (private) para não
 // mexer em quem já chamava — quem precisa do público é o perfil, onde o grupo
 // visível e o invisível são o teste inteiro.
+//
+// Devolve a linha inteira, e não só o id: o slug é o endereço nas URLs que as
+// actions montam, e os testes de redirect precisam dele.
 export async function criarGrupo(
   nome = "Grupo de Teste",
   opcoes: { visibility?: "private" | "public" } = {},
-): Promise<number> {
+): Promise<Group> {
+  contador += 1;
   const [grupo] = await db
     .insert(groups)
-    .values({ name: nome, visibility: opcoes.visibility })
+    .values({
+      name: nome,
+      slug: variacaoDeSlug(slugBase(nome, "grupo"), contador),
+      visibility: opcoes.visibility,
+    })
     .returning();
-  return grupo.id;
+  return grupo;
 }
 
 export async function entrarNoGrupo(

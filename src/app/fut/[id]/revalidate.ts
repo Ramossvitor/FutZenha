@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
  *
  * Módulo à parte, e não dentro de ./gerenciar/actions, porque um arquivo
  * `"use server"` só exporta funções async — e esta não precisa ser. Mesma
- * decisão do src/app/grupo/[id]/revalidate.ts, e pela mesma razão: uma
+ * decisão do src/app/grupo/[slug]/revalidate.ts, e pela mesma razão: uma
  * definição só, importada pelos três arquivos de actions do fut. Enquanto
  * eram duas cópias, o /sumula ficou de fora da lista do /gerenciar e todo
  * conserto de gol pelo painel do admin deixava a súmula ao vivo servindo

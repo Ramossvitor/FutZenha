@@ -4,8 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { groupMembers, groups } from "@/db/schema";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { parseGrupoForm } from "@/lib/grupos-form";
 import { requirePlayer } from "@/lib/require-player";
+import { slugBase } from "@/lib/slug";
+import { slugLivreDeGrupo } from "@/lib/slug-livre";
 import { podeCriarMaisGrupo } from "@/lib/tetos-de-criacao";
 
 /**
@@ -30,19 +33,35 @@ export async function criarGrupo(formData: FormData) {
   const parsed = parseGrupoForm(formData);
   if (!parsed.success) redirect("/grupos/novo?erro=dados-invalidos");
 
-  const groupId = await db.transaction(async (tx) => {
-    const [criado] = await tx
-      .insert(groups)
-      .values({ ...parsed.data, createdByPlayerId: session.player.id })
-      .returning();
-    await tx.insert(groupMembers).values({
-      groupId: criado.id,
-      playerId: session.player.id,
-      role: "admin",
+  let slugDoGrupo: string;
+  try {
+    slugDoGrupo = await db.transaction(async (tx) => {
+      // Dois grupos podem se chamar igual (`groups.name` não é unique), então a
+      // colisão de slug aqui é rotina, não exceção: o segundo "Fut da firma" vira
+      // "fut-da-firma-2" em silêncio. Nada disso vira erro na tela — é o que
+      // impede a unique do slug de virar o oráculo de enumeração que o comentário
+      // de `groups.name` (src/db/schema.ts) evita.
+      const slug = await slugLivreDeGrupo(tx, slugBase(parsed.data.name, "grupo"));
+      const [criado] = await tx
+        .insert(groups)
+        .values({ ...parsed.data, slug, createdByPlayerId: session.player.id })
+        .returning();
+      await tx.insert(groupMembers).values({
+        groupId: criado.id,
+        playerId: session.player.id,
+        role: "admin",
+      });
+      return criado.slug;
     });
-    return criado.id;
-  });
+  } catch (error) {
+    // A corrida que `slugLivreDeGrupo` deixa de propósito para cá (ver o
+    // comentário de src/lib/slug-livre.ts): dois envios simultâneos do mesmo
+    // nome escolhem o mesmo slug, e o segundo estoura a unique. Vira banner e
+    // a pessoa reenvia — como nos callers de criação de jogador.
+    if (isUniqueViolation(error)) redirect("/grupos/novo?erro=dados-invalidos");
+    throw error;
+  }
 
   revalidatePath("/grupos");
-  redirect(`/grupo/${groupId}/gerenciar`);
+  redirect(`/grupo/${slugDoGrupo}/gerenciar`);
 }

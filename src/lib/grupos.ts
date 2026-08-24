@@ -44,6 +44,17 @@ export const getGrupo = cache(async (groupId: number): Promise<Group | undefined
   return grupo;
 });
 
+/**
+ * O grupo pelo slug — o caminho da URL pública.
+ *
+ * Os guards de ./require-grupo.ts entram por aqui quando o parâmetro vem da
+ * rota; dali para dentro tudo continua falando `grupo.id`.
+ */
+export const getGrupoPorSlug = cache(async (slug: string): Promise<Group | undefined> => {
+  const [grupo] = await db.select().from(groups).where(eq(groups.slug, slug));
+  return grupo;
+});
+
 export type MeuGrupo = Group & { papel: NonNullable<Vinculo>; membros: number };
 
 /** Os grupos de que o jogador participa, com o papel dele em cada um. */
@@ -52,6 +63,7 @@ export async function listarMeusGrupos(playerId: number): Promise<MeuGrupo[]> {
     .select({
       id: groups.id,
       name: groups.name,
+      slug: groups.slug,
       description: groups.description,
       visibility: groups.visibility,
       joinPolicy: groups.joinPolicy,
@@ -111,6 +123,7 @@ export async function listarGruposPublicos(
     .select({
       id: groups.id,
       name: groups.name,
+      slug: groups.slug,
       description: groups.description,
       visibility: groups.visibility,
       joinPolicy: groups.joinPolicy,
@@ -139,6 +152,7 @@ export async function listarGruposPublicos(
 
 export type MembroDoGrupo = {
   playerId: number;
+  slug: string;
   name: string;
   nickname: string | null;
   papel: NonNullable<Vinculo>;
@@ -149,6 +163,7 @@ export async function listarMembros(groupId: number): Promise<MembroDoGrupo[]> {
   const rows = await db
     .select({
       playerId: players.id,
+      slug: players.slug,
       name: players.name,
       nickname: players.nickname,
       papel: groupMembers.role,

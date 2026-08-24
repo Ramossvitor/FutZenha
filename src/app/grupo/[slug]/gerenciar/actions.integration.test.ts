@@ -5,7 +5,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/db";
-import { groupInvitations, notifications, type Player } from "@/db/schema";
+import { groupInvitations, notifications, type Group, type Player } from "@/db/schema";
 import { flushAfter } from "@/test/after-flush";
 import { criarConta, criarJogador, criarJogadorComConta, logarComo } from "@/test/fixtures";
 import { criarConviteDeGrupo, criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
@@ -15,12 +15,14 @@ import { convidarJogador, reenviarEmailDoConvite } from "./actions";
 
 const EMAIL = "convidado@example.com";
 
-async function grupoComOrganizadorLogado(): Promise<number> {
+// Devolve o grupo inteiro: as actions recebem o id pelo `.bind`, mas redirecionam
+// para o SLUG — as duas pontas aparecem nas asserções daqui.
+async function grupoComOrganizadorLogado(): Promise<Group> {
   const { jogador, conta } = await criarJogadorComConta();
-  const groupId = await criarGrupo();
-  await entrarNoGrupo(groupId, jogador, "admin");
+  const grupo = await criarGrupo();
+  await entrarNoGrupo(grupo.id, jogador, "admin");
   await logarComo(conta);
-  return groupId;
+  return grupo;
 }
 
 /** Convidado elegível: jogador com conta ativa e email. */
@@ -56,13 +58,14 @@ describe("convidarJogador", () => {
   });
 
   it("cria convite + notificação e o aviso sai no after()", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     const fetchMock = stubResend();
 
     const url = await esperaRedirect(convidarJogador(groupId, formConvite(convidado.id)));
 
-    expect(url).toBe(`/grupo/${groupId}/gerenciar?ok=convite-enviado`);
+    expect(url).toBe(`/grupo/${grupo.slug}/gerenciar?ok=convite-enviado`);
     await flushAfter();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(payloadDoEnvio(fetchMock).to).toEqual([EMAIL]);
@@ -77,13 +80,14 @@ describe("convidarJogador", () => {
   });
 
   it("sem RESEND_API_KEY o convite e a notificação existem, mas nada vai à rede", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     // Sem stubResend: o fetch-guard do setup estoura se algo tentar sair.
 
     const url = await esperaRedirect(convidarJogador(groupId, formConvite(convidado.id)));
 
-    expect(url).toBe(`/grupo/${groupId}/gerenciar?ok=convite-enviado`);
+    expect(url).toBe(`/grupo/${grupo.slug}/gerenciar?ok=convite-enviado`);
     await flushAfter();
     const convite = await lerConvitePendente(groupId, convidado.id);
     expect(convite.emailSentAt).toBeNull();
@@ -97,7 +101,8 @@ describe("convidarJogador", () => {
   // O guard do disparo automático é 24h sobre envio de FATO (email_sent_at):
   // revogar-e-reconvidar não vira loop de email na caixa da pessoa…
   it("reconvidar com aviso enviado há menos de 24h não repete o email", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     await criarConviteDeGrupo(groupId, convidado, {
       status: "revoked",
@@ -116,7 +121,8 @@ describe("convidarJogador", () => {
   // …mas uma falha de envio (email_sent_at nulo) não custa 24h de bloqueio: só
   // envio consumado conta.
   it("reconvidar após um aviso que nunca saiu envia normalmente", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     await criarConviteDeGrupo(groupId, convidado, { status: "revoked" });
     const fetchMock = stubResend();
@@ -128,7 +134,8 @@ describe("convidarJogador", () => {
   });
 
   it("reconvidar com o envio anterior a mais de 24h envia de novo", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     await criarConviteDeGrupo(groupId, convidado, {
       status: "revoked",
@@ -154,7 +161,8 @@ describe("reenviarEmailDoConvite", () => {
   // a gestão de fut). Aqui pesa mais: quem convida gasta a cota de todo
   // mundo, e o id do convite vem do cliente.
   it("membro comum do grupo é barrado antes de qualquer envio", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     const convite = await criarConviteDeGrupo(groupId, convidado);
     const { jogador, conta } = await criarJogadorComConta();
@@ -168,7 +176,8 @@ describe("reenviarEmailDoConvite", () => {
   });
 
   it("quem não é do grupo é barrado antes de qualquer envio", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     const convite = await criarConviteDeGrupo(groupId, convidado);
     const { conta } = await criarJogadorComConta();
@@ -181,47 +190,51 @@ describe("reenviarEmailDoConvite", () => {
   });
 
   it("reenvia um aviso que não saiu e carimba email_sent_at", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     const convite = await criarConviteDeGrupo(groupId, convidado);
     const fetchMock = stubResend();
 
     const url = await esperaRedirect(reenviarEmailDoConvite(groupId, convite.id));
 
-    expect(url).toBe(`/grupo/${groupId}/gerenciar?ok=convite-enviado-por-email`);
+    expect(url).toBe(`/grupo/${grupo.slug}/gerenciar?ok=convite-enviado-por-email`);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const depois = await lerConvitePendente(groupId, convidado.id);
     expect(depois.emailSentAt).not.toBeNull();
   });
 
   it("dentro da janela de 10 min devolve o banner de envio recente", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     const convite = await criarConviteDeGrupo(groupId, convidado, { emailEnviadoHaMinutos: 5 });
     stubResend();
 
     const url = await esperaRedirect(reenviarEmailDoConvite(groupId, convite.id));
 
-    expect(url).toBe(`/grupo/${groupId}/gerenciar?erro=email-recente`);
+    expect(url).toBe(`/grupo/${grupo.slug}/gerenciar?erro=email-recente`);
   });
 
   it("convite de outro grupo devolve o banner de não reenviável", async () => {
-    const groupId = await grupoComOrganizadorLogado();
-    const outroGrupo = await criarGrupo("Grupo Alheio");
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
+    const outroGrupo = (await criarGrupo("Grupo Alheio")).id;
     const convidado = await criarConvidado();
     const conviteAlheio = await criarConviteDeGrupo(outroGrupo, convidado);
     stubResend();
 
     const url = await esperaRedirect(reenviarEmailDoConvite(groupId, conviteAlheio.id));
 
-    expect(url).toBe(`/grupo/${groupId}/gerenciar?erro=convite-nao-reenviavel`);
+    expect(url).toBe(`/grupo/${grupo.slug}/gerenciar?erro=convite-nao-reenviavel`);
   });
 
   // A rajada persistente atravessa o retry do transporte e chega ao banner com
   // mensagem própria — não a de "limite diário", que mandaria esperar até
   // amanhã por algo que passa em segundos.
   it("rajada persistente no Resend devolve o banner de rajada", async () => {
-    const groupId = await grupoComOrganizadorLogado();
+    const grupo = await grupoComOrganizadorLogado();
+    const groupId = grupo.id;
     const convidado = await criarConvidado();
     const convite = await criarConviteDeGrupo(groupId, convidado);
     const fetchMock = stubResend({
@@ -232,7 +245,7 @@ describe("reenviarEmailDoConvite", () => {
 
     const url = await esperaRedirect(reenviarEmailDoConvite(groupId, convite.id));
 
-    expect(url).toBe(`/grupo/${groupId}/gerenciar?erro=email-rajada`);
+    expect(url).toBe(`/grupo/${grupo.slug}/gerenciar?erro=email-rajada`);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const depois = await lerConvitePendente(groupId, convidado.id);
     expect(depois.emailSentAt).toBeNull();

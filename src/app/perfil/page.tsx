@@ -239,7 +239,7 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
           <li>
             {/* O outro lado desta página: o que a rapaziada vê quando abre o
                 seu nome num ranking ou na lista do grupo. */}
-            <HairlineRowLink href={`/jogador/${player.id}`}>
+            <HairlineRowLink href={`/jogador/${player.slug}`}>
               <span className="flex-1">Meu perfil público</span>
               <IconeSeta className="size-4 text-fg-dim" />
             </HairlineRowLink>

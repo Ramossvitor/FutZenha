@@ -14,9 +14,10 @@ import { db } from "@/db";
 import { games, matchDays, teams } from "@/db/schema";
 import { formatDate, formatDateShort, formatTime } from "@/lib/format";
 import { papelLabel, podeEntrarNoGrupo, podeVerGrupo } from "@/lib/grupos-permissions";
-import { getGrupo, listarMembros, papelNoGrupo, temPedidoPendente } from "@/lib/grupos";
+import { getGrupoPorSlug, listarMembros, papelNoGrupo, temPedidoPendente } from "@/lib/grupos";
 import { podeGerenciarFut } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
+import { ehSlug } from "@/lib/slug";
 import { cancelarPedido, entrarNoGrupo, pedirEntrada, sairDoGrupo } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -31,13 +32,12 @@ export const dynamic = "force-dynamic";
  * página; o título entregava o nome de todo grupo privado da plataforma para
  * quem varresse os ids.
  */
-export async function generateMetadata({ params }: PageProps<"/grupo/[id]">) {
+export async function generateMetadata({ params }: PageProps<"/grupo/[slug]">) {
   const generico = { title: "Grupo" };
-  const { id } = await params;
-  const groupId = Number(id);
-  if (!Number.isInteger(groupId)) return generico;
+  const { slug } = await params;
+  if (!ehSlug(slug)) return generico;
 
-  const grupo = await getGrupo(groupId);
+  const grupo = await getGrupoPorSlug(slug);
   if (!grupo) return generico;
 
   // Grupo público tem nome público — inclusive para quem não está logado, que é
@@ -46,7 +46,7 @@ export async function generateMetadata({ params }: PageProps<"/grupo/[id]">) {
 
   const session = await getSession();
   if (!session) return generico;
-  const papel = await papelNoGrupo(groupId, session.player.id);
+  const papel = await papelNoGrupo(grupo.id, session.player.id);
   const ator = { playerId: session.player.id, isPlatformAdmin: session.isPlatformAdmin };
   return podeVerGrupo(ator, grupo, papel) ? { title: grupo.name } : generico;
 }
@@ -57,17 +57,17 @@ export async function generateMetadata({ params }: PageProps<"/grupo/[id]">) {
  *
  * A checagem de visibilidade é feita na mão logo abaixo. Um esquecimento aqui
  * não dá erro nenhum: só entrega a lista de membros de todo grupo privado da
- * plataforma para quem souber somar 1 no id.
+ * plataforma para quem adivinhar o endereço.
  */
-export default async function GrupoPage({ params, searchParams }: PageProps<"/grupo/[id]">) {
-  const { id } = await params;
-  const groupId = Number(id);
-  if (!Number.isInteger(groupId)) notFound();
+export default async function GrupoPage({ params, searchParams }: PageProps<"/grupo/[slug]">) {
+  const { slug } = await params;
+  if (!ehSlug(slug)) notFound();
 
   const { erro, ok } = await searchParams;
 
-  const grupo = await getGrupo(groupId);
+  const grupo = await getGrupoPorSlug(slug);
   if (!grupo) notFound();
+  const groupId = grupo.id;
 
   const session = await getSession();
   const ator = session
@@ -151,12 +151,12 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
 
       <div className="flex flex-wrap items-center gap-2">
         {papel && (
-          <LinkButton href={`/grupo/${groupId}/ranking`} variante="secondary" tamanho="sm">
+          <LinkButton href={`/grupo/${grupo.slug}/ranking`} variante="secondary" tamanho="sm">
             Ranking do grupo
           </LinkButton>
         )}
         {podeGerenciar && (
-          <LinkButton href={`/grupo/${groupId}/gerenciar`} variante="secondary" tamanho="sm">
+          <LinkButton href={`/grupo/${grupo.slug}/gerenciar`} variante="secondary" tamanho="sm">
             Gerenciar
           </LinkButton>
         )}
@@ -253,7 +253,7 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
             <li key={m.playerId}>
               {/* A linha inteira é o link: aqui ela não carrega mais nada além
                   da pessoa, e é daqui que se conhece quem joga no grupo. */}
-              <HairlineRowLink href={`/jogador/${m.playerId}`}>
+              <HairlineRowLink href={`/jogador/${m.slug}`}>
                 <NomeJogador
                   apelido={m.nickname}
                   nome={m.name}

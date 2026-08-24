@@ -192,7 +192,7 @@ export async function getAgregadosMvp(
   return porRodada.get(roundId) ?? [];
 }
 
-export type MvpDoFut = { playerId: number; name: string; nickname: string | null };
+export type MvpDoFut = { playerId: number; slug: string; name: string; nickname: string | null };
 
 /**
  * O(s) melhor(es) em campo de um fut já apurado, para exibição. Vazio quando a
@@ -211,7 +211,12 @@ export async function getMvpDoFut(matchDayId: number): Promise<MvpDoFut[]> {
   if (vencedores.length === 0) return [];
 
   return db
-    .select({ playerId: players.id, name: players.name, nickname: players.nickname })
+    .select({
+      playerId: players.id,
+      slug: players.slug,
+      name: players.name,
+      nickname: players.nickname,
+    })
     .from(players)
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
     .where(inArray(players.id, vencedores))

@@ -34,7 +34,7 @@ export type { EscopoStats };
 // Estas consultas são agregados sobre a plataforma INTEIRA — gols, escalações e
 // presenças de todo fut encerrado — e nenhuma página do app é estática: o root
 // layout lê a sessão, então todo request renderiza de novo. O perfil público
-// (/jogador/[id]) roda TRÊS delas para mostrar seis números de uma pessoa, e é
+// (/jogador/[slug]) roda TRÊS delas para mostrar seis números de uma pessoa, e é
 // enumerável por id: varrer /jogador/1..N com uma sessão válida era um
 // amplificador de carga barato contra um Neon de plano gratuito.
 //
@@ -53,7 +53,7 @@ export type { EscopoStats };
 // invalidação ninguém testa é como o ranking passa a mentir em silêncio. Este
 // memo é invalidado por uma função comum, que o teste chama e observa.
 //
-// O que NÃO entra aqui é permissão: `carregarPerfil` (src/app/jogador/[id]/dados.ts)
+// O que NÃO entra aqui é permissão: `carregarPerfil` (src/app/jogador/[slug]/dados.ts)
 // resolve visibilidade de grupo ANTES de escolher o escopo, e o escopo é parte
 // da chave. Guardar o agregado é guardar um fato público (quem fez quantos
 // gols), nunca uma decisão sobre quem pode vê-lo.
@@ -105,6 +105,7 @@ async function getTopScorersCru(e: EscopoStats = {}) {
   return db
     .select({
       playerId: players.id,
+      slug: players.slug,
       name: players.name,
       nickname: players.nickname,
       total: sql<number>`sum(${goals.quantity})::int`,
@@ -125,6 +126,8 @@ async function getTopScorersCru(e: EscopoStats = {}) {
 
 export type PlayerRecord = {
   playerId: number;
+  /** O endereço do perfil público — ver players.slug. */
+  slug: string;
   name: string;
   nickname: string | null;
   wins: number;
@@ -146,6 +149,7 @@ async function getPlayerRecordsCru(
   const rows = await db
     .select({
       playerId: players.id,
+      slug: players.slug,
       name: players.name,
       nickname: players.nickname,
       wins: sql<number>`sum(case when ${isWin} then 1 else 0 end)::int`,
@@ -172,6 +176,8 @@ async function getPlayerRecordsCru(
 
 export type SkillRankingRow = {
   playerId: number;
+  /** O endereço do perfil público — ver players.slug. */
+  slug: string;
   name: string;
   nickname: string | null;
   skill: number;
@@ -208,6 +214,7 @@ export async function getSkillRanking(e: EscopoStats = {}): Promise<SkillRanking
   return db
     .select({
       playerId: players.id,
+      slug: players.slug,
       name: players.name,
       nickname: players.nickname,
       skill: players.skill,
@@ -234,6 +241,8 @@ export async function getSkillRanking(e: EscopoStats = {}): Promise<SkillRanking
 
 export type MvpRankingRow = {
   playerId: number;
+  /** O endereço do perfil público — ver players.slug. */
+  slug: string;
   name: string;
   nickname: string | null;
   titulos: number;
@@ -269,7 +278,12 @@ export async function getMvpRanking(
   if (titulos.size === 0) return [];
 
   const nomes = await db
-    .select({ playerId: players.id, name: players.name, nickname: players.nickname })
+    .select({
+      playerId: players.id,
+      slug: players.slug,
+      name: players.name,
+      nickname: players.nickname,
+    })
     .from(players)
     .innerJoin(users, and(eq(users.playerId, players.id), eq(users.active, true)))
     .where(inArray(players.id, [...titulos.keys()]));
@@ -281,6 +295,8 @@ export async function getMvpRanking(
 
 export type AttendanceStat = {
   playerId: number;
+  /** O endereço do perfil público — ver players.slug. */
+  slug: string;
   name: string;
   nickname: string | null;
   attended: number;
@@ -307,6 +323,7 @@ async function getAttendanceStatsCru(e: EscopoStats = {}): Promise<{
   const perPlayer = await db
     .select({
       playerId: players.id,
+      slug: players.slug,
       name: players.name,
       nickname: players.nickname,
       attended: sql<number>`count(*)::int`,

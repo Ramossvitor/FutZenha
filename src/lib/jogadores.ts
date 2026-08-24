@@ -19,25 +19,33 @@ export type PerfilJogador = Player & {
 };
 
 /**
- * Um jogador pelo id. `undefined` = não existe.
+ * Um jogador pelo slug — o caminho da URL pública. `undefined` = não existe.
+ *
+ * Quem chega pela rota resolve o slug UMA vez; do corpo da página para dentro o
+ * código segue com `jogador.id`, que é o que as actions e as queries de
+ * estatística falam.
+ *
+ * `leftJoin` (e não inner) de propósito: jogador sem conta existe e tem perfil.
+ * Ele aparece na escalação e na artilharia de todo fut que jogou, então esconder
+ * a página dele só criaria um link que às vezes dá 404. É também por isso que o
+ * slug mora em `players` e não reaproveita `users.username`: metade dos perfis
+ * não teria endereço.
  *
  * `cache()` porque generateMetadata e o corpo da página perguntam o mesmo
  * jogador no mesmo render — sem isto seriam duas consultas idênticas, pelo
  * mesmo motivo do getGrupo em ./grupos.
- *
- * `leftJoin` (e não inner) de propósito: jogador sem conta existe e tem perfil.
- * Ele aparece na escalação e na artilharia de todo fut que jogou, então esconder
- * a página dele só criaria um link que às vezes dá 404.
  */
-export const getJogador = cache(async (playerId: number): Promise<PerfilJogador | undefined> => {
-  const [row] = await db
-    .select({
-      jogador: players,
-      temConta: sql<boolean>`${users.id} is not null and ${users.active}`,
-    })
-    .from(players)
-    .leftJoin(users, eq(users.playerId, players.id))
-    .where(eq(players.id, playerId));
+export const getJogadorPorSlug = cache(
+  async (slug: string): Promise<PerfilJogador | undefined> => {
+    const [row] = await db
+      .select({
+        jogador: players,
+        temConta: sql<boolean>`${users.id} is not null and ${users.active}`,
+      })
+      .from(players)
+      .leftJoin(users, eq(users.playerId, players.id))
+      .where(eq(players.slug, slug));
 
-  return row && { ...row.jogador, temConta: row.temConta };
-});
+    return row && { ...row.jogador, temConta: row.temConta };
+  },
+);

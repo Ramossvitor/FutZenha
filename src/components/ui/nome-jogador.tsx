@@ -55,13 +55,14 @@ export function NomeJogador({
  * jogador (membros do grupo), o `HairlineRowLink` continua sendo o certo.
  */
 export function LinkJogador({
-  playerId,
+  slug,
   apelido,
   nome,
   destaque,
   className,
 }: {
-  playerId: number;
+  /** O endereço público do jogador — `players.slug`, nunca o id. */
+  slug: string;
   apelido: string | null;
   nome: string;
   destaque?: DestaqueDoJogador | null;
@@ -69,7 +70,7 @@ export function LinkJogador({
 }) {
   return (
     <Link
-      href={`/jogador/${playerId}`}
+      href={`/jogador/${slug}`}
       className={cx("group min-w-0 flex-1 rounded-ctl", className)}
     >
       <Miolo apelido={apelido} nome={nome} destaque={destaque} sublinhaNoHover />

@@ -7,7 +7,7 @@ import { lerImagemDoItem } from "@/lib/loja-itens";
 //
 // Esta rota é PÚBLICA de propósito, e o caminho é o que garante isso: o
 // src/proxy.ts exige login em `/loja`, `/perfil` e `/jogador`, e o badge em
-// destaque aparece em `/rankings`, `/fut/[id]` e `/grupo/[id]`, que qualquer um
+// destaque aparece em `/rankings`, `/fut/[id]` e `/grupo/[slug]`, que qualquer um
 // abre. Uma imagem debaixo de um prefixo protegido viraria um redirect para o
 // login no meio de uma página pública — badges quebrados para quem não está
 // logado, e ninguém descobriria isso testando logado.

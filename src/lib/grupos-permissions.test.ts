@@ -213,7 +213,7 @@ describe("gruposVisiveisNoPerfil", () => {
 describe("podeFiltrarPerfilPorGrupo", () => {
   // A assimetria com gruposVisiveisNoPerfil é a regra, não um descuido: ver que
   // o grupo público existe é uma pergunta, ler o ranking dele por dentro do
-  // perfil é outra — e esta segunda é a que /grupo/[id]/ranking já recusa.
+  // perfil é outra — e esta segunda é a que /grupo/[slug]/ranking já recusa.
   it("grupo público de que o visitante não participa aparece na lista mas não filtra", () => {
     const gPublico = { id: 1, visibility: "public" } as const;
 

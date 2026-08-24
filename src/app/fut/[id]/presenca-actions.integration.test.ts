@@ -78,7 +78,7 @@ afterEach(() => {
 
 describe("setMyAttendance", () => {
   it("fut de grupo: não-membro logado não grava nada", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const fut = await criarFut({ groupId });
     const { jogador, conta } = await criarJogadorComConta();
     await logarComo(conta);
@@ -89,7 +89,7 @@ describe("setMyAttendance", () => {
   });
 
   it("fut de grupo: membro entra na lista", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const fut = await criarFut({ groupId });
     const { jogador, conta } = await criarJogadorComConta();
     await entrarNoGrupo(groupId, jogador);
@@ -132,7 +132,7 @@ describe("setMyAttendance", () => {
   });
 
   it("ex-membro que já está no fut segue elegível", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const fut = await criarFut({ groupId });
     const { jogador, conta } = await criarJogadorComConta();
     await entrarNoGrupo(groupId, jogador);
@@ -197,7 +197,7 @@ describe("definirPresenca", () => {
   // A exceção da lista fechada vale em fut DE GRUPO, onde "elegível" quer dizer
   // membro — e entrar no grupo foi o consentimento.
   it("lista fechada em fut de grupo: membro entra e é avisado no mesmo commit", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const { fut } = await futComAdminLogado({ groupId, status: "teams_drawn" });
     const alvo = await criarJogadorComConta();
     await entrarNoGrupo(groupId, alvo.jogador);
@@ -241,7 +241,7 @@ describe("definirPresenca", () => {
   });
 
   it("lista fechada: inelegível é recusado", async () => {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const { fut } = await futComAdminLogado({ groupId, status: "teams_drawn" });
     const alvo = await criarJogadorComConta();
 
@@ -503,7 +503,7 @@ describe("retirar o nome da lista", () => {
    * contas porque os testes trocam de sessão no meio.
    */
   async function postoNaLista() {
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     const organizador = await criarJogadorComConta();
     await logarComo(organizador.conta);
     const fut = await criarFut({

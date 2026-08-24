@@ -34,7 +34,7 @@ async function avisosDe(jogador: Player) {
 /** Fut de grupo, dois trios com conta em campo, e o admin que encerra. */
 async function montarFutDeGrupo() {
   const admin = await criarJogadorComConta();
-  const groupId = await criarGrupo();
+  const groupId = (await criarGrupo()).id;
   await entrarNoGrupo(groupId, admin.jogador, "admin");
 
   const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
@@ -129,7 +129,7 @@ describe("avisos do encerramento", () => {
 
   it("quem jogou sem conta não recebe nada", async () => {
     const admin = await criarJogadorComConta();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await entrarNoGrupo(groupId, admin.jogador, "admin");
     const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
 
@@ -145,7 +145,7 @@ describe("avisos do encerramento", () => {
 
   it("lado sem três contas cai na página do fut, e o outro lado na avaliação", async () => {
     const admin = await criarJogadorComConta();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await entrarNoGrupo(groupId, admin.jogador, "admin");
     const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
 
@@ -176,7 +176,7 @@ describe("avisos do encerramento", () => {
 
   it("sem rodada nenhuma, todo mundo que jogou vai para a página do fut", async () => {
     const admin = await criarJogadorComConta();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await entrarNoGrupo(groupId, admin.jogador, "admin");
     const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
 
@@ -196,7 +196,7 @@ describe("avisos do encerramento", () => {
 
   it("fut sem jogo lançado não avisa quem jogou — não jogou ninguém", async () => {
     const admin = await criarJogadorComConta();
-    const groupId = await criarGrupo();
+    const groupId = (await criarGrupo()).id;
     await entrarNoGrupo(groupId, admin.jogador, "admin");
     const fut = await criarFut({ groupId, createdByPlayerId: admin.jogador.id });
     const membro = await criarJogadorComConta();

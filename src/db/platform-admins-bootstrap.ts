@@ -4,6 +4,7 @@ import { hashPassword } from "../lib/password";
 import { platformAdminsDoAmbiente } from "../lib/platform-admins";
 import { VALIDADE_CONVITE_MS } from "../lib/regras";
 import { siteUrl } from "../lib/site-url";
+import { primeiroLivre, slugBase, troncoDeColisao } from "../lib/slug";
 
 // O bootstrap do admin da plataforma, chamado por src/db/migrate.ts depois das
 // migrations — em TODO build de produção, fora do journal do drizzle.
@@ -16,6 +17,25 @@ import { siteUrl } from "../lib/site-url";
 //
 // SQL cru (tag do postgres.js, parametrizada) e não drizzle, como o migrate:
 // este código roda sob tsx, fora do Next, antes de o schema novo existir.
+
+/**
+ * O slug livre para o jogador que este script cria.
+ *
+ * Reimplementa só a CONSULTA do `slugLivreDeJogador` (src/lib/slug-livre.ts) em
+ * SQL cru, pelo mesmo motivo do resto do arquivo: aqui não há drizzle. A escolha
+ * em si é o `primeiroLivre` compartilhado — puro, mora em ../lib/slug.
+ * `players.slug` é NOT NULL, então esquecer isto derrubaria o build — e este
+ * insert roda em TODO build de produção.
+ *
+ * O username já vem no charset do slug, mas ainda passa pelo `slugBase`: o
+ * USERNAME_REGEX aceita "123", e slug puramente numérico é justamente o que não
+ * pode existir.
+ */
+async function slugLivreDeJogadorCru(conn: postgres.Sql, base: string): Promise<string> {
+  const rows = await conn<{ slug: string }[]>`
+    select slug from players where slug like ${`${troncoDeColisao(base)}%`}`;
+  return primeiroLivre(base, new Set(rows.map((r) => r.slug)));
+}
 
 /**
  * Cria a conta de quem está em `PLATFORM_ADMIN_USERNAMES` e ainda não existe.
@@ -82,8 +102,9 @@ export async function provisionarPlatformAdmins(conn: postgres.Sql) {
 
     let playerId: number;
     if (!jogador) {
+      const slug = await slugLivreDeJogadorCru(conn, slugBase(username, "jogador"));
       const [criado] = await conn`
-        insert into players (name) values (${username}) returning id`;
+        insert into players (name, slug) values (${username}, ${slug}) returning id`;
       playerId = criado.id;
     } else if (jogador.temConta) {
       console.warn(

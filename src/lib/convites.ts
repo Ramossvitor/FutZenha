@@ -5,6 +5,8 @@ import { type Executor } from "@/db";
 import { invites, players } from "@/db/schema";
 import { emailSchema } from "./email-contato";
 import { VALIDADE_CONVITE_MS } from "./regras";
+import { slugBase } from "./slug";
+import { slugLivreDeJogador } from "./slug-livre";
 
 // Sem guard de propósito: quem autoriza é a action. São dois caminhos com
 // permissões diferentes chegando aqui — o admin da plataforma, em
@@ -58,7 +60,15 @@ export async function criarJogadorComConvite(
   },
 ): Promise<{ playerId: number; token: string }> {
   const { email = null, ...jogador } = dados;
-  const [created] = await exec.insert(players).values(jogador).returning();
+  // O endereço do perfil público nasce aqui e não muda mais: renomear o jogador
+  // depois não mexe no slug, porque o link já pode ter sido compartilhado e não
+  // existe redirect do slug antigo. Sai do nome inteiro, não do apelido — o
+  // apelido é o que mais muda, e aqui o valor é durar.
+  const slug = await slugLivreDeJogador(exec, slugBase(dados.name, "jogador"));
+  const [created] = await exec
+    .insert(players)
+    .values({ ...jogador, slug })
+    .returning();
   const token = await gerarConvite(exec, created.id, email);
   return { playerId: created.id, token };
 }

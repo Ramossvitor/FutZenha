@@ -53,7 +53,7 @@ test("compra um badge e ele aparece no perfil e ao lado do nome", async ({ page 
   // O perfil público é o fim da linha do que a pessoa comprou. Pelo `alt` da
   // imagem, que é o nome do item: é assim que um leitor de tela a encontra.
   await page.getByRole("link", { name: "Ver meu perfil" }).click();
-  await expect(page).toHaveURL(/\/jogador\/\d+$/);
+  await expect(page).toHaveURL(/\/jogador\/[a-z0-9._-]+$/);
   await expect(page.getByRole("img", { name: BADGE }).first()).toBeVisible();
 
   // E o destaque sai do perfil: ele anda junto do nome nas listas. É a única

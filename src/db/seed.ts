@@ -11,6 +11,7 @@ import { pngDeUmaCor } from "../test/fixtures-imagem";
 // justamente para servir também a estes scripts.
 import { PRAZO_AVALIACAO_HORAS } from "../lib/regras";
 import { siteUrl } from "../lib/site-url";
+import { slugBase } from "../lib/slug";
 import * as schema from "./schema";
 
 // Este script APAGA todas as tabelas antes de popular. A trava evita destruir a
@@ -411,7 +412,14 @@ async function main() {
   await seedCatalogoDaLoja();
 
   console.log(`Inserindo ${seedPlayers.length} jogadores...`);
-  const inserted = await db.insert(schema.players).values(seedPlayers).returning();
+  // Os nomes do seed são distintos entre si e continuam distintos depois de
+  // normalizados, então não há colisão para desempatar aqui — o slug sai direto
+  // do nome. É o que deixa /jogador/andre-souza ser um endereço estável para o
+  // E2E apontar (ver e2e/perfil-publico.spec.ts).
+  const inserted = await db
+    .insert(schema.players)
+    .values(seedPlayers.map((p) => ({ ...p, slug: slugBase(p.name, "jogador") })))
+    .returning();
 
   // Saldo de FIXTURE, e só isso: no app ninguém ganha zenha por existir, e a
   // única porta de entrada é a liquidação do fut. Mas o seed insere jogador

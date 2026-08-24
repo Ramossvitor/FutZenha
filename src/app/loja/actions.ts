@@ -47,6 +47,6 @@ export async function comprarItem(itemId: number) {
   revalidatePath("/loja");
   revalidatePath("/zenhas");
   revalidatePath("/perfil/inventario");
-  revalidatePath(`/jogador/${session.player.id}`);
+  revalidatePath(`/jogador/${session.player.slug}`);
   redirect("/perfil/inventario?ok=compra-feita");
 }

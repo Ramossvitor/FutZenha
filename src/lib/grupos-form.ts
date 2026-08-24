@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Compartilhado entre criar (/grupos/novo) e editar (/grupo/[id]/gerenciar),
+// Compartilhado entre criar (/grupos/novo) e editar (/grupo/[slug]/gerenciar),
 // pelo mesmo motivo de ./match-day-form: são os mesmos campos, e duplicar o
 // schema deixaria as validações divergirem na primeira mudança.
 //

@@ -8,10 +8,23 @@ import { db } from "@/db";
 import { gamePlayers, games, goals, lojaItens, teams, zenhaInventario, type Player } from "@/db/schema";
 import { creditar } from "@/lib/carteira";
 import { comprar, tirarDaVitrine } from "@/lib/loja";
+import { getJogadorPorSlug, type PerfilJogador } from "@/lib/jogadores";
 import { confirmarPresenca, criarFut, criarJogadorComConta } from "@/test/fixtures";
 import { criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
 import { criarBadge, criarCorDoNome, criarMoldura, criarTitulo } from "@/test/fixtures-loja";
 import { carregarPerfil } from "./dados";
+
+/**
+ * O alvo como a página o entrega: resolvido antes de `carregarPerfil`.
+ *
+ * A página traduz o slug da URL em jogador e só então chama a camada de dados —
+ * "não existe" morre lá, no notFound(), e não aqui dentro.
+ */
+async function perfilDe(jogador: Player): Promise<PerfilJogador> {
+  const perfil = await getJogadorPorSlug(jogador.slug);
+  if (!perfil) throw new Error(`jogador ${jogador.id} sumiu entre a fixture e a leitura`);
+  return perfil;
+}
 
 /** Saldo para o alvo poder comprar o que a vitrine vai mostrar. */
 async function creditarParaComprar(playerId: number, saldo: number): Promise<void> {
@@ -81,72 +94,72 @@ describe("carregarPerfil: quais grupos do alvo aparecem", () => {
   it("grupo público aparece até para quem não participa dele", async () => {
     const alvo = await criarJogadorComConta();
     const deFora = await criarJogadorComConta();
-    const publico = await criarGrupo("Pelada Aberta", { visibility: "public" });
+    const publico = (await criarGrupo("Pelada Aberta", { visibility: "public" })).id;
     await entrarNoGrupo(publico, alvo.jogador);
 
     const dados = await carregarPerfil(
       visitanteComum(deFora.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       undefined,
     );
 
-    expect(dados?.gruposVisiveis.map((g) => g.id)).toContain(publico);
+    expect(dados.gruposVisiveis.map((g) => g.id)).toContain(publico);
   });
 
   // O ataque: abrir o perfil de alguém e ler dali a lista dos grupos privados
-  // dele — a mesma co-participação que o 404 de /grupo/[id] esconde.
+  // dele — a mesma co-participação que o 404 de /grupo/[slug] esconde.
   it("grupo privado some para quem está de fora e fica para o co-membro", async () => {
     const alvo = await criarJogadorComConta();
     const deFora = await criarJogadorComConta();
     const coMembro = await criarJogadorComConta();
-    const privado = await criarGrupo("Fut dos Amigos");
+    const privado = (await criarGrupo("Fut dos Amigos")).id;
     await entrarNoGrupo(privado, alvo.jogador);
     await entrarNoGrupo(privado, coMembro.jogador);
 
     const paraDeFora = await carregarPerfil(
       visitanteComum(deFora.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       undefined,
     );
-    expect(paraDeFora?.gruposVisiveis.map((g) => g.id)).not.toContain(privado);
+    expect(paraDeFora.gruposVisiveis.map((g) => g.id)).not.toContain(privado);
 
     const paraCoMembro = await carregarPerfil(
       visitanteComum(coMembro.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       undefined,
     );
-    expect(paraCoMembro?.gruposVisiveis.map((g) => g.id)).toContain(privado);
+    expect(paraCoMembro.gruposVisiveis.map((g) => g.id)).toContain(privado);
   });
 
   it("admin da plataforma enxerga o grupo privado alheio", async () => {
     const alvo = await criarJogadorComConta();
     const admin = await criarJogadorComConta();
-    const privado = await criarGrupo("Fut dos Amigos");
+    const privado = (await criarGrupo("Fut dos Amigos")).id;
     await entrarNoGrupo(privado, alvo.jogador);
 
     const dados = await carregarPerfil(
       { playerId: admin.jogador.id, isPlatformAdmin: true },
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       undefined,
     );
 
-    expect(dados?.gruposVisiveis.map((g) => g.id)).toContain(privado);
+    expect(dados.gruposVisiveis.map((g) => g.id)).toContain(privado);
   });
 
   it("traz o papel do ALVO no grupo, não o do visitante", async () => {
     const alvo = await criarJogadorComConta();
     const visitante = await criarJogadorComConta();
-    const grupo = await criarGrupo("Pelada Aberta", { visibility: "public" });
+    const grupo = (await criarGrupo("Pelada Aberta", { visibility: "public" })).id;
     await entrarNoGrupo(grupo, alvo.jogador, "admin");
     await entrarNoGrupo(grupo, visitante.jogador, "member");
 
     const dados = await carregarPerfil(
       visitanteComum(visitante.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       undefined,
     );
 
-    expect(dados?.gruposVisiveis.find((g) => g.id === grupo)?.papel).toBe("admin");
+    expect(dados.gruposVisiveis.find((g) => g.id === grupo)?.papel).toBe("admin");
   });
 });
 
@@ -154,55 +167,55 @@ describe("carregarPerfil: o que o ?grupo= aceita", () => {
   it("grupo de que o visitante também participa liga o escopo e o MVP", async () => {
     const alvo = await criarJogadorComConta();
     const visitante = await criarJogadorComConta();
-    const grupo = await criarGrupo("Pelada Aberta", { visibility: "public" });
+    const grupo = (await criarGrupo("Pelada Aberta", { visibility: "public" })).id;
     await entrarNoGrupo(grupo, alvo.jogador);
     await entrarNoGrupo(grupo, visitante.jogador);
 
     const dados = await carregarPerfil(
       visitanteComum(visitante.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       String(grupo),
     );
 
-    expect(dados?.grupoSelecionado?.id).toBe(grupo);
-    expect(dados?.numeros.titulosMvp).toBe(0);
+    expect(dados.grupoSelecionado?.id).toBe(grupo);
+    expect(dados.numeros.titulosMvp).toBe(0);
   });
 
-  // Ver o grupo e ler o ranking dele são perguntas diferentes: /grupo/[id]
-  // abre para qualquer um se o grupo é público, /grupo/[id]/ranking só para
+  // Ver o grupo e ler o ranking dele são perguntas diferentes: /grupo/[slug]
+  // abre para qualquer um se o grupo é público, /grupo/[slug]/ranking só para
   // membro. Sem esta linha, o `?grupo=` era o ranking daquele grupo servido um
   // jogador por vez, percorrendo a lista de membros que a página pública mostra.
   it("grupo público de que o visitante NÃO participa aparece na lista mas não filtra", async () => {
     const alvo = await criarJogadorComConta();
     const deFora = await criarJogadorComConta();
-    const publico = await criarGrupo("Pelada Aberta", { visibility: "public" });
+    const publico = (await criarGrupo("Pelada Aberta", { visibility: "public" })).id;
     await entrarNoGrupo(publico, alvo.jogador);
 
     const dados = await carregarPerfil(
       visitanteComum(deFora.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       String(publico),
     );
 
-    expect(dados?.gruposVisiveis.map((g) => g.id)).toContain(publico);
-    expect(dados?.gruposFiltraveis).toEqual([]);
-    expect(dados?.grupoSelecionado).toBeNull();
-    expect(dados?.numeros.titulosMvp).toBeNull();
+    expect(dados.gruposVisiveis.map((g) => g.id)).toContain(publico);
+    expect(dados.gruposFiltraveis).toEqual([]);
+    expect(dados.grupoSelecionado).toBeNull();
+    expect(dados.numeros.titulosMvp).toBeNull();
   });
 
   it("admin da plataforma filtra por grupo alheio, como enxerga o resto", async () => {
     const alvo = await criarJogadorComConta();
     const admin = await criarJogadorComConta();
-    const privado = await criarGrupo("Fut dos Amigos");
+    const privado = (await criarGrupo("Fut dos Amigos")).id;
     await entrarNoGrupo(privado, alvo.jogador);
 
     const dados = await carregarPerfil(
       { playerId: admin.jogador.id, isPlatformAdmin: true },
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       String(privado),
     );
 
-    expect(dados?.grupoSelecionado?.id).toBe(privado);
+    expect(dados.grupoSelecionado?.id).toBe(privado);
   });
 
   // Cair calado no geral, e não em 404: a página é legítima, só não pode
@@ -210,32 +223,32 @@ describe("carregarPerfil: o que o ?grupo= aceita", () => {
   it("grupo privado alheio cai no escopo geral, sem erro", async () => {
     const alvo = await criarJogadorComConta();
     const deFora = await criarJogadorComConta();
-    const privado = await criarGrupo("Fut dos Amigos");
+    const privado = (await criarGrupo("Fut dos Amigos")).id;
     await entrarNoGrupo(privado, alvo.jogador);
 
     const dados = await carregarPerfil(
       visitanteComum(deFora.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       String(privado),
     );
 
-    expect(dados?.grupoSelecionado).toBeNull();
-    expect(dados?.numeros.titulosMvp).toBeNull();
+    expect(dados.grupoSelecionado).toBeNull();
+    expect(dados.numeros.titulosMvp).toBeNull();
   });
 
   it("grupo de que o alvo não participa cai no escopo geral", async () => {
     const alvo = await criarJogadorComConta();
     const visitante = await criarJogadorComConta();
-    const soDoVisitante = await criarGrupo("Outro Fut", { visibility: "public" });
+    const soDoVisitante = (await criarGrupo("Outro Fut", { visibility: "public" })).id;
     await entrarNoGrupo(soDoVisitante, visitante.jogador);
 
     const dados = await carregarPerfil(
       visitanteComum(visitante.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       String(soDoVisitante),
     );
 
-    expect(dados?.grupoSelecionado).toBeNull();
+    expect(dados.grupoSelecionado).toBeNull();
   });
 
   it("valor que não é número cai no escopo geral", async () => {
@@ -244,11 +257,11 @@ describe("carregarPerfil: o que o ?grupo= aceita", () => {
 
     const dados = await carregarPerfil(
       visitanteComum(visitante.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       "'; drop table players; --",
     );
 
-    expect(dados?.grupoSelecionado).toBeNull();
+    expect(dados.grupoSelecionado).toBeNull();
   });
 });
 
@@ -264,11 +277,11 @@ describe("carregarPerfil: os números", () => {
 
     const dados = await carregarPerfil(
       visitanteComum(visitante.jogador.id),
-      alvo.jogador.id,
+      await perfilDe(alvo.jogador),
       undefined,
     );
 
-    expect(dados?.numeros).toMatchObject({
+    expect(dados.numeros).toMatchObject({
       gols: 2,
       jogos: 1,
       vitorias: 1,
@@ -293,21 +306,22 @@ describe("carregarPerfil: os números", () => {
       [{ jogador: rival.jogador, gols: 2 }],
     );
 
-    const paraCada = async (playerId: number) =>
-      (await carregarPerfil(visitanteComum(visitante.jogador.id), playerId, undefined))?.numeros;
+    const paraCada = async (jogador: Player) =>
+      (await carregarPerfil(visitanteComum(visitante.jogador.id), await perfilDe(jogador), undefined))
+        .numeros;
 
-    expect(await paraCada(alvo.jogador.id)).toMatchObject({
+    expect(await paraCada(alvo.jogador)).toMatchObject({
       posicaoArtilharia: 1,
       empates: 1,
       aproveitamento: 0.5,
     });
-    expect((await paraCada(rival.jogador.id))?.posicaoArtilharia).toBe(1);
+    expect((await paraCada(rival.jogador)).posicaoArtilharia).toBe(1);
   });
 
   it("o filtro de grupo recorta os números, e o geral soma os dois futs", async () => {
     const alvo = await criarJogadorComConta();
     const rival = await criarJogadorComConta();
-    const grupo = await criarGrupo("Pelada Aberta", { visibility: "public" });
+    const grupo = (await criarGrupo("Pelada Aberta", { visibility: "public" })).id;
     await entrarNoGrupo(grupo, alvo.jogador);
     await entrarNoGrupo(grupo, rival.jogador);
     await futEncerrado([{ jogador: alvo.jogador, gols: 3 }], [{ jogador: rival.jogador }], {
@@ -316,11 +330,11 @@ describe("carregarPerfil: os números", () => {
     await futEncerrado([{ jogador: alvo.jogador, gols: 1 }], [{ jogador: rival.jogador }]);
 
     const visitante = visitanteComum(rival.jogador.id);
-    const geral = await carregarPerfil(visitante, alvo.jogador.id, undefined);
-    const doGrupo = await carregarPerfil(visitante, alvo.jogador.id, String(grupo));
+    const geral = await carregarPerfil(visitante, await perfilDe(alvo.jogador), undefined);
+    const doGrupo = await carregarPerfil(visitante, await perfilDe(alvo.jogador), String(grupo));
 
-    expect(geral?.numeros).toMatchObject({ gols: 4, jogos: 2, presencas: 2, totalDays: 2 });
-    expect(doGrupo?.numeros).toMatchObject({ gols: 3, jogos: 1, presencas: 1, totalDays: 1 });
+    expect(geral.numeros).toMatchObject({ gols: 4, jogos: 2, presencas: 2, totalDays: 2 });
+    expect(doGrupo.numeros).toMatchObject({ gols: 3, jogos: 1, presencas: 1, totalDays: 1 });
   });
 });
 
@@ -332,9 +346,9 @@ describe("carregarPerfil: a vitrine", () => {
     const alvo = await criarJogadorComConta();
     const visitante = await criarJogadorComConta();
 
-    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), alvo.jogador.id, undefined);
+    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), await perfilDe(alvo.jogador), undefined);
 
-    expect(dados?.vitrine).toEqual({
+    expect(dados.vitrine).toEqual({
       moldura: null,
       corDoNome: null,
       titulo: null,
@@ -356,14 +370,14 @@ describe("carregarPerfil: a vitrine", () => {
       await comprar(alvo.jogador.id, item.id);
     }
 
-    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), alvo.jogador.id, undefined);
+    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), await perfilDe(alvo.jogador), undefined);
 
     // Comprar já equipa o slot vazio e já põe o badge na vitrine.
-    expect(dados?.vitrine.moldura?.cor).toBe(moldura.cor);
-    expect(dados?.vitrine.corDoNome?.nome).toBe("Nome brasa");
-    expect(dados?.vitrine.titulo?.nome).toBe("Camisa 10");
-    expect(dados?.vitrine.badges.map((b) => b.item.nome)).toEqual(["Avaí", "Figueirense"]);
-    expect(dados?.vitrine.badges.map((b) => b.destaque)).toEqual([true, false]);
+    expect(dados.vitrine.moldura?.cor).toBe(moldura.cor);
+    expect(dados.vitrine.corDoNome?.nome).toBe("Nome brasa");
+    expect(dados.vitrine.titulo?.nome).toBe("Camisa 10");
+    expect(dados.vitrine.badges.map((b) => b.item.nome)).toEqual(["Avaí", "Figueirense"]);
+    expect(dados.vitrine.badges.map((b) => b.destaque)).toEqual([true, false]);
   });
 
   it("badge guardado no inventário NÃO aparece no perfil", async () => {
@@ -378,9 +392,9 @@ describe("carregarPerfil: a vitrine", () => {
       .where(eq(zenhaInventario.playerId, alvo.jogador.id));
     await tirarDaVitrine(alvo.jogador.id, linha.id);
 
-    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), alvo.jogador.id, undefined);
+    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), await perfilDe(alvo.jogador), undefined);
 
-    expect(dados?.vitrine.badges).toEqual([]);
+    expect(dados.vitrine.badges).toEqual([]);
   });
 
   // A contrapartida de o admin poder tirar um item de venda sem apagá-lo: quem
@@ -393,29 +407,38 @@ describe("carregarPerfil: a vitrine", () => {
     await comprar(alvo.jogador.id, badge.id);
     await db.update(lojaItens).set({ ativo: false }).where(eq(lojaItens.id, badge.id));
 
-    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), alvo.jogador.id, undefined);
+    const dados = await carregarPerfil(visitanteComum(visitante.jogador.id), await perfilDe(alvo.jogador), undefined);
 
-    expect(dados?.vitrine.badges.map((b) => b.item.nome)).toEqual(["Raro"]);
+    expect(dados.vitrine.badges.map((b) => b.item.nome)).toEqual(["Raro"]);
   });
 });
 
 describe("carregarPerfil: alvos fora do comum", () => {
-  it("jogador inexistente devolve undefined", async () => {
-    const visitante = await criarJogadorComConta();
+  // "Não existe" deixou de ser resposta de `carregarPerfil` e passou a ser da
+  // borda: a página traduz o slug em jogador e chama o notFound() ali. É por isso
+  // que o teste agora pergunta ao `getJogadorPorSlug`, e não à camada de dados —
+  // que só é chamada com um alvo que já existe.
+  it("slug inexistente não resolve jogador nenhum", async () => {
+    expect(await getJogadorPorSlug("nao-existe-esse-jogador")).toBeUndefined();
+  });
 
-    expect(
-      await carregarPerfil(visitanteComum(visitante.jogador.id), 999_999, undefined),
-    ).toBeUndefined();
+  // A URL antiga era /jogador/{id}. Ela não pode virar um endereço vivo por
+  // acaso: nenhum slug é puramente numérico (ver slugBase em src/lib/slug.ts).
+  it("o id que era a URL antiga não casa com slug nenhum", async () => {
+    const alguem = await criarJogadorComConta();
+
+    expect(await getJogadorPorSlug(String(alguem.jogador.id))).toBeUndefined();
+    expect(alguem.jogador.slug).not.toMatch(/^[0-9]+$/);
   });
 
   it("o próprio perfil carrega igual", async () => {
     const eu = await criarJogadorComConta();
 
-    const dados = await carregarPerfil(visitanteComum(eu.jogador.id), eu.jogador.id, undefined);
+    const dados = await carregarPerfil(visitanteComum(eu.jogador.id), await perfilDe(eu.jogador), undefined);
 
-    expect(dados?.jogador.id).toBe(eu.jogador.id);
-    expect(dados?.numeros.jogos).toBe(0);
-    expect(dados?.numeros.aproveitamento).toBeNull();
-    expect(dados?.numeros.posicaoArtilharia).toBe(0);
+    expect(dados.jogador.id).toBe(eu.jogador.id);
+    expect(dados.numeros.jogos).toBe(0);
+    expect(dados.numeros.aproveitamento).toBeNull();
+    expect(dados.numeros.posicaoArtilharia).toBe(0);
   });
 });

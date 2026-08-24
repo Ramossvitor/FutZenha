@@ -21,9 +21,9 @@ const slotSchema = z.enum(zenhaSlotEnum.enumValues);
  * perfil público junto — é o primeiro lugar para onde a pessoa olha depois de
  * mexer, e é o que o link do zap abre.
  */
-function revalidarVitrine(playerId: number): void {
+function revalidarVitrine(slugDoJogador: string): void {
   revalidatePath("/perfil/inventario");
-  revalidatePath(`/jogador/${playerId}`);
+  revalidatePath(`/jogador/${slugDoJogador}`);
 }
 
 /** Põe o item no slot dele (moldura, cor do nome ou título). */
@@ -36,7 +36,7 @@ export async function equiparItem(inventarioId: number) {
   const erro = await equipar(session.player.id, parsed.data);
   if (erro) redirect("/perfil/inventario?erro=item-nao-e-seu");
 
-  revalidarVitrine(session.player.id);
+  revalidarVitrine(session.player.slug);
   redirect("/perfil/inventario?ok=item-equipado");
 }
 
@@ -55,7 +55,7 @@ export async function desequiparSlot(slot: string) {
 
   await desequipar(session.player.id, parsed.data);
 
-  revalidarVitrine(session.player.id);
+  revalidarVitrine(session.player.slug);
   redirect("/perfil/inventario?ok=item-desequipado");
 }
 
@@ -79,7 +79,7 @@ export async function porBadgeNaVitrine(inventarioId: number) {
   if (erro === "vitrine-cheia") redirect("/perfil/inventario?erro=vitrine-cheia");
   if (erro) redirect("/perfil/inventario?erro=item-nao-e-seu");
 
-  revalidarVitrine(session.player.id);
+  revalidarVitrine(session.player.slug);
   redirect("/perfil/inventario?ok=item-na-vitrine");
 }
 
@@ -96,7 +96,7 @@ export async function tirarBadgeDaVitrine(inventarioId: number) {
 
   await tirarDaVitrine(session.player.id, parsed.data);
 
-  revalidarVitrine(session.player.id);
+  revalidarVitrine(session.player.slug);
   redirect("/perfil/inventario?ok=item-fora-da-vitrine");
 }
 
@@ -116,7 +116,7 @@ export async function destacarBadge(inventarioId: number) {
   const erro = await destacar(session.player.id, parsed.data);
   if (erro) redirect("/perfil/inventario?erro=item-nao-e-seu");
 
-  revalidarVitrine(session.player.id);
+  revalidarVitrine(session.player.slug);
   revalidatePath("/rankings");
   revalidatePath("/artilharia");
   redirect("/perfil/inventario?ok=destaque-definido");
