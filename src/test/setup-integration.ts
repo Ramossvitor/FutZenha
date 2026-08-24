@@ -32,6 +32,18 @@ if (process.env.VAPID_PRIVATE_KEY) {
   );
 }
 
+// Mesmo contrato para a recarga (src/lib/pagamentos/mercadopago.ts): a ausência
+// do token é o kill switch do gateway. Aqui o risco é pior que cota — um teste
+// com o token real criaria COBRANÇAS Pix de verdade na conta. Teste que
+// exercita o transporte usa vi.stubEnv com token FAKE e fetch stubado; os de
+// domínio injetam um GatewayDePagamento fake e nem tocam o transporte.
+if (process.env.MP_ACCESS_TOKEN) {
+  throw new Error(
+    "MP_ACCESS_TOKEN está definido no ambiente de teste. Remova-o antes de rodar " +
+      "a integração — com ele os testes criariam cobranças Pix de verdade.",
+  );
+}
+
 vi.mock("next/headers", async () => {
   const { cookieJar } = await import("./cookie-store");
   return {

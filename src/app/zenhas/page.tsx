@@ -6,6 +6,7 @@ import { HairlineList, HairlineRow, HairlineRowLink } from "@/components/ui/hair
 import { IconeZenha } from "@/components/ui/icons";
 import { getExtrato, getSaldo } from "@/lib/carteira";
 import { cx } from "@/lib/cx";
+import { recargaConfigurada } from "@/lib/recarga";
 import { requirePlayer } from "@/lib/require-player";
 import type { ZenhaLedgerEntry } from "@/db/schema";
 
@@ -32,9 +33,18 @@ export default async function ZenhasPage({ searchParams }: PageProps<"/zenhas">)
         titulo="Minhas zenhas"
         descricao="Tudo que entrou e tudo que saiu, do mais recente para o mais antigo. Nada aqui é reescrito depois."
         acao={
-          <LinkButton href="/loja" variante="secondary" tamanho="sm">
-            Ir à loja
-          </LinkButton>
+          <div className="flex gap-2">
+            {/* Só quando o gateway está configurado — mesmo kill switch do
+                e-mail: sem credencial, o caminho inteiro da recarga some. */}
+            {recargaConfigurada() && (
+              <LinkButton href="/zenhas/recarga" tamanho="sm">
+                Comprar zenhas
+              </LinkButton>
+            )}
+            <LinkButton href="/loja" variante="secondary" tamanho="sm">
+              Ir à loja
+            </LinkButton>
+          </div>
         }
       />
 
@@ -109,7 +119,8 @@ export default async function ZenhasPage({ searchParams }: PageProps<"/zenhas">)
  *
  * O `match_day_id` é `set null`: apagar o fut corta o ponteiro e deixa a linha
  * de pé, legível pela `descricao` congelada. Por isso a linha só vira link
- * quando o fut ainda existe — a mesma linha, com e sem destino.
+ * quando o fut ainda existe — a mesma linha, com e sem destino. A recarga segue
+ * a mesma regra pelo `pedido_id`, levando à tela do pedido.
  */
 function LinhaDoExtrato({ linha }: { linha: ZenhaLedgerEntry }) {
   const miolo = (
@@ -128,13 +139,21 @@ function LinhaDoExtrato({ linha }: { linha: ZenhaLedgerEntry }) {
     </>
   );
 
-  return linha.matchDayId !== null ? (
-    <HairlineRowLink href={`/fut/${linha.matchDayId}`} className="items-start">
-      {miolo}
-    </HairlineRowLink>
-  ) : (
-    <HairlineRow className="items-start">{miolo}</HairlineRow>
-  );
+  if (linha.matchDayId !== null) {
+    return (
+      <HairlineRowLink href={`/fut/${linha.matchDayId}`} className="items-start">
+        {miolo}
+      </HairlineRowLink>
+    );
+  }
+  if (linha.pedidoId !== null) {
+    return (
+      <HairlineRowLink href={`/zenhas/recarga/${linha.pedidoId}`} className="items-start">
+        {miolo}
+      </HairlineRowLink>
+    );
+  }
+  return <HairlineRow className="items-start">{miolo}</HairlineRow>;
 }
 
 /**

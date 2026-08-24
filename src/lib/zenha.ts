@@ -285,6 +285,12 @@ export type CreditoDeZenha = {
    */
   matchDayId?: number | null;
   roundId?: number | null;
+  /**
+   * O pedido de recarga que gerou o crédito (motivo `recarga`) — ausente em
+   * tudo que vem de fut. Mesma família das duas FKs acima: `set null` no banco,
+   * navegação do extrato, nunca chave.
+   */
+  pedidoId?: number | null;
 };
 
 export type FatosDoJogador = {

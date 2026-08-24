@@ -7,6 +7,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -977,6 +978,16 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // armou e não tem irmão em que pegar carona.
   "zenha_creditada",
   "multiplicador_devolvido",
+  // A recarga paga com dinheiro de verdade entrou. Tipo próprio, e não o
+  // `zenha_creditada` de cima: aquele fala de fut ("você ganhou X pelo fut de
+  // …") e este fala de uma compra — o corpo, o ícone e a expectativa de quem
+  // lê são outros. Vai para o COMPRADOR, que pode ter fechado a aba antes de o
+  // Pix cair.
+  "recarga_confirmada",
+  // O gateway devolveu o dinheiro de uma recarga (estorno ou disputa). Vai para
+  // os ADMINS da plataforma, não para o comprador: o ledger não tem reversão e
+  // quem decide o que fazer com o saldo é um humano — ver src/lib/recarga.ts.
+  "recarga_estornada",
 ]);
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
@@ -1305,6 +1316,11 @@ export const zenhaMotivoEnum = pgEnum("zenha_motivo", [
   // A única linha negativa do ledger. Não existe motivo de estorno: quando um
   // multiplicador não vale, o que volta é o ITEM, nunca o dinheiro.
   "compra",
+  // Zenha comprada com dinheiro de verdade (Pix). O crédito só entra quando o
+  // gateway confirma o pagamento — ver src/lib/recarga.ts. Estorno de recarga
+  // NÃO gera linha negativa: o ledger segue sem reversão, o pedido é marcado
+  // (`zenha_pedidos.status = 'estornado'`) e o admin resolve por fora.
+  "recarga",
 ]);
 
 // O que um item da loja É — e, por consequência, o que a tela precisa desenhar
@@ -1564,6 +1580,12 @@ export const zenhaLedger = pgTable(
     inventarioId: integer("inventario_id").references((): AnyPgColumn => zenhaInventario.id, {
       onDelete: "set null",
     }),
+    // O pedido de recarga que gerou este crédito (motivo `recarga`). `set null`
+    // como as outras três FKs, e pela mesma razão: a linha do extrato sobrevive
+    // a qualquer limpeza, legível pela `descricao` congelada.
+    pedidoId: integer("pedido_id").references((): AnyPgColumn => zenhaPedidos.id, {
+      onDelete: "set null",
+    }),
     descricao: text("descricao").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -1773,6 +1795,160 @@ export const zenhaMultiplicadores = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// A recarga: zenha comprada com dinheiro de verdade, via Pix.
+//
+// O desenho segue as mesmas quatro decisões da zenha, mais uma quinta que é só
+// daqui: o CRÉDITO NUNCA NASCE DE UM CLIQUE. Quem credita é a confirmação do
+// gateway (webhook ou reconciliação), sempre contra um `zenha_pedidos` em
+// `pendente` — o pedido é a ponte entre o mundo de fora (Mercado Pago) e o
+// ledger, e é nele que mora o exatamente-uma-vez:
+//
+//   1. `UPDATE zenha_pedidos SET status = 'pago' WHERE id = ? AND status =
+//      'pendente' RETURNING` — o mesmo idioma do `liquidado_em`;
+//   2. a `unique(player_id, dedupe_key)` do ledger, com a chave
+//      `recarga:pedido:{id}`;
+//   3. a unique de `gateway_id`, que impede dois pedidos de reivindicarem o
+//      mesmo pagamento.
+//
+// Estorno NÃO tem caminho de volta no ledger, por decisão: o dinheiro devolvido
+// pelo gateway não debita zenha (o saldo pode já ter virado item, e o `check
+// (saldo >= 0)` não aceitaria dívida). O pedido vira `estornado`, os admins são
+// avisados e o resto é conversa entre gente.
+// ---------------------------------------------------------------------------
+
+// O ciclo de vida de um pedido de recarga. Três estados terminais (`pago`,
+// `expirado`, `cancelado`) e um que só o gateway produz (`estornado`, que só
+// sai de `pago`). `pendente` é o único de onde se credita.
+export const recargaStatusEnum = pgEnum("recarga_status", [
+  "pendente",
+  "pago",
+  "expirado",
+  // O gateway falhou na CRIAÇÃO da cobrança: não existe QR, nunca existiu
+  // cobrança lá fora, e o pedido só fica registrado para a tentativa não sumir
+  // do histórico. Nenhum caminho leva daqui a `pago`.
+  "cancelado",
+  "estornado",
+]);
+
+/**
+ * Os pacotes à venda: quantas zenhas por quantos centavos.
+ *
+ * DADO, não código, pela mesma razão do catálogo da loja: quem ajusta preço é
+ * o admin numa tela, sem deploy. E os valores do PEDIDO são congelados na
+ * criação (`zenha_pedidos.preco_centavos`/`zenhas`), então mexer aqui vale
+ * dali para frente — o QR que já está na tela de alguém cobra o que prometeu.
+ *
+ * `preco_centavos`, porque dinheiro de verdade tem centavo e float não entra
+ * neste sistema. A zenha continua inteira.
+ */
+export const zenhaPacotes = pgTable(
+  "zenha_pacotes",
+  {
+    id: serial("id").primaryKey(),
+    nome: text("nome").notNull(),
+    precoCentavos: integer("preco_centavos").notNull(),
+    zenhas: integer("zenhas").notNull(),
+    /** À venda. `false` = sai da tela de recarga; pedidos antigos continuam legíveis. */
+    ativo: boolean("ativo").notNull().default(true),
+    /** A ordem na tela. A regra é sempre "os ativos, do menor para o maior". */
+    ordem: integer("ordem").notNull().default(0),
+    criadoEm: timestamp("criado_em").notNull().defaultNow(),
+    atualizadoEm: timestamp("atualizado_em").notNull().defaultNow(),
+  },
+  (t) => [
+    // O mesmo espírito do teto de `loja_itens.preco`: não é regra de produto, é
+    // freio contra dedo escorregado — um zero a mais no formulário viraria uma
+    // cobrança Pix de R$ 4.000 na tela de alguém.
+    check(
+      "zenha_pacotes_preco_valido",
+      sql`${t.precoCentavos} > 0 and ${t.precoCentavos} <= 100000`,
+    ),
+    check("zenha_pacotes_zenhas_validas", sql`${t.zenhas} > 0 and ${t.zenhas} <= 100000`),
+    index("zenha_pacotes_vitrine_idx").on(t.ativo, t.ordem),
+  ],
+);
+
+/**
+ * Um pedido de recarga: a ponte entre a cobrança no gateway e o crédito no
+ * ledger.
+ *
+ * `preco_centavos` e `zenhas` são CONGELADOS do pacote na criação — o admin
+ * mexe no pacote amanhã e o pedido continua valendo o que prometeu, como
+ * `preco_pago` no inventário.
+ *
+ * `gateway_id` é o id do pagamento LÁ (no Mercado Pago), unique para dois
+ * pedidos não reivindicarem o mesmo Pix. Nulo só no `cancelado`, quando a
+ * cobrança nem chegou a existir — o check amarra isso.
+ *
+ * `qr_code`/`qr_code_base64` ficam gravados para a tela do pedido reabrir sem
+ * nova ida ao gateway (aba fechada, link revisitado). `ultimo_evento` guarda o
+ * payload cru da última resposta do gateway, para auditoria — nunca é lido por
+ * código de decisão, que só confia no que consultou de volta na API.
+ *
+ * A FK do pacote é `restrict` pela mesma razão da loja: pacote com pedido não
+ * se apaga, se desativa.
+ */
+export const zenhaPedidos = pgTable(
+  "zenha_pedidos",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    pacoteId: integer("pacote_id")
+      .notNull()
+      .references(() => zenhaPacotes.id, { onDelete: "restrict" }),
+    precoCentavos: integer("preco_centavos").notNull(),
+    zenhas: integer("zenhas").notNull(),
+    // Text com check, e não enum, pela mesma razão do `efeito` da loja: gateway
+    // novo é módulo novo em src/lib/pagamentos/, não linha de migration.
+    gateway: text("gateway").notNull().default("mercadopago"),
+    gatewayId: text("gateway_id").unique(),
+    // A chave que vai no `X-Idempotency-Key` da criação da cobrança: um retry
+    // de rede não pode criar duas cobranças para o mesmo pedido.
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    status: recargaStatusEnum("status").notNull().default("pendente"),
+    qrCode: text("qr_code"),
+    qrCodeBase64: text("qr_code_base64"),
+    // Congelada na criação, a partir de RECARGA_EXPIRA_MINUTOS (src/lib/regras.ts).
+    // Quem expira o pedido é a varredura comparando com ELA, e não recalculando
+    // o prazo — o QR na tela de alguém promete uma hora e o pedido cumpre a
+    // mesma, mesmo que a constante mude num deploy no meio.
+    expiraEm: timestamp("expira_em", { withTimezone: true }),
+    criadoEm: timestamp("criado_em").notNull().defaultNow(),
+    pagoEm: timestamp("pago_em", { withTimezone: true }),
+    estornadoEm: timestamp("estornado_em", { withTimezone: true }),
+    // Quando o gateway foi consultado por este pedido pela última vez — o freio
+    // da sonda da tela. Sem ele, uma aba aberta pergunta ao MP a cada tique de
+    // 5s pelos 30 minutos do QR, e duas abas dobram isso. É `UPDATE ... WHERE
+    // ultima_consulta_em < now() - intervalo RETURNING` que reivindica o direito
+    // de consultar, então o freio também serializa as abas entre si.
+    //
+    // Com fuso, ao contrário de `criado_em`: quem compara com ela é SQL de um
+    // lado e ninguém do outro — mas o par `pago_em`/`estornado_em` ao lado já
+    // fixou o padrão das colunas de evento desta tabela.
+    ultimaConsultaEm: timestamp("ultima_consulta_em", { withTimezone: true }),
+    ultimoEvento: jsonb("ultimo_evento"),
+  },
+  (t) => [
+    check("zenha_pedidos_preco_valido", sql`${t.precoCentavos} > 0`),
+    check("zenha_pedidos_zenhas_validas", sql`${t.zenhas} > 0`),
+    check("zenha_pedidos_gateway_conhecido", sql`${t.gateway} in ('mercadopago')`),
+    // Cobrança criada tem id no gateway; só o `cancelado` (falha na criação)
+    // vive sem. Sem este check, um bug que gravasse `pendente` sem `gateway_id`
+    // criaria um pedido que a reconciliação não tem como consultar — pendente
+    // para sempre, invisível.
+    check(
+      "zenha_pedidos_gateway_id_por_status",
+      sql`(${t.gatewayId} is not null) or (${t.status} = 'cancelado')`,
+    ),
+    // O histórico de um jogador ("minhas recargas") e a varredura dos pendentes.
+    index("zenha_pedidos_jogador_idx").on(t.playerId, t.criadoEm),
+    index("zenha_pedidos_pendentes_idx").on(t.criadoEm).where(sql`${t.status} = 'pendente'`),
+  ],
+);
+
 export type Player = typeof players.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type GroupMember = typeof groupMembers.$inferSelect;
@@ -1802,6 +1978,9 @@ export type RatingReport = typeof ratingReports.$inferSelect;
 export type SkillHistoryEntry = typeof skillHistory.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type MatchDayDeletionVote = typeof matchDayDeletionVotes.$inferSelect;
+export type ZenhaPacote = typeof zenhaPacotes.$inferSelect;
+export type ZenhaPedido = typeof zenhaPedidos.$inferSelect;
+export type RecargaStatus = (typeof recargaStatusEnum.enumValues)[number];
 export type MatchDayDeletionVoter = typeof matchDayDeletionVoters.$inferSelect;
 export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
 export type LojaItem = typeof lojaItens.$inferSelect;

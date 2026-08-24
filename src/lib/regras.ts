@@ -52,6 +52,20 @@ export const VALIDADE_CONVITE_DIAS = 7;
 /** A mesma validade em milissegundos, que é como o código de convite conta. */
 export const VALIDADE_CONVITE_MS = 1000 * 60 * 60 * 24 * VALIDADE_CONVITE_DIAS;
 
+/**
+ * Quanto tempo um QR de recarga fica de pé.
+ *
+ * Constante, e não ajuste em `zenha_config`, de propósito: o número é congelado
+ * em cada pedido (`zenha_pedidos.expira_em`) na criação, e um ajuste ao vivo só
+ * abriria espaço para o QR prometer um prazo e o pedido cumprir outro.
+ *
+ * Mora aqui pelo motivo do cabeçalho: quem escreve "30 minutos" ao jogador são
+ * três telas — a escolha do pacote, a tela do QR e o capítulo "A recarga" do
+ * guia — e `src/lib/recarga.ts` é `server-only`. O número fica aqui, o motor
+ * fica lá, e as cópias à mão deixam de existir.
+ */
+export const RECARGA_EXPIRA_MINUTOS = 30;
+
 /** Quantos jogos alguém precisa ter para entrar no ranking de aproveitamento. */
 export const MIN_JOGOS_APROVEITAMENTO = 3;
 

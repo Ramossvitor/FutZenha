@@ -93,6 +93,7 @@ async function creditarCom(exec: Executor, linhas: readonly CreditoDeZenha[]): P
       // existe — a `dedupe_key` tem o id, mas ela é chave, não navegação.
       matchDayId: l.matchDayId ?? null,
       roundId: l.roundId ?? null,
+      pedidoId: l.pedidoId ?? null,
     }));
 
   const entraram = await exec
