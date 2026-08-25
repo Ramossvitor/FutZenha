@@ -53,7 +53,7 @@ export type { EscopoStats };
 // invalidação ninguém testa é como o ranking passa a mentir em silêncio. Este
 // memo é invalidado por uma função comum, que o teste chama e observa.
 //
-// O que NÃO entra aqui é permissão: `carregarPerfil` (src/app/jogador/[slug]/dados.ts)
+// O que NÃO entra aqui é permissão: `carregarPerfil` (src/app/(esqueleto)/jogador/[slug]/dados.ts)
 // resolve visibilidade de grupo ANTES de escolher o escopo, e o escopo é parte
 // da chave. Guardar o agregado é guardar um fato público (quem fez quantos
 // gols), nunca uma decisão sobre quem pode vê-lo.

@@ -206,7 +206,7 @@ describe("emailDeEventoDeAgenda", () => {
 
   // O botão passa pela nossa rota, que redireciona. O `not.toContain` do Google
   // é a regressão que o Resend apontou: link de domínio diferente do remetente
-  // pesa em filtro de spam (ver src/app/fut/[id]/agenda/google/route.ts).
+  // pesa em filtro de spam (ver src/app/(esqueleto)/fut/[id]/agenda/google/route.ts).
   it("convite e atualização levam o botão do Google e o link do fut", () => {
     for (const tipo of ["convite", "atualizacao"] as const) {
       const email = evento(tipo);

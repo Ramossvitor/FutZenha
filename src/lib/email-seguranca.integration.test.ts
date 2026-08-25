@@ -6,7 +6,7 @@
 
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { changePassword } from "@/app/perfil/actions";
+import { changePassword } from "@/app/(esqueleto)/perfil/actions";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { resolverLoginGoogle } from "@/lib/google-login";

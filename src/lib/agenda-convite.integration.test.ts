@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, matchDays, type MatchDay, type Player } from "@/db/schema";
-import { setMyAttendance } from "@/app/fut/[id]/actions";
+import { setMyAttendance } from "@/app/(esqueleto)/fut/[id]/actions";
 import {
   deleteMatchDay,
   promoverDaEspera,
   updateMatchDay,
-} from "@/app/fut/[id]/gerenciar/actions";
+} from "@/app/(esqueleto)/fut/[id]/gerenciar/actions";
 import {
   agendarCancelamentosDeAgenda,
   agendarConvitesDeAgenda,

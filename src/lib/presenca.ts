@@ -398,7 +398,7 @@ export async function sairDaLista(
   //
   // E só carimba quem tinha linha para sair. Sem `minha`, isto não é retirar
   // consentimento — é alguém clicando "Fora" num fut em que nunca esteve, e a
-  // tela oferece esse botão (ver src/app/page.tsx). Carimbar ali trancaria o
+  // tela oferece esse botão (ver src/app/(esqueleto)/page.tsx). Carimbar ali trancaria o
   // organizador para sempre contra uma pessoa que nunca esteve na lista dele.
   const recusa =
     porPlayerId === playerId && minha !== undefined ? { optedOutAt: new Date() } : {};

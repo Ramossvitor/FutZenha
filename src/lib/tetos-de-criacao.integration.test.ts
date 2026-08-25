@@ -9,9 +9,9 @@ import { describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { groups, matchDays, players } from "@/db/schema";
-import { createMatchDay } from "@/app/futs/novo/actions";
-import { criarGrupo as criarGrupoAction } from "@/app/grupos/novo/actions";
-import { convidarParaFut } from "@/app/fut/[id]/gerenciar/actions";
+import { createMatchDay } from "@/app/(esqueleto)/futs/novo/actions";
+import { criarGrupo as criarGrupoAction } from "@/app/(esqueleto)/grupos/novo/actions";
+import { convidarParaFut } from "@/app/(esqueleto)/fut/[id]/gerenciar/actions";
 import {
   TETO_FUTS_POR_DIA,
   TETO_GRUPOS_POR_DIA,

@@ -8,8 +8,21 @@ import { cx } from "@/lib/cx";
  * tempo é o que dava a sensação de site travado. Com reduced-motion o pulso
  * congela num cinza parado — continua comunicando "tem coisa vindo".
  */
-export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden className={cx("animate-pulse rounded-ctl bg-surface-2", className)} />;
+export function Skeleton({
+  as: Tag = "div",
+  className,
+}: {
+  /**
+   * "span" quando o esqueleto segura o lugar de um pedaço de TEXTO, e não de um
+   * bloco: `<div>` dentro de `<p>` ou de `<strong>` é HTML inválido, e o parser
+   * fecha o parágrafo antes da div. O DOM servido deixa de bater com a árvore
+   * do React, e o que se ganha é mismatch de hidratação com o layout já rachado
+   * — sem nenhum aviso do tsc, porque em JSX a aninhagem é legal.
+   */
+  as?: "div" | "span";
+  className?: string;
+}) {
+  return <Tag aria-hidden className={cx("animate-pulse rounded-ctl bg-surface-2", className)} />;
 }
 
 /** O esqueleto genérico de página: cabeçalho + dois cards, no ritmo do design. */

@@ -35,7 +35,7 @@ export function Sidebar({
   /**
    * A Server Action do Sair, injetada pelo layout.
    *
-   * Vem por prop e não por import porque `@/app/login/actions` é `"use server"`
+   * Vem por prop e não por import porque `@/app/(esqueleto)/login/actions` é `"use server"`
    * e puxa o grafo inteiro de banco e senha: importá-lo daqui faria a única
    * aresta de `src/components/` para dentro de `src/app/` de todo o projeto.
    */

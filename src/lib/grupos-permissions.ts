@@ -52,7 +52,7 @@ export function podeGerenciarGrupo(ator: Ator, papel: Vinculo): boolean {
  *
  * O `false` para quem não é membro é a trava mais importante deste arquivo.
  * Qualquer jogador logado cria fut avulso hoje (ver
- * src/app/futs/novo/actions.ts), e `groupId` chega pelo formulário: sem esta
+ * src/app/(esqueleto)/futs/novo/actions.ts), e `groupId` chega pelo formulário: sem esta
  * regra, bastaria trocar o valor do `<select>` para criar fut dentro de um
  * grupo alheio e injetar gols, presenças e V/E/D no ranking de gente que nunca
  * ouviu falar de você.
@@ -73,7 +73,7 @@ export function podeConvidarParaGrupo(ator: Ator, papel: Vinculo): boolean {
  * `alvo.papelAtual === "admin"`, um segundo admin — que só existiria por bug,
  * mas a regra não pode depender disso — rebaixaria o primeiro por aqui e
  * assumiria o grupo sem passar por `transferirAdministracao`. E a recusa de
- * `ehOAtor` espelha `setPlatformAdmin` (src/app/admin/(panel)/jogadores/actions.ts),
+ * `ehOAtor` espelha `setPlatformAdmin` (src/app/(esqueleto)/admin/(panel)/jogadores/actions.ts),
  * que também não deixa ninguém se auto-rebaixar: o grupo ficaria sem quem
  * administra, e é o mesmo buraco que `podeSairDoGrupo` fecha do outro lado.
  *

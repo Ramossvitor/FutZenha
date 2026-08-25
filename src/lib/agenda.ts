@@ -304,7 +304,7 @@ export function urlGoogleAgenda(fut: FutParaAgenda, urlBase: string): string {
 /**
  * O link do Google que vai no E-MAIL: a nossa rota, que devolve 302 para a URL
  * acima. Link de outro domínio que o do remetente pesa em filtro de spam — o
- * porquê inteiro está em src/app/fut/[id]/agenda/google/route.ts.
+ * porquê inteiro está em src/app/(esqueleto)/fut/[id]/agenda/google/route.ts.
  *
  * A página do fut não usa este: lá o `urlGoogleAgenda` direto continua certo.
  */

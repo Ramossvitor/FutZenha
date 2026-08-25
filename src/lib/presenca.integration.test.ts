@@ -454,7 +454,7 @@ describe("autoria e recusa", () => {
   });
 
   // Sair de uma lista em que nunca se esteve não é consentimento retirado. A
-  // tela oferece esse botão (ver src/app/page.tsx, o cartão do próximo fut), e
+  // tela oferece esse botão (ver src/app/(esqueleto)/page.tsx, o cartão do próximo fut), e
   // carimbar ali trancaria quem organiza contra alguém que nunca esteve na
   // lista dele — de um clique, e sem que a pessoa soubesse.
   it("sair sem nunca ter entrado não carimba recusa", async () => {

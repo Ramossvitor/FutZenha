@@ -7,8 +7,8 @@
 
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { createPlayer } from "@/app/admin/(panel)/jogadores/actions";
-import { criarGrupo as criarGrupoAction } from "@/app/grupos/novo/actions";
+import { createPlayer } from "@/app/(esqueleto)/admin/(panel)/jogadores/actions";
+import { criarGrupo as criarGrupoAction } from "@/app/(esqueleto)/grupos/novo/actions";
 import { db } from "@/db";
 import { groups, players } from "@/db/schema";
 import { criarJogadorComConta, logarComo } from "@/test/fixtures";

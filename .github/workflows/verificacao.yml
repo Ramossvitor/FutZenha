@@ -275,7 +275,7 @@ jobs:
       # specs quebrariam sem dizer por quê, em vez de o src/db/index.ts gritar
       # "DATABASE_URL não definida".
       #
-      # Teto próprio porque o normal são 43 s (38 testes, 1 worker) e o
+      # Teto próprio porque o normal é cerca de 1 min (67 testes, 1 worker) e o
       # webServer.timeout do playwright.config.ts é 120 s. Cobre o caso de o
       # `next start` não subir — sem isto, isso consumiria os 25 min do job.
       - name: E2E (Playwright)

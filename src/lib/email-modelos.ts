@@ -293,7 +293,7 @@ export function emailDeEventoDeAgenda(dados: {
       `<p style="margin:12px 0;">${corpo}</p>`,
       // Pela nossa rota, não direto para o calendar.google.com: link de domínio
       // diferente do remetente pesa em filtro de spam (ver o route.ts em
-      // src/app/fut/[id]/agenda/google). A tela do Google chega igual — o 302
+      // src/app/(esqueleto)/fut/[id]/agenda/google). A tela do Google chega igual — o 302
       // leva os mesmos parâmetros.
       comBotao
         ? `<p style="margin:20px 0;">${botao(urlDeAgendaGoogle(dados.fut.id, siteUrl()), "Adicionar ao Google Agenda")}</p>`
