@@ -5,8 +5,8 @@
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { enviarAvaliacoes } from "@/app/avaliar/[id]/actions";
-import { confirmarEncerramento } from "@/app/fut/[id]/gerenciar/encerrar/actions";
+import { enviarAvaliacoes } from "@/app/(esqueleto)/avaliar/[id]/actions";
+import { confirmarEncerramento } from "@/app/(esqueleto)/fut/[id]/gerenciar/encerrar/actions";
 import { db } from "@/db";
 import {
   attendances,

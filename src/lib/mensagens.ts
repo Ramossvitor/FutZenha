@@ -17,7 +17,7 @@
 // "convite-invalido" aqui é convite de grupo, lá é convite de conta.
 //
 // Os prazos vêm interpolados das constantes, e não escritos à mão: estas
-// mensagens são a outra metade dos banners de src/app/fut/[id]/gerenciar e do
+// mensagens são a outra metade dos banners de src/app/(esqueleto)/fut/[id]/gerenciar e do
 // que a página /guia promete ao jogador. Um número cravado aqui mentiria no dia
 // em que o prazo mudasse — e mentiria justamente na tela de quem acabou de
 // esbarrar no prazo.
@@ -211,7 +211,7 @@ export const MENSAGENS: Record<string, string> = {
   "administracao-transferida": "Administração transferida.",
   "membro-removido":
     "Membro removido. O link do grupo foi revogado junto — gere outro para continuar convidando.",
-  // Entrada no fut — os três caminhos de src/app/fut/[id]/entrada-actions.ts.
+  // Entrada no fut — os três caminhos de src/app/(esqueleto)/fut/[id]/entrada-actions.ts.
   // Os slugs genéricos ("convite-enviado", "pedido-cancelado", "pedido-aprovado",
   // "pedido-recusado", "convite-recusado", "convite-invalido") são os MESMOS dos
   // grupos e dizem a mesma coisa nos dois domínios — reusar é o certo. Os de

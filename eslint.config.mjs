@@ -72,7 +72,7 @@ const eslintConfig = defineConfig([
     // nada para o otimizador otimizar.
     files: [
       "src/components/ui/imagem-do-item.tsx",
-      "src/app/admin/(panel)/loja/campo-de-imagem.tsx",
+      "src/app/(esqueleto)/admin/(panel)/loja/campo-de-imagem.tsx",
     ],
     rules: { "@next/next/no-img-element": "off" },
   },

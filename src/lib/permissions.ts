@@ -179,7 +179,7 @@ export function podeOperarSumula(
 // Não existe aqui um `podeGerarConvite`, e é de propósito. A regra — convite
 // para quem já tem conta é reset de senha, logo é da plataforma e só dela — não
 // tem onde ser avaliada: `createInvite` é exclusiva do admin da plataforma
-// (src/app/admin/(panel)/jogadores/actions.ts) e `convidarParaFut` só cria
+// (src/app/(esqueleto)/admin/(panel)/jogadores/actions.ts) e `convidarParaFut` só cria
 // jogador novo, que por definição não tem conta. Uma função que ninguém chama
 // não é regra, é comentário que o leitor confunde com trava.
 

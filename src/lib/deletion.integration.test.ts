@@ -4,8 +4,8 @@
 
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { abrirVotacaoExclusao } from "@/app/fut/[id]/gerenciar/actions";
-import { votar } from "@/app/votacao/[id]/actions";
+import { abrirVotacaoExclusao } from "@/app/(esqueleto)/fut/[id]/gerenciar/actions";
+import { votar } from "@/app/(esqueleto)/votacao/[id]/actions";
 import { db } from "@/db";
 import {
   attendances,

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, matchDays } from "@/db/schema";
-import { updateMatchDay } from "@/app/fut/[id]/gerenciar/actions";
+import { updateMatchDay } from "@/app/(esqueleto)/fut/[id]/gerenciar/actions";
 import { LIMITE_PUSHES_AGENDA_DIA } from "@/lib/agenda-freio";
 import {
   confirmarPresenca,

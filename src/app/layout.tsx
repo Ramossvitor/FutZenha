@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { trocarGrupo } from "@/app/grupos/actions";
-import { logout } from "@/app/login/actions";
+import { trocarGrupo } from "@/app/(esqueleto)/grupos/actions";
+import { logout } from "@/app/(esqueleto)/login/actions";
 import { PainelDeGrupo } from "@/components/shell/painel-de-grupo";
-import { marcarCtaPwaClicado, marcarPwaInstalado } from "@/app/pwa/actions";
+import { marcarCtaPwaClicado, marcarPwaInstalado } from "@/app/(esqueleto)/pwa/actions";
 import { CtaInstalarIos } from "@/components/push/cta-instalar-ios";
 import { DetectorStandalone } from "@/components/push/detector-standalone";
 import { RegistrarSw } from "@/components/push/registrar-sw";
-import { salvarEmailDeContato } from "@/app/perfil/actions";
+import { salvarEmailDeContato } from "@/app/(esqueleto)/perfil/actions";
 import { AvisoDeEmailDeContato } from "@/components/shell/aviso-de-email-de-contato";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TabBar } from "@/components/shell/tab-bar";

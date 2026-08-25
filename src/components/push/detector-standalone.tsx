@@ -16,7 +16,7 @@ import { emStandalone } from "./ambiente";
  * `jaMarcado` evita repetir o UPDATE a cada navegação de quem já provou.
  *
  * `aoDetectar` é a Server Action injetada pelo layout — pelo mesmo motivo do
- * `aoSair` da Sidebar: importar `@/app/pwa/actions` daqui abriria uma aresta de
+ * `aoSair` da Sidebar: importar `@/app/(esqueleto)/pwa/actions` daqui abriria uma aresta de
  * `src/components/` para dentro de `src/app/`.
  */
 export function DetectorStandalone({

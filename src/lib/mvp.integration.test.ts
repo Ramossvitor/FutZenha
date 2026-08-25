@@ -5,7 +5,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { enviarAvaliacoes } from "@/app/avaliar/[id]/actions";
+import { enviarAvaliacoes } from "@/app/(esqueleto)/avaliar/[id]/actions";
 import { db } from "@/db";
 import {
   groups,

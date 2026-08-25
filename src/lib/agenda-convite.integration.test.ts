@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, matchDays, type MatchDay, type Player } from "@/db/schema";
-import { setMyAttendance } from "@/app/fut/[id]/actions";
+import { setMyAttendance } from "@/app/(esqueleto)/fut/[id]/actions";
 import {
   deleteMatchDay,
   promoverDaEspera,
   updateMatchDay,
-} from "@/app/fut/[id]/gerenciar/actions";
+} from "@/app/(esqueleto)/fut/[id]/gerenciar/actions";
 import {
   agendarCancelamentosDeAgenda,
   agendarConvitesDeAgenda,
@@ -167,10 +167,10 @@ describe("agendarConvitesDeAgenda", () => {
     expect(payload.html).not.toContain("Retire seu nome da lista");
   });
 
-  // O despachante relê o estado na hora de enviar (só manda para quem está `in`
-  // AGORA), e é isso que faz a saída ganhar da corrida: quem retirou o nome
-  // entre o clique do organizador e o `after()` não recebe um e-mail dizendo
-  // "Fulano confirmou você" depois de já ter saído.
+  // A lista de ids que `agendarConvitesDeAgenda` recebe é CANDIDATA, não ordem
+  // de envio: o despachante relê o estado na hora de enviar e só manda para quem
+  // está `in` naquele momento. É isso que impede um e-mail dizendo "Fulano
+  // confirmou você" de cair na caixa de quem já tinha retirado o nome.
   it("quem retirou o nome antes do despacho não recebe o convite", async () => {
     const fut = await criarFut(FUT_COM_HORA);
     const jogador = await jogadorComEmail();
@@ -183,11 +183,20 @@ describe("agendarConvitesDeAgenda", () => {
     const fetchMock = stubResend();
 
     // O estado que o despachante vai encontrar: ela saiu.
-    agendarConvitesDeAgenda(fut.id, [jogador.id]);
+    //
+    // A saída é gravada ANTES de agendar por causa do fake de after()
+    // (src/test/setup-integration.ts), que roda o callback inline: agendar
+    // primeiro e mudar o estado depois deixa a leitura do despachante correndo
+    // contra este UPDATE, e o teste passa a depender de quem chega antes no
+    // Postgres — foi assim que ele derrubou o gate em 25/08. E é ordem que o
+    // teste não mede: no Next real o after() roda DEPOIS da resposta, então
+    // mudança feita durante a request está sempre visível para ele.
     await db
       .update(attendances)
       .set({ status: "out", optedOutAt: new Date() })
       .where(eq(attendances.matchDayId, fut.id));
+
+    agendarConvitesDeAgenda(fut.id, [jogador.id]);
     await flushAfter();
 
     expect(fetchMock).not.toHaveBeenCalled();

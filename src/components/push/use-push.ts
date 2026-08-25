@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 /**
  * As Server Actions de push, injetadas por quem usa o hook.
  *
- * Vêm por parâmetro e não por import porque `@/app/pwa/actions` é `"use server"`:
+ * Vêm por parâmetro e não por import porque `@/app/(esqueleto)/pwa/actions` é `"use server"`:
  * importá-lo daqui abriria uma aresta de `src/components/` para dentro de
  * `src/app/` — a mesma que o comentário do `aoSair` em
  * src/components/shell/sidebar.tsx documenta como a única do projeto, e que

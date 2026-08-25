@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   experimental: {
     // O corpo de uma Server Action é limitado a 1 MB por padrão — e o upload da
-    // arte do badge (src/app/admin/(panel)/loja) passa por uma. O formulário
+    // arte do badge (src/app/(esqueleto)/admin/(panel)/loja) passa por uma. O formulário
     // recorta e reduz antes de enviar, mas o caminho SEM JavaScript (e o HEIC
     // que o canvas não abre) manda a foto crua do celular, de vários megabytes:
     // com o padrão, o Next recusava o POST antes de `validarImagem` rodar, e o

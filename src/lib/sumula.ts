@@ -2,7 +2,7 @@
 // propósito (sem drizzle, sem server-only) — mesma razão de permissions.ts:
 // é a única forma de testar a matriz de decisão no vitest. Quem resolve os
 // booleanos de entrada (SQL de "último do lado", guard de operador) são as
-// actions em src/app/fut/[id]/sumula/actions.ts.
+// actions em src/app/(esqueleto)/fut/[id]/sumula/actions.ts.
 //
 // O import de `MatchDay` é só de tipo: some na compilação e não traz drizzle
 // para cá em tempo de execução.

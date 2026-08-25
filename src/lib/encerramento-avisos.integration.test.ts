@@ -6,7 +6,7 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { confirmarEncerramento } from "@/app/fut/[id]/gerenciar/encerrar/actions";
+import { confirmarEncerramento } from "@/app/(esqueleto)/fut/[id]/gerenciar/encerrar/actions";
 import { db } from "@/db";
 import {
   attendances,

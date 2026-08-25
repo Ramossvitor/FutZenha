@@ -7,7 +7,7 @@
 
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { confirmarEncerramento } from "@/app/fut/[id]/gerenciar/encerrar/actions";
+import { confirmarEncerramento } from "@/app/(esqueleto)/fut/[id]/gerenciar/encerrar/actions";
 import { db } from "@/db";
 import { attendances, matchDays, players, users, type Player } from "@/db/schema";
 import { retomarResumosPendentes } from "@/lib/email-resumo";

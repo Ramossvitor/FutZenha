@@ -35,7 +35,7 @@ export type GrupoAtual = {
  *
  * Mora aqui, e não junto da action, porque o painel do seletor precisa do tipo
  * para declarar a prop da Server Action que recebe do layout: com ele em
- * `src/app/grupos/actions`, `src/components/` passaria a nomear `src/app/`, que
+ * `src/app/(esqueleto)/grupos/actions`, `src/components/` passaria a nomear `src/app/`, que
  * é a única direção de import que o projeto não tem em lugar nenhum.
  */
 export type DestinoDaTroca = "ficar" | "ir-para-inicio";

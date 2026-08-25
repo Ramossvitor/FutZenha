@@ -5,7 +5,7 @@ import { gravarSnooze, snoozeVigente, useNoCliente } from "@/components/push/amb
 import { Banner } from "@/components/ui/banner";
 import { Button, SubmitButton } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
-import type { EmailDeContatoState } from "@/app/perfil/actions";
+import type { EmailDeContatoState } from "@/app/(esqueleto)/perfil/actions";
 
 const CHAVE_SNOOZE = "futzenha:email-contato:snooze";
 // Bem menos que os 14 dias do convite de instalar: lá o que falta é uma

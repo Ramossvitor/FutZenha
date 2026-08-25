@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
  * Não é enfeite de UI, é a trava de carga: um refresh de /rankings são ~7
  * round-trips ao Postgres (5 deles do pedágio fixo do root layout) e /perfil são
  * ~13, contra uma pool de `max: 5` por instância e zero rate limiting no
- * servidor — decisão registrada em src/app/login/actions.ts. Cinco segundos
+ * servidor — decisão registrada em src/app/(esqueleto)/login/actions.ts. Cinco segundos
  * limitam a 12 atualizações por minuto por pessoa, o que fica abaixo do que a
  * mesma pessoa já gera navegando entre as abas.
  */

@@ -1,7 +1,7 @@
 // O link do fut, de ponta a ponta.
 //
 // Os três caminhos de entrada têm cobertura de integração farta
-// (src/app/fut/[id]/entrada-actions.integration.test.ts, 21 casos); o que só o
+// (src/app/(esqueleto)/fut/[id]/entrada-actions.integration.test.ts, 21 casos); o que só o
 // E2E alcança é o que fica FORA das actions: a rota nova existir, o proxy
 // montar o `?next=` para quem chega deslogado pelo WhatsApp, e a página do
 // convite renderizar contra o build de verdade.
