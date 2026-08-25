@@ -137,6 +137,49 @@ describe("salvarAjustes", () => {
     expect((await getAjustes(db)).multiplicador_fator).toBe(200);
   });
 
+  // A regra de PAR, que nenhuma faixa sozinha pega: piso e teto da aposta são
+  // válidos cada um por si, e invertidos matam a aposta inteira — nenhum valor
+  // cabe entre os dois, e o campo do card nasce com `min` maior que `max`.
+  it("aposta mínima acima da máxima é recusada, e nada é salvo", async () => {
+    await logarComoAdminDaPlataforma();
+
+    const url = await esperaRedirect(
+      salvarAjustes(formulario({ aposta_min: "500", aposta_max: "10" })),
+    );
+
+    expect(url).toBe("/admin/zenhas?erro=ajuste-recusado&campo=aposta_min");
+    expect(await db.select().from(zenhaConfig)).toHaveLength(0);
+    expect((await getAjustes(db)).aposta_min).toBe(AJUSTES_PADRAO.aposta_min);
+  });
+
+  // O par pode cruzar submits: o outro lado dele já estava gravado e nem vem no
+  // formulário. Por isso a conferência é sobre o conjunto VIGENTE, não sobre o
+  // que chegou no FormData.
+  it("recusa o par mesmo quando só um dos lados vem no submit", async () => {
+    const jogador = await criarJogador();
+    await salvarAjuste(db, "aposta_max", 50, jogador.id);
+    await logarComoAdminDaPlataforma();
+
+    const url = await esperaRedirect(salvarAjustes(formulario({ aposta_min: "400" })));
+
+    expect(url).toBe("/admin/zenhas?erro=ajuste-recusado&campo=aposta_min");
+    expect(await linhaDe("aposta_min")).toBeNull();
+    // O rollback preserva o que já valia: a recusa não pode levar junto a linha
+    // que estava lá antes do submit.
+    expect((await getAjustes(db)).aposta_max).toBe(50);
+  });
+
+  it("piso igual ao teto passa — a faixa de um valor só é válida", async () => {
+    await logarComoAdminDaPlataforma();
+
+    const url = await esperaRedirect(
+      salvarAjustes(formulario({ aposta_min: "80", aposta_max: "80" })),
+    );
+
+    expect(url).toBe("/admin/zenhas?ok=ajustes-salvos");
+    expect((await getAjustes(db)).aposta_min).toBe(80);
+  });
+
   // Preço saiu daqui: ele é coluna de `loja_itens` e se edita em /admin/loja. A
   // chave `preco:{itemId}` foi apagada pela migration 0033, e o formulário nem a
   // monta mais — mas uma aba velha ou um curl ainda podem mandá-la, e o que se

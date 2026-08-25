@@ -44,7 +44,9 @@ import { recusouEsteFut } from "@/lib/presenca";
 import { temSumulaDelegada } from "@/lib/require-operador-sumula";
 import { sumulaDisponivel } from "@/lib/sumula";
 import { situacaoDoMultiplicador } from "@/lib/multiplicador-engine";
+import { situacaoDaAposta } from "@/lib/aposta-engine";
 import { getSession } from "@/lib/session";
+import { CardDaAposta } from "./card-da-aposta";
 import { CardDoMultiplicador } from "./card-do-multiplicador";
 import { siteUrl } from "@/lib/site-url";
 import { textoDeConvocacao, textoDeTimes } from "@/lib/whatsapp";
@@ -151,6 +153,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
     noCirculo,
     recusei,
     situacaoMultiplicador,
+    situacaoAposta,
   ] = await Promise.all([
     // Fut de grupo lista o grupo. Avulso lista só quem o organizador pode
     // marcar de fato — sem conta, já no fut, ou ele mesmo —, que é o espelho de
@@ -178,6 +181,9 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
     // pergunta, e é a página mais quente do app. Deslogado nem consulta — o
     // card do multiplicador é privado por construção.
     meuPlayerId === null ? null : situacaoDoMultiplicador(db, meuPlayerId, id),
+    // Na mesma onda, e pelo mesmo motivo do de cima: depende só do fut e de quem
+    // pergunta. Deslogado nem consulta — apostar exige estar na lista.
+    meuPlayerId === null ? null : situacaoDaAposta(db, meuPlayerId, id),
   ]);
   const statusByPlayer = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
   const jogadorPorId = new Map(activePlayers.map((p) => [p.id, p]));
@@ -586,6 +592,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
         {/* Antes da lista, e não depois: quem tem o item precisa decidir ANTES
             de a bola rolar, e no fim da seção o card ficaria abaixo de vinte
             nomes — visto pela primeira vez quando já não desse mais para armar. */}
+        {situacaoAposta && <CardDaAposta matchDayId={matchDay.id} situacao={situacaoAposta} />}
         {situacaoMultiplicador && (
           <CardDoMultiplicador matchDayId={matchDay.id} situacao={situacaoMultiplicador} />
         )}

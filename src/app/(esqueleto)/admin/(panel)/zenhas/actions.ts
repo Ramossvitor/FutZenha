@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
 import { requirePlatformAdmin } from "@/lib/require-platform-admin";
-import { AJUSTES, CHAVES_DE_AJUSTE } from "@/lib/zenha";
-import { limparAjuste, salvarAjuste } from "@/lib/zenha-config";
+import { AJUSTES, CHAVES_DE_AJUSTE, validarConjuntoDeAjustes } from "@/lib/zenha";
+import { getAjustes, limparAjuste, salvarAjuste } from "@/lib/zenha-config";
 
 // O painel manda a seção inteira de uma vez, e não um campo por submit: mexer na
 // economia é quase sempre mexer em dois ou três números que só fazem sentido
@@ -106,6 +106,14 @@ export async function salvarAjustes(formData: FormData) {
         const recusa = await salvarAjuste(tx, pedido.chave, pedido.valor, session.player.id);
         if (recusa !== null) throw new AjusteRecusado(pedido.chave);
       }
+
+      // As regras de PAR, depois de tudo gravado e sobre o que passou a valer de
+      // verdade. Não dá para conferir antes: o par pode cruzar duas seções do
+      // painel, e o outro lado dele talvez nem tenha vindo neste submit — o que
+      // vale é o conjunto final, que só existe aqui. O rollback é o mesmo do
+      // valor recusado, e é o que deixa a mensagem "nada foi salvo" honesta.
+      const conjunto = validarConjuntoDeAjustes(await getAjustes(tx));
+      if (conjunto !== null) throw new AjusteRecusado(conjunto.chave);
     });
   } catch (erro) {
     if (erro instanceof AjusteRecusado) recusar(erro.chave);

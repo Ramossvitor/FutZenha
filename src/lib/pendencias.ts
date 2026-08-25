@@ -12,12 +12,15 @@ import { resolverDenunciasVencidas } from "./reports";
 import { soltarArmesDeFutsAbandonados } from "./multiplicador-engine";
 import { processarRecargas } from "./recarga";
 import { liquidarFutsProntos } from "./zenha-engine";
+import { devolverApostasDeFutsAbandonados, liquidarApostasProntas } from "./aposta-engine";
 
 export type ResultadoVarredura = {
   rodadasFechadas: number;
   denunciasAceitas: number;
   votacoesResolvidas: number;
   futsLiquidados: number;
+  apostasResolvidas: number;
+  apostasDevolvidas: number;
   multiplicadoresSoltos: number;
   // Candidatos varridos, não inserts: o dedupe (pelada:id:lembrete-vespera)
   // torna as passadas seguintes no-op, mas quem segue sem responder continua
@@ -56,6 +59,8 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
         denunciasAceitas: 0,
         votacoesResolvidas: 0,
         futsLiquidados: 0,
+        apostasResolvidas: 0,
+        apostasDevolvidas: 0,
         multiplicadoresSoltos: 0,
         lembretesDeVespera: 0,
       };
@@ -88,11 +93,22 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
     // das quatro fontes. Nesta ordem, o que a liquidação lê já é o valor final.
     const futsLiquidados = await liquidarFutsProntos(tx);
 
+    // A aposta vem depois da zenha, mas com critério próprio e mais lento: ela
+    // paga por placar, então espera a janela de correção fechar (ver
+    // `apostasALiquidar`). Na prática as duas quase nunca caem na mesma passada
+    // — a zenha sai no fechamento da rodada, a aposta um dia depois do fut.
+    const apostasResolvidas = await liquidarApostasProntas(tx);
+
     // Depois da liquidação, e não antes: quem vai ser liquidado tem o arme
     // resolvido lá (consumido ou devolvido), e soltar antes devolveria item que
     // ia virar fato. O que sobra aqui é só o fut que passou da hora e ninguém
     // encerrou — onde o arme ficaria preso para sempre.
     const multiplicadoresSoltos = await soltarArmesDeFutsAbandonados(tx);
+
+    // Irmã da linha de cima, e pelo mesmo motivo: no fut que ninguém encerrou, a
+    // aposta não tem como ser cancelada (a janela fechou no dia) nem liquidada
+    // (a liquidação exige `finished`). Sem isto a zenha fica presa para sempre.
+    const apostasDevolvidas = await devolverApostasDeFutsAbandonados(tx);
 
     // Lembrete de véspera: fut agendada para AMANHÃ, para quem é elegível,
     // tem conta ativa e ainda não disse "vou" nem "fora". Mora na varredura, e
@@ -144,6 +160,8 @@ export async function processarPendencias(): Promise<ResultadoVarredura> {
       denunciasAceitas,
       votacoesResolvidas,
       futsLiquidados,
+      apostasResolvidas,
+      apostasDevolvidas,
       multiplicadoresSoltos,
       lembretesDeVespera,
     };
