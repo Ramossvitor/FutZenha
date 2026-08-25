@@ -36,8 +36,13 @@ import { type FatorDaRodada, SKILL_MAX_CENT } from "./skill";
  *
  * Diferente de tudo o que está abaixo, esta NÃO é ajustável pelo admin: mexer
  * nela é reabrir o passado, que é exatamente o que ela existe para fechar.
+ *
+ * Foi movida uma vez, de 2026-09-01 para cá, com o `zenha_ledger` ainda VAZIO —
+ * a única janela em que corrigir a data não reabre nada, porque não havia
+ * passado. Depois do primeiro crédito, essa janela fechou: antecipar a estreia
+ * passaria a liquidar futs que já eram história, e o certo aí é não mexer.
  */
-export const ZENHA_DESDE = "2026-09-01";
+export const ZENHA_DESDE = "2026-08-22";
 
 // ── Os ajustes ──────────────────────────────────────────────────────────────
 //
