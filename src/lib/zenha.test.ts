@@ -15,6 +15,7 @@ import {
   futPaga,
   presencasSeguidas,
   precoDoMultiplicador,
+  validarConjuntoDeAjustes,
   validarValorDeAjuste,
   zenhaDaNota,
   zenhaDoMvp,
@@ -544,6 +545,24 @@ describe("ajustes e validação", () => {
     for (const chave of CHAVES_DE_AJUSTE) {
       expect(validarValorDeAjuste(chave, AJUSTES[chave].padrao)).toBeNull();
     }
+  });
+
+  // O par da aposta é a única regra que um ajuste sozinho não enxerga: cada
+  // número passa na própria faixa e o conjunto ainda assim não fecha.
+  it("recusa o piso da aposta acima do teto, e aceita os dois iguais", () => {
+    expect(validarValorDeAjuste("aposta_min", 500)).toBeNull();
+    expect(validarValorDeAjuste("aposta_max", 10)).toBeNull();
+
+    const invertido = { ...AJUSTES_PADRAO, aposta_min: 500, aposta_max: 10 };
+    expect(validarConjuntoDeAjustes(invertido)?.chave).toBe("aposta_min");
+
+    expect(validarConjuntoDeAjustes({ ...AJUSTES_PADRAO, aposta_min: 80, aposta_max: 80 })).toBeNull();
+  });
+
+  // O de fábrica também tem que fechar como CONJUNTO, não só campo a campo —
+  // senão a economia nasceria inválida e o admin não teria como restaurá-la.
+  it("o conjunto de padrões fecha", () => {
+    expect(validarConjuntoDeAjustes(AJUSTES_PADRAO)).toBeNull();
   });
 
   // hasOwn e não `in`: sem ele, "toString" e "constructor" seriam ajustes

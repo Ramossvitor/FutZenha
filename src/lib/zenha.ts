@@ -6,7 +6,7 @@
 // um objeto; aqui só se decide quanto cada fato vale. É a mesma fronteira de
 // skill.ts e mvp.ts, e pelo mesmo motivo: errar aqui é pagar a pessoa errada.
 //
-// ── As quatro fontes, e só elas ────────────────────────────────────────────
+// ── As quatro fontes de GANHO, e só elas ───────────────────────────────────
 //   participação — foi ao fut E cumpriu o ritual da avaliação. Um crédito só.
 //   nota         — subiu no fechamento da rodada, proporcional ao quanto subiu.
 //   mvp          — eleito o melhor em campo, dividido entre empatados.
@@ -16,12 +16,15 @@
 // zera as outras. Todo jogador começa em 5,0, então qualquer regra de piso
 // castigaria justamente o novato, semana após semana.
 //
-// Não existe PERDA: nenhuma fonte é negativa e nada estorna. A única linha
-// negativa do ledger é a compra.
+// Não existe PERDA: nenhuma fonte daqui é negativa e nada estorna. Só duas
+// coisas debitam no sistema inteiro, e as duas exigem que a pessoa aperte um
+// botão — a compra na loja e a aposta (src/lib/aposta.ts).
 //
 // Gol e vitória NÃO pagam, de propósito: placar e gols continuam editáveis por
 // JANELA_CORRECAO_HORAS depois do encerramento, e pagar por eles seria pagar
-// por fato ainda mutável.
+// por fato ainda mutável. A aposta paga justamente por vitória, e é por isso
+// que ela é a única coisa da economia que espera a janela de correção fechar
+// antes de mover dinheiro.
 
 import type { ZenhaMotivo } from "@/db/schema";
 import { type FatorDaRodada, SKILL_MAX_CENT } from "./skill";
@@ -67,7 +70,12 @@ export type ChaveDeAjuste =
   | "streak_tamanho"
   | "min_contas_para_pagar"
   | "max_futs_pagos_semana"
-  | "multiplicador_fator";
+  | "multiplicador_fator"
+  // Os três da aposta. Não pagam nada — governam quanto se pode arriscar e até
+  // quando —, mas moram aqui porque é o painel de quem administra a economia.
+  | "aposta_min"
+  | "aposta_max"
+  | "aposta_fecha_min_antes";
 
 export type DefinicaoDeAjuste = {
   padrao: number;
@@ -161,6 +169,29 @@ export const AJUSTES: Readonly<Record<ChaveDeAjuste, DefinicaoDeAjuste>> = {
     max: 200,
     valores: PERCENTUAIS_DO_MULTIPLICADOR,
   },
+  aposta_min: {
+    padrao: 10,
+    rotulo: "Aposta mínima",
+    descricao: "O menor valor aceito numa aposta.",
+    min: 1,
+    max: 1000,
+  },
+  aposta_max: {
+    padrao: 500,
+    rotulo: "Aposta máxima",
+    descricao:
+      "O maior valor aceito numa aposta. É o teto do que alguém pode perder num fut — e, como o pote é dividido, também o que segura uma aposta sozinha de dominar o rateio.",
+    min: 1,
+    max: 100000,
+  },
+  aposta_fecha_min_antes: {
+    padrao: 15,
+    rotulo: "Apostas fecham (min antes do horário)",
+    descricao:
+      "A margem antes do horário marcado em que as apostas param de ser aceitas. Existe para o fut que começa adiantado: quem já viu a bola rolar não pode mais apostar.",
+    min: 0,
+    max: 120,
+  },
 };
 
 export const CHAVES_DE_AJUSTE = Object.keys(AJUSTES) as ChaveDeAjuste[];
@@ -192,6 +223,30 @@ export function validarValorDeAjuste(chave: string, valor: number): string | nul
       : `Valores aceitos: ${def.valores.join(", ")}.`;
   }
   if (valor < def.min || valor > def.max) return `Use um número de ${def.min} a ${def.max}.`;
+  return null;
+}
+
+/**
+ * As regras que um ajuste sozinho não consegue ver: as que ligam DOIS deles.
+ *
+ * `validarValorDeAjuste` julga um número contra a própria faixa, e por isso não
+ * enxerga o par. A aposta é o primeiro caso em que o par existe — piso acima do
+ * teto passa nas duas faixas e mata a aposta inteira: nenhum valor cabe, toda
+ * tentativa vira "fora do limite", e o campo do card nasce com `min` maior que
+ * `max`. Os pares que houver moram aqui, nunca no formulário: quem escreve a
+ * sobrescrita não é só o painel.
+ *
+ * Devolve o campo a destacar e o texto, ou `null` quando o conjunto fecha.
+ */
+export function validarConjuntoDeAjustes(
+  vigentes: Ajustes,
+): { chave: ChaveDeAjuste; erro: string } | null {
+  if (vigentes.aposta_min > vigentes.aposta_max) {
+    return {
+      chave: "aposta_min",
+      erro: "A aposta mínima não pode passar da máxima — assim nenhum valor caberia.",
+    };
+  }
   return null;
 }
 

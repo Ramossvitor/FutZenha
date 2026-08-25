@@ -33,6 +33,7 @@ export const CAPITULOS = [
   { id: "as-zenhas", titulo: "As zenhas", resumo: "Como se ganha a moeda do fut e onde ela se gasta.", camada: "no-fut" },
   { id: "o-multiplicador", titulo: "O multiplicador", resumo: "A aposta que acelera sua nota — e o prazo para armá-la.", camada: "no-fut" },
   { id: "a-recarga", titulo: "A recarga", resumo: "Comprar zenhas por Pix — como funciona e o que não tem volta.", camada: "no-fut" },
+  { id: "a-aposta", titulo: "A aposta", resumo: "Apostar zenhas na própria vitória, antes de saber os times.", camada: "no-fut" },
   { id: "marcar-um-fut", titulo: "Marcar um fut", resumo: "Criar, definir vagas e cuidar da lista.", camada: "organiza" },
   { id: "a-sumula", titulo: "A súmula ao vivo", resumo: "Lançar gol em campo e passar a súmula.", camada: "organiza" },
   { id: "encerrar", titulo: "Encerrar o fut", resumo: "O que trava para sempre e o que ainda dá para corrigir.", camada: "organiza" },

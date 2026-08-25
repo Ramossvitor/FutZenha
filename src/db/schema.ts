@@ -342,6 +342,13 @@ export const matchDays = pgTable("match_days", {
   // execução já pagou. A segunda é limitar a varredura — sem ela, o varredor
   // reexaminaria todo fut encerrado da história a cada passada.
   liquidadoEm: timestamp("liquidado_em"),
+  // Quando as APOSTAS deste fut foram resolvidas. Gêmea de `liquidado_em` acima,
+  // e faz as mesmas duas coisas (trava do exatamente-uma-vez e freio da
+  // varredura), mas é coluna separada porque o critério é outro: a zenha paga
+  // assim que a rodada de avaliação fecha, e a aposta paga por PLACAR — que
+  // continua editável por JANELA_CORRECAO_HORAS depois do encerramento. A
+  // aposta espera a janela de correção acabar; a zenha não tem por que esperar.
+  apostasLiquidadasEm: timestamp("apostas_liquidadas_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 },
 (t) => [
@@ -1010,6 +1017,15 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // merece as três coisas que a caixa de entrada dá de graça: histórico, push
   // e o e-mail que este enum agora despacha (ver src/lib/email-avisos.ts).
   "loja_compra",
+  // A aposta resolvida na liquidação: ganhou o prêmio ou perdeu o que apostou.
+  // Um tipo só para os dois desfechos — quem lê já sabe que apostou, e o que
+  // muda entre um e outro é o corpo, não a natureza do aviso.
+  "aposta_resolvida",
+  // A aposta anulada, com a zenha de volta. Tipo próprio pela mesma razão do
+  // `multiplicador_devolvido`: contraria a expectativa de quem apostou (o fut
+  // sumiu, você trocou de time, ninguém venceu) e não tem irmão em que pegar
+  // carona — a liquidação daquele fut pode nem ter acontecido.
+  "aposta_devolvida",
 ]);
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
@@ -1350,14 +1366,29 @@ export const zenhaMotivoEnum = pgEnum("zenha_motivo", [
   "streak",
   // O saldo de estreia, igual para todo mundo.
   "boas_vindas",
-  // A única linha negativa do ledger. Não existe motivo de estorno: quando um
-  // multiplicador não vale, o que volta é o ITEM, nunca o dinheiro.
+  // Uma das duas linhas negativas do ledger (a outra é `aposta`). Não existe
+  // motivo de estorno de compra: quando um multiplicador não vale, o que volta é
+  // o ITEM, nunca o dinheiro.
   "compra",
   // Zenha comprada com dinheiro de verdade (Pix). O crédito só entra quando o
   // gateway confirma o pagamento — ver src/lib/recarga.ts. Estorno de recarga
   // NÃO gera linha negativa: o ledger segue sem reversão, o pedido é marcado
   // (`zenha_pedidos.status = 'estornado'`) e o admin resolve por fora.
   "recarga",
+  // Os três da aposta (src/lib/aposta.ts). `aposta` é a segunda linha negativa
+  // do ledger — e a única perda VOLUNTÁRIA da economia: ninguém é debitado sem
+  // ter apertado o botão.
+  //
+  // A aposta é soma zero entre jogadores (pote dividido): `premio_aposta` só
+  // paga o que saiu de `aposta` de outra gente, nunca zenha nova. Por isso ela
+  // não precisa dos freios de fabricação que a liquidação do fut tem.
+  "aposta",
+  "premio_aposta",
+  // O estorno DA APOSTA — aposta cancelada na janela, anulada (quem trocou de
+  // time ou não jogou), fut apagado, fut abandonado, empate, pote de um lado só.
+  // É uma linha nova POSITIVA, não uma reversão: o ledger continua append-only, e
+  // prêmio já pago nunca volta.
+  "aposta_devolvida",
 ]);
 
 // O que um item da loja É — e, por consequência, o que a tela precisa desenhar
@@ -1584,11 +1615,17 @@ export const zenhaCarteiras = pgTable(
  * para pagar — e sai UMA vez, definitivo: a contestação que vier depois corrige
  * a nota, nunca o extrato.
  *
+ * A aposta devolvida não é exceção a isso, por mais que o nome sugira: ela é uma
+ * linha NOVA e positiva (`aposta_devolvida`), não a reversão da linha negativa
+ * que saiu. Quem lê o extrato vê as duas, na ordem em que aconteceram, e o fecho
+ * `saldo == sum(amount)` segue valendo. Prêmio já pago, esse não volta nunca.
+ *
  * `unique(player_id, dedupe_key)` é a idempotência: o varredor pode passar duas
  * vezes pelo mesmo fut que o segundo insert não faz nada. As chaves são
- * `{motivo}:fut:{matchDayId}` para o automático e `compra:{inventarioId}` para a
- * loja. (`boas-vindas` sobrevive só como saldo de fixture do seed: no app
- * ninguém ganha zenha por existir.)
+ * `{motivo}:fut:{matchDayId}` para o automático, `compra:{inventarioId}` para a
+ * loja e `aposta:{apostaId}` / `premio-aposta:{apostaId}` /
+ * `aposta-devolvida:{apostaId}` para a aposta. (`boas-vindas` sobrevive só como
+ * saldo de fixture do seed: no app ninguém ganha zenha por existir.)
  *
  * A chave da compra usa o id da linha do INVENTÁRIO, e não o do item: o
  * multiplicador é comprável várias vezes, e `compra:{itemId}` daria o segundo
@@ -1988,6 +2025,106 @@ export const zenhaPedidos = pgTable(
   ],
 );
 
+/**
+ * A aposta: zenha do jogador na própria vitória.
+ *
+ * ── O desenho, e por que ele é assim ───────────────────────────────────────
+ *
+ * **Mercado único, e CEGO.** Só existe uma aposta possível — "eu vou ganhar
+ * este fut" — e ela fecha enquanto o fut ainda está `scheduled`, ou seja, antes
+ * de os times existirem (ver `janelaDaAposta` em src/lib/aposta-engine.ts). As
+ * duas coisas são antifraude, e cada uma mata um vetor: apostar só em si mesmo
+ * alinha o incentivo (quem aposta quer ganhar, nunca entregar o jogo), e apostar
+ * às cegas impede escolher o lado depois de ver o sorteio.
+ *
+ * **Sem `team_id`.** O time por que a pessoa disputou sai do snapshot
+ * `game_players` na hora da liquidação, não daqui. Não é economia de coluna: o
+ * re-sorteio APAGA e recria `teams` (ver gravarTimes), então um ponteiro
+ * gravado no dia da aposta apontaria para um time que talvez não exista mais. O
+ * que existe é `time_nome`, congelado na liquidação, e só para o extrato
+ * continuar legível.
+ *
+ * **Pote dividido (pari-mutuel), soma zero.** Os perdedores pagam os vencedores
+ * e ninguém mais entra na conta — `premio_aposta` nunca cria zenha, só move a
+ * que saiu de `aposta`. É por isso que a aposta NÃO precisa dos freios da
+ * liquidação do fut (`min_contas_para_pagar`, `max_futs_pagos_semana`): fut
+ * fantasma não fabrica dinheiro aqui, só o transfere entre quem já poderia
+ * combinar qualquer coisa fora do site. A sobra do arredondamento para baixo
+ * simplesmente não é paga — ninguém a embolsa.
+ *
+ * **Os estados são timestamp, não enum mutável.** `resolvida_em is null` é a
+ * aposta viva; ela é escrita UMA vez, junto com `retorno` e `desfecho`, e nunca
+ * volta atrás. É esse `UPDATE ... WHERE resolvida_em IS NULL RETURNING` que faz
+ * o exatamente-uma-vez por linha, no mesmo idioma do resto do sistema — e é o
+ * que impede a devolução dupla quando o gancho do fut apagado e a varredura se
+ * cruzam.
+ *
+ * `match_day_id` é **cascade**, ao contrário das FKs do ledger: quem apaga o fut
+ * devolve as apostas ANTES do delete, no mesmo commit (ver `apagarFut` em
+ * src/lib/deletion.ts). A linha da devolução já está no ledger — que é
+ * `set null` e sobrevive — quando esta some.
+ */
+export const zenhaApostas = pgTable(
+  "zenha_apostas",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    valor: integer("valor").notNull(),
+    criadaEm: timestamp("criada_em").notNull().defaultNow(),
+    // Null = aposta viva. Ver o cabeçalho: é a trava do exatamente-uma-vez.
+    resolvidaEm: timestamp("resolvida_em"),
+    // O que voltou para a carteira. Zero na perdida, o valor na devolvida, o
+    // valor mais a fatia do pote na paga.
+    retorno: integer("retorno"),
+    // Text com check, e não enum, pela mesma razão do `gateway` da recarga: é um
+    // fato congelado de uma vez, não um estado que transita — e desfecho novo
+    // aqui seria regra de produto nova, que já vem com migration de qualquer
+    // jeito.
+    desfecho: text("desfecho"),
+    // O nome do time por que ela disputou, congelado na liquidação. Nulo quando
+    // devolvida sem ter jogado.
+    timeNome: text("time_nome"),
+  },
+  (t) => [
+    check("zenha_apostas_valor_positivo", sql`${t.valor} > 0`),
+    check(
+      "zenha_apostas_desfecho_valido",
+      sql`${t.desfecho} is null or ${t.desfecho} in ('paga', 'perdida', 'devolvida', 'cancelada')`,
+    ),
+    // Os três campos do desfecho caem JUNTOS. Sem isto, um bug que gravasse
+    // `resolvida_em` sem `retorno` tiraria a aposta da varredura sem ter pago
+    // nada — a zenha somia em silêncio, que é o único jeito de perder dinheiro
+    // aqui.
+    check(
+      "zenha_apostas_resolucao_junta",
+      sql`(${t.resolvidaEm} is null) = (${t.desfecho} is null) and (${t.resolvidaEm} is null) = (${t.retorno} is null)`,
+    ),
+    // O quanto cada desfecho pode devolver, no banco. `paga >= valor` porque o
+    // prêmio é sempre a aposta de volta MAIS a fatia do pote.
+    check(
+      "zenha_apostas_retorno_coerente",
+      sql`${t.desfecho} is null
+        or (${t.desfecho} = 'perdida' and ${t.retorno} = 0)
+        or (${t.desfecho} in ('devolvida', 'cancelada') and ${t.retorno} = ${t.valor})
+        or (${t.desfecho} = 'paga' and ${t.retorno} >= ${t.valor})`,
+    ),
+    // Uma aposta ATIVA por jogador em cada fut. Parcial de propósito: cancelar e
+    // apostar de novo dentro da janela é caso normal, e uma unique cheia
+    // proibiria a segunda aposta para sempre. É o mesmo desenho do
+    // `zenha_inventario_arme_unico_idx`.
+    uniqueIndex("zenha_apostas_ativa_unq")
+      .on(t.matchDayId, t.playerId)
+      .where(sql`resolvida_em is null`),
+    // A varredura e o pote da tela entram sempre por fut.
+    index("zenha_apostas_fut_idx").on(t.matchDayId),
+  ],
+);
+
 export type Player = typeof players.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type GroupMember = typeof groupMembers.$inferSelect;
@@ -2032,5 +2169,6 @@ export type ZenhaLedgerEntry = typeof zenhaLedger.$inferSelect;
 export type ZenhaInventarioItem = typeof zenhaInventario.$inferSelect;
 export type ZenhaEquipado = typeof zenhaEquipados.$inferSelect;
 export type ZenhaMultiplicador = typeof zenhaMultiplicadores.$inferSelect;
+export type ZenhaAposta = typeof zenhaApostas.$inferSelect;
 export type ZenhaMotivo = (typeof zenhaMotivoEnum.enumValues)[number];
 export type ZenhaSlot = (typeof zenhaSlotEnum.enumValues)[number];

@@ -473,6 +473,57 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
     </>
   ),
 
+  "a-aposta": (
+    <>
+      <p>
+        Estando confirmado num fut, dá para{" "}
+        <strong className="text-fg">apostar zenhas na sua vitória</strong>. É a única aposta
+        que existe aqui: você aposta em <strong className="text-fg">você</strong>, nunca contra
+        ninguém, nunca em placar e nunca em outro time.
+      </p>
+      <Card>
+        <CardHeader>
+          <Eyebrow>o trato</Eyebrow>
+        </CardHeader>
+        <CardBody>
+          <p className="text-[13px] text-fg-3">
+            Todo mundo que apostou joga o mesmo bolo. No fim do fut, quem estava no time
+            vencedor recebe a própria aposta de volta mais uma fatia do que os outros
+            apostaram — proporcional ao que arriscou.
+          </p>
+        </CardBody>
+      </Card>
+      <p>
+        Nenhuma zenha nasce nessa conta: o que os vencedores ganham é exatamente o que os
+        outros perderam. Não existe casa, não existe cotação, e o único jeito de ganhar é
+        ganhar em campo.
+      </p>
+      <Banner tom="aviso">
+        <strong className="text-fg">A aposta fecha antes de os times saírem.</strong> Você
+        aposta às cegas, sem saber com quem vai jogar — e é isso que a torna justa. Depois que
+        os times são definidos (ou perto do horário de início), não dá mais para apostar nem
+        para cancelar.
+      </Banner>
+      <p>
+        Vence o fut o time que <strong className="text-fg">ganhou mais jogos no dia</strong>;
+        empatou, decide o saldo de gols. Se nem isso desempatar, ninguém vence e todo mundo
+        recebe de volta.
+      </p>
+      <p>
+        Sua aposta também volta inteira se você não entrar em campo, se te passarem de time no
+        meio do fut, se o fut for apagado, ou se ele nunca for encerrado. E se todo mundo que
+        apostou acabar no mesmo lado — sem ninguém do outro —, também volta: não houve aposta
+        contra ninguém.
+      </p>
+      <p>
+        O resultado <strong className="text-fg">não sai junto com o placar</strong>. Ele espera
+        as {JANELA_CORRECAO_HORAS} horas em que o placar ainda pode ser corrigido, e espera as
+        avaliações fecharem. É de propósito: assim o placar que decide o dinheiro é o que o
+        grupo inteiro já viu e teve tempo de contestar.
+      </p>
+    </>
+  ),
+
   "marcar-um-fut": (
     <>
       <p>

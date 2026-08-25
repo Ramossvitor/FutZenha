@@ -100,6 +100,15 @@ export const MENSAGENS: Record<string, string> = {
     "O fut já começou, então o multiplicador não sai mais. Desarmar depois de jogar seria desfazer a aposta já sabendo o resultado.",
   "sumula-indisponivel": "A súmula ao vivo só abre depois do sorteio dos times.",
 
+  // Aposta. Os textos explicam o CORTE, como os do multiplicador acima e pelo
+  // mesmo motivo — mas aqui o corte é mais cedo ainda: a aposta fecha quando os
+  // times são definidos, para ninguém escolher já sabendo com quem vai jogar.
+  "aposta-indisponivel":
+    "Não deu para apostar. A aposta só vale antes de os times serem definidos, e só para quem está confirmado na lista.",
+  "aposta-travada":
+    "A aposta não sai mais: os times já saíram (ou o fut está começando). Cancelar depois disso seria desfazer a aposta já sabendo com quem se joga.",
+  "aposta-fora-do-limite": "Esse valor está fora do limite de aposta deste fut.",
+
   // Loja e inventário. Os três primeiros são as três recusas de `comprar`, e os
   // três dizem o que NÃO aconteceu com o saldo — porque é a primeira pergunta de
   // quem clicou em comprar e voltou para a mesma tela.
@@ -172,6 +181,12 @@ export const MENSAGENS: Record<string, string> = {
   "multiplicador-armado":
     "Multiplicador armado. Ele vale neste fut e some do inventário quando o fut for encerrado.",
   "multiplicador-desarmado": "Multiplicador desarmado — ele voltou para o seu inventário.",
+  // O texto diz o que a pessoa NÃO vai poder fazer depois (mexer na aposta) e
+  // quando ela recebe — a liquidação sai no dia seguinte, e sem isso o silêncio
+  // de 24 horas parece coisa quebrada.
+  "aposta-feita":
+    "Aposta feita. Ela trava quando os times saírem, e o resultado sai um dia depois do fut — quando o placar deixa de ser editável.",
+  "aposta-cancelada": "Aposta cancelada — a zenha voltou para o seu saldo.",
   // Comprar já COLOCA: badge vai para a primeira vaga livre da vitrine,
   // cosmético ocupa o slot se ele estiver vazio. O texto hedge de propósito — a
   // vitrine pode estar cheia e o slot ocupado, e nesses casos o item fica só

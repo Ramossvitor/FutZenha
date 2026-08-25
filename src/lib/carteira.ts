@@ -2,10 +2,17 @@ import "server-only";
 import { cache } from "react";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, type Executor } from "@/db";
-import { zenhaCarteiras, zenhaLedger, type ZenhaLedgerEntry } from "@/db/schema";
+import {
+  zenhaCarteiras,
+  zenhaLedger,
+  type ZenhaLedgerEntry,
+  type ZenhaMotivo,
+} from "@/db/schema";
 import type { CreditoDeZenha } from "./zenha";
 
-// A carteira e o extrato: as únicas quatro portas por onde zenha entra e sai.
+// A carteira e o extrato: as únicas portas por onde zenha entra e sai. Entra
+// pela liquidação do fut, pela recarga em dinheiro e pela devolução/prêmio de
+// aposta; sai pela compra na loja e pela aposta feita.
 //
 // O saldo é MATERIALIZADO em `zenha_carteiras`, e não `sum(zenha_ledger.amount)`
 // — por duas coisas que a soma não dá: uma linha para o UPDATE condicional
@@ -22,6 +29,17 @@ import type { CreditoDeZenha } from "./zenha";
 
 /** Uma página do extrato. Fora daqui o número não é configurável de propósito. */
 const LINHAS_POR_PAGINA = 50;
+
+/**
+ * De onde veio o débito: o motivo que vai para o extrato e o ponteiro de volta à
+ * origem. Só uma das duas FKs é preenchida em cada caso (inventário na compra,
+ * fut na aposta), e as duas são `set null` no banco.
+ */
+type DetalheDoDebito = {
+  motivo?: ZenhaMotivo;
+  inventarioId?: number;
+  matchDayId?: number;
+};
 
 /**
  * Cria a linha da carteira zerada, se ainda não existir.
@@ -61,7 +79,8 @@ export async function creditar(
     if (!Number.isInteger(l.amount) || l.amount <= 0) {
       throw new Error(
         `Crédito inválido: ${l.amount} para o jogador ${l.playerId}. ` +
-          "O valor tem que ser inteiro e positivo — estorno não existe na zenha.",
+          "O valor tem que ser inteiro e positivo — o que devolve zenha (a aposta " +
+          "anulada) credita uma linha nova, não reverte a que saiu.",
       );
     }
   }
@@ -134,7 +153,8 @@ async function creditarCom(exec: Executor, linhas: readonly CreditoDeZenha[]): P
 }
 
 /**
- * Debita a compra. Devolve o saldo novo, ou `null` quando não havia saldo.
+ * Debita uma compra ou uma aposta. Devolve o saldo novo, ou `null` quando não
+ * havia saldo.
  *
  * O `UPDATE ... WHERE saldo >= $valor ... RETURNING` É a serialização — não há
  * advisory lock nem `FOR UPDATE` aqui, de propósito. Duas compras simultâneas
@@ -145,8 +165,13 @@ async function creditarCom(exec: Executor, linhas: readonly CreditoDeZenha[]): P
  * `sum(amount)` não haveria linha para travar, as duas leriam a mesma soma e as
  * duas passariam.
  *
- * Quem chama tem que estar dentro de uma transação junto com a criação do item —
- * debitar e não entregar é o único jeito de perder dinheiro aqui.
+ * Quem chama tem que estar dentro de uma transação junto com a criação do item
+ * (ou da aposta) — debitar e não entregar é o único jeito de perder dinheiro
+ * aqui.
+ *
+ * `motivo` existe porque a compra deixou de ser o único débito: a aposta também
+ * sai daqui, e o padrão continua sendo `compra` para que o call site da loja não
+ * precise repetir o óbvio.
  */
 export async function debitar(
   exec: Executor,
@@ -154,7 +179,7 @@ export async function debitar(
   valor: number,
   dedupeKey: string,
   descricao: string,
-  extra: { inventarioId?: number } = {},
+  extra: DetalheDoDebito = {},
 ): Promise<number | null> {
   // Valor não-positivo não é "compra recusada", é bug de quem chamou: um débito
   // de zero cairia no `check (amount <> 0)` do ledger e um negativo CREDITARIA
@@ -180,7 +205,7 @@ async function debitarCom(
   valor: number,
   dedupeKey: string,
   descricao: string,
-  extra: { inventarioId?: number },
+  extra: DetalheDoDebito,
 ): Promise<number | null> {
   await garantirCarteira(exec, playerId);
 
@@ -196,16 +221,18 @@ async function debitarCom(
   // Sem `onConflictDoNothing`: aqui a carteira JÁ foi debitada, e engolir o
   // conflito deixaria o saldo menor que a soma do ledger — o fecho quebrado em
   // silêncio, que é exatamente o que o extrato não pode ter. A unique é o alarme
-  // e o rollback da transação é o desfecho certo. Chave repetida em compra é bug
-  // de quem monta a chave (ela usa o id da linha do inventário, que é novo a
-  // cada compra), não retentativa legítima.
+  // e o rollback da transação é o desfecho certo. Chave repetida num débito é bug
+  // de quem monta a chave (ela usa o id de uma linha que nasce na mesma
+  // transação — inventário na compra, aposta na aposta), não retentativa
+  // legítima.
   await exec.insert(zenhaLedger).values({
     playerId,
-    motivo: "compra",
+    motivo: extra.motivo ?? "compra",
     amount: -valor,
     dedupeKey,
     descricao,
     inventarioId: extra.inventarioId ?? null,
+    matchDayId: extra.matchDayId ?? null,
   });
 
   return carteira.saldo;

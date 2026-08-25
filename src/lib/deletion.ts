@@ -12,6 +12,7 @@ import {
   ratingRounds,
   users,
 } from "@/db/schema";
+import { devolverApostasDoFut } from "./aposta-engine";
 import { formatDate } from "./format";
 import { soltarMultiplicadoresDoFut } from "./multiplicador-engine";
 import { notificar } from "./notifications";
@@ -329,6 +330,11 @@ export async function apagarFut(
   // multiplicador mas não desfaz o carimbo de consumido no inventário, e depois
   // do delete não há mais como saber quem foi consumido aqui.
   await soltarMultiplicadoresDoFut(exec, matchDayId);
+  // Idem, e mais direto: `zenha_apostas` é cascade, então depois do delete não
+  // sobra nem a linha da aposta para saber quanto devolver a quem. Fut apagado é
+  // fut que não aconteceu — quem apostou recebe de volta, inteiro. Prêmio já
+  // pago não volta: aquele fut aconteceu, e o ledger não tem reversão.
+  await devolverApostasDoFut(exec, matchDayId, "fut-apagado");
   await exec.delete(matchDays).where(eq(matchDays.id, matchDayId));
   await aplicarReplay(exec, { tipo: "revisao", dedupeKey });
 }
