@@ -9,10 +9,11 @@ import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { IconeSeta } from "@/components/ui/icons";
-import { NomeJogador } from "@/components/ui/nome-jogador";
+import { DestaqueNoNome, NomeJogador, pinturaDoNome } from "@/components/ui/nome-jogador";
 import { Nota } from "@/components/ui/nota";
 import { Prazo } from "@/components/ui/prazo";
 import { VestChip } from "@/components/ui/vest";
+import { cx } from "@/lib/cx";
 import { formatPercent, formatTime } from "@/lib/format";
 import { JANELA_CORRECAO_HORAS } from "@/lib/regras";
 import { jogoEmAndamento } from "@/lib/sumula";
@@ -133,6 +134,7 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
     recusaram,
     confirmed,
     convitesParaEntregar,
+    cosmeticos,
   } = fut;
   const fechada = listaFechada(matchDay.status);
   const encerrada = matchDay.status === "finished";
@@ -185,6 +187,8 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
                     {bloco.linhas.map((linha, i) => {
                       const jogador = jogadorPorId.get(linha.playerId);
                       if (!jogador) return null;
+                      const doNome = cosmeticos.get(linha.playerId);
+                      const pintura = pinturaDoNome(doNome?.cor);
                       return (
                         <li
                           key={linha.playerId}
@@ -196,8 +200,24 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
                           >
                             {i + 1}
                           </span>
-                          <span className="min-w-0 flex-1 truncate font-display text-[14px] font-bold text-fg">
-                            {jogador.nickname ?? jogador.name}
+                          {/* Sem o NomeJogador: a linha aqui é de TRABALHO — tem
+                              ordem de chegada de um lado e botões do outro, e o
+                              nome de batismo embaixo empurraria os dois para
+                              longe um do outro. Mas os cosméticos vêm, e com os
+                              helpers DELE: é a mesma lista da tela pública do
+                              fut, e ver o nome cru só aqui era a diferença que
+                              não tinha explicação. */}
+                          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                            <DestaqueNoNome destaque={doNome?.destaque} />
+                            <span
+                              style={pintura.style}
+                              className={cx(
+                                "min-w-0 truncate font-display text-[14px] font-bold",
+                                pintura.className,
+                              )}
+                            >
+                              {jogador.nickname ?? jogador.name}
+                            </span>
                           </span>
                           {!encerrada && bloco.chave === "espera" && (
                             <form
@@ -387,7 +407,7 @@ export function SecaoPresenca({ fut }: { fut: PainelDoFut }) {
  * efeito.
  */
 export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
-  const { matchDay, pedidosDeEntrada, convitesDeFut, linkDoFut, destaques } = fut;
+  const { matchDay, pedidosDeEntrada, convitesDeFut, linkDoFut, cosmeticos } = fut;
   if (!futAceitaEntrada(matchDay)) return null;
 
   const url = linkDoFut ? urlDoLinkDoFut(linkDoFut.token) : null;
@@ -410,7 +430,7 @@ export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
                 <NomeJogador
                   apelido={p.nickname}
                   nome={p.name}
-                  destaque={destaques.get(p.playerId)}
+                  cosmeticos={cosmeticos.get(p.playerId)}
                 />
                 {p.isGoalkeeper && <Badge tom="warn">goleiro</Badge>}
                 <Nota valor={p.skill} />
@@ -444,7 +464,7 @@ export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
                 <NomeJogador
                   apelido={c.nickname}
                   nome={c.name}
-                  destaque={destaques.get(c.playerId)}
+                  cosmeticos={cosmeticos.get(c.playerId)}
                 />
                 <Badge tom="dashed">aguardando</Badge>
               </li>

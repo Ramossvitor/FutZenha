@@ -14,7 +14,7 @@ import { IconeCadeado, IconeLuva } from "@/components/ui/icons";
 import { assinarPush, cancelarPush } from "@/app/pwa/actions";
 import { PedidoDePush } from "@/components/push/pedido-de-push";
 import { LinkJogador } from "@/components/ui/nome-jogador";
-import { lerDestaques, type DestaqueDoJogador } from "@/lib/loja";
+import { lerCosmeticosDoNome, type CosmeticosDoNome } from "@/lib/loja";
 import { Nota } from "@/components/ui/nota";
 import { VestChip } from "@/components/ui/vest";
 import { WhatsAppShareButton } from "@/components/ui/whatsapp-share-button";
@@ -64,7 +64,7 @@ function Bloco({
   linhas,
   jogadorPorId,
   meuPlayerId,
-  destaques,
+  cosmeticos,
   numerada = false,
   apagar = true,
 }: {
@@ -73,8 +73,8 @@ function Bloco({
   linhas: LinhaExibida[];
   jogadorPorId: Map<number, { id: number; slug: string; name: string; nickname: string | null }>;
   meuPlayerId: number | null;
-  /** O badge que cada um escolheu levar para fora do perfil. Ver `lerDestaques`. */
-  destaques: Map<number, DestaqueDoJogador>;
+  /** O badge e a cor que cada um leva para fora do perfil. Ver `lerCosmeticosDoNome`. */
+  cosmeticos: Map<number, CosmeticosDoNome>;
   numerada?: boolean;
   apagar?: boolean;
 }) {
@@ -113,7 +113,7 @@ function Bloco({
                 slug={jogador.slug}
                 apelido={jogador.nickname}
                 nome={jogador.name}
-                destaque={destaques.get(jogador.id)}
+                cosmeticos={cosmeticos.get(jogador.id)}
               />
 
               {souEu && <Badge tom="accent">você</Badge>}
@@ -270,11 +270,11 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
     matchDay.status === "finished" ? getMvpDoFut(id) : [],
   ]);
 
-  // Os badges em destaque de todo mundo que esta página desenha, numa consulta
+  // Os cosméticos de nome de todo mundo que esta página desenha, numa consulta
   // só: a lista de presença, a escalação e o MVP saem todos de quem tem linha em
   // `attendances` ou está no elenco ativo. Uma consulta por nome seriam dezenas
   // de idas ao banco para enfeitar uma lista.
-  const destaques = await lerDestaques(db, [
+  const cosmeticos = await lerCosmeticosDoNome(db, [
     ...activePlayers.map((p) => p.id),
     ...attendanceRows.map((a) => a.playerId),
   ]);
@@ -475,7 +475,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
                           slug={m.slug}
                           apelido={m.nickname}
                           nome={m.name}
-                          destaque={destaques.get(m.playerId)}
+                          cosmeticos={cosmeticos.get(m.playerId)}
                         />
                         {m.playerId === meuPlayerId && <Badge tom="accent">você</Badge>}
                         <Nota valor={m.skill} tamanho="sm" />
@@ -543,7 +543,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
                   slug={m.slug}
                   apelido={m.nickname}
                   nome={m.name}
-                  destaque={destaques.get(m.playerId)}
+                  cosmeticos={cosmeticos.get(m.playerId)}
                 />
                 {m.playerId === meuPlayerId && <Badge tom="accent">você</Badge>}
                 <Badge tom="warn">MVP</Badge>
@@ -617,7 +617,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             linhas={vagas}
             jogadorPorId={jogadorPorId}
             meuPlayerId={meuPlayerId}
-            destaques={destaques}
+            cosmeticos={cosmeticos}
             numerada
           />
         )}
@@ -633,7 +633,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             linhas={espera}
             jogadorPorId={jogadorPorId}
             meuPlayerId={meuPlayerId}
-            destaques={destaques}
+            cosmeticos={cosmeticos}
             numerada
           />
         )}
@@ -645,7 +645,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             linhas={faltas}
             jogadorPorId={jogadorPorId}
             meuPlayerId={meuPlayerId}
-            destaques={destaques}
+            cosmeticos={cosmeticos}
           />
         )}
 
@@ -666,7 +666,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             linhas={semResposta.map((p) => ({ playerId: p.id, status: "out" as const }))}
             jogadorPorId={jogadorPorId}
             meuPlayerId={meuPlayerId}
-            destaques={destaques}
+            cosmeticos={cosmeticos}
             apagar={false}
           />
         )}

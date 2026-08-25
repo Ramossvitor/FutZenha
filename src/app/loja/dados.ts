@@ -41,7 +41,7 @@ const TEXTOS: Readonly<Record<TipoDeItem, { titulo: string; descricao: string }>
   },
   cor_do_nome: {
     titulo: "Cores do nome",
-    descricao: "Seu nome, na cor que você escolher.",
+    descricao: "Seu nome, na cor que você escolher — no perfil e em toda lista onde ele aparece.",
   },
   titulo: {
     titulo: "Títulos",

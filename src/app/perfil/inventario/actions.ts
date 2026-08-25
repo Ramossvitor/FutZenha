@@ -103,9 +103,19 @@ export async function tirarBadgeDaVitrine(inventarioId: number) {
 /**
  * Escolhe o badge que anda junto do nome nas listas.
  *
- * Revalida mais que as outras, e precisa: o destaque é o único cosmético que sai
- * do perfil. Ranking, artilharia e a lista de futs desenham nome de gente, e
- * todas passam a mostrar (ou deixar de mostrar) a figura escolhida.
+ * Revalida mais que as outras: o destaque sai do perfil e circula pelo app —
+ * ranking, artilharia e a lista de futs desenham nome de gente, e todas passam a
+ * mostrar (ou deixar de mostrar) a figura escolhida.
+ *
+ * Ele não é mais o ÚNICO a sair daqui: a cor do slot `cor_do_nome` faz o mesmo
+ * caminho desde que o `lerCosmeticosDoNome` existe (ver src/lib/loja.ts). E
+ * mesmo assim `equiparItem`/`desequiparSlot` não repetem estas duas linhas, o
+ * que é de propósito: toda tela que pinta o nome é dinâmica — `/rankings`,
+ * `/grupo/[slug]` e `/jogador/[slug]` são `force-dynamic`, `/fut/[id]` e
+ * `/perfil` leem o cookie da sessão, e `/artilharia` é só um `permanentRedirect`
+ * para a aba. Não há cache de rota para invalidar. Estas duas ficam porque são
+ * baratas e porque o dia em que uma dessas telas deixar de ser dinâmica é o dia
+ * em que faltariam — mas quem for atrás da assimetria entre as actions para aqui.
  */
 export async function destacarBadge(inventarioId: number) {
   const session = await requirePlayer();

@@ -32,7 +32,7 @@ import {
   equipar,
   getInventario,
   getVitrine,
-  lerDestaques,
+  lerCosmeticosDoNome,
   lerVitrine,
   porNaVitrine,
   tirarDaVitrine,
@@ -555,7 +555,7 @@ describe("a vitrine de badges", () => {
   });
 });
 
-describe("lerDestaques", () => {
+describe("lerCosmeticosDoNome", () => {
   it("traz um por jogador, em lote, e omite quem não tem", async () => {
     const comDestaque = await jogadorComSaldo(1000);
     const semVitrine = await jogadorComSaldo(1000);
@@ -567,18 +567,17 @@ describe("lerDestaques", () => {
     const [linha] = await linhasDoInventario(semVitrine);
     await tirarDaVitrine(semVitrine.id, linha.id);
 
-    const destaques = await lerDestaques(db, [comDestaque.id, semVitrine.id, semNada.id]);
+    const cosmeticos = await lerCosmeticosDoNome(db, [comDestaque.id, semVitrine.id, semNada.id]);
 
-    expect(destaques.size).toBe(1);
-    expect(destaques.get(comDestaque.id)).toEqual({
-      itemId: badge.id,
-      nome: "Avaí",
-      imagemHash: badge.imagemHash,
+    expect(cosmeticos.size).toBe(1);
+    expect(cosmeticos.get(comDestaque.id)).toEqual({
+      destaque: { itemId: badge.id, nome: "Avaí", imagemHash: badge.imagemHash },
+      cor: null,
     });
   });
 
   it("lista vazia devolve mapa vazio sem ir ao banco", async () => {
-    expect(await lerDestaques(db, [])).toEqual(new Map());
+    expect(await lerCosmeticosDoNome(db, [])).toEqual(new Map());
   });
 
   // Item retirado de venda continua no perfil de quem comprou — é a
@@ -589,9 +588,89 @@ describe("lerDestaques", () => {
     await comprar(jogador.id, badge.id);
     await tirarDeVenda(badge.id);
 
-    const destaques = await lerDestaques(db, [jogador.id]);
+    const cosmeticos = await lerCosmeticosDoNome(db, [jogador.id]);
 
-    expect(destaques.get(jogador.id)?.nome).toBe("Raro");
+    expect(cosmeticos.get(jogador.id)?.destaque?.nome).toBe("Raro");
+  });
+
+  // A razão desta função existir: era a cor comprada que não saía do perfil.
+  it("traz a cor de quem equipou uma cor do nome", async () => {
+    const jogador = await jogadorComSaldo(1000);
+    const cor = await criarItemDaLoja({ tipo: "cor_do_nome", nome: "Brasa", preco: 10, cor: "#ff5500" });
+    await comprar(jogador.id, cor.id);
+    const [linha] = await linhasDoInventario(jogador);
+    expect(await equipar(jogador.id, linha.id)).toBeNull();
+
+    const cosmeticos = await lerCosmeticosDoNome(db, [jogador.id]);
+
+    expect(cosmeticos.get(jogador.id)).toEqual({ destaque: null, cor: "#ff5500" });
+  });
+
+  it("junta badge e cor do mesmo jogador na mesma entrada", async () => {
+    const jogador = await jogadorComSaldo(1000);
+    const badge = await criarBadge("Dono da bola", 10);
+    const cor = await criarItemDaLoja({ tipo: "cor_do_nome", nome: "Brasa", preco: 10, cor: "#00aa66" });
+    await comprar(jogador.id, badge.id);
+    await comprar(jogador.id, cor.id);
+    const doInventario = await linhasDoInventario(jogador);
+    const linhaDaCor = doInventario.find((l) => l.itemId === cor.id);
+    expect(await equipar(jogador.id, linhaDaCor!.id)).toBeNull();
+
+    const cosmeticos = await lerCosmeticosDoNome(db, [jogador.id]);
+
+    expect(cosmeticos.get(jogador.id)?.destaque?.itemId).toBe(badge.id);
+    expect(cosmeticos.get(jogador.id)?.cor).toBe("#00aa66");
+  });
+
+  // As duas consultas voltam com jogadores DIFERENTES, e é o acumulador que as
+  // funde por id. Com um jogador só, um `mapa.set` que sobrescrevesse em vez de
+  // completar passaria despercebido — a segunda entrada apagaria a primeira e
+  // ninguém notaria, porque as duas são do mesmo dono.
+  it("no lote, cada jogador fica só com o que é dele", async () => {
+    const soBadge = await jogadorComSaldo(1000);
+    const soCor = await jogadorComSaldo(1000);
+    const badge = await criarBadge("Só figura", 10);
+    const cor = await criarItemDaLoja({ tipo: "cor_do_nome", nome: "Só cor", preco: 10, cor: "#0000ff" });
+    await comprar(soBadge.id, badge.id);
+    await comprar(soCor.id, cor.id);
+    const [linhaDaCor] = await linhasDoInventario(soCor);
+    expect(await equipar(soCor.id, linhaDaCor.id)).toBeNull();
+
+    const cosmeticos = await lerCosmeticosDoNome(db, [soBadge.id, soCor.id]);
+
+    expect(cosmeticos.get(soBadge.id)).toEqual({
+      destaque: { itemId: badge.id, nome: "Só figura", imagemHash: badge.imagemHash },
+      cor: null,
+    });
+    expect(cosmeticos.get(soCor.id)).toEqual({ destaque: null, cor: "#0000ff" });
+  });
+
+  // Mesma contrapartida do badge: quem comprou continua pintando o nome.
+  it("cor fora de venda continua pintando", async () => {
+    const jogador = await jogadorComSaldo(1000);
+    const cor = await criarItemDaLoja({ tipo: "cor_do_nome", nome: "Rara", preco: 10, cor: "#123456" });
+    await comprar(jogador.id, cor.id);
+    const [linha] = await linhasDoInventario(jogador);
+    await equipar(jogador.id, linha.id);
+    await tirarDeVenda(cor.id);
+
+    const cosmeticos = await lerCosmeticosDoNome(db, [jogador.id]);
+
+    expect(cosmeticos.get(jogador.id)?.cor).toBe("#123456");
+  });
+
+  // A moldura também tem `cor` no catálogo e também mora em `zenha_equipados`:
+  // sem o filtro por SLOT, ela sairia pintando o nome de quem só comprou anel.
+  it("moldura equipada não vaza como cor do nome", async () => {
+    const jogador = await jogadorComSaldo(1000);
+    const moldura = await criarMoldura("Anel", 10);
+    await comprar(jogador.id, moldura.id);
+    const [linha] = await linhasDoInventario(jogador);
+    expect(await equipar(jogador.id, linha.id)).toBeNull();
+
+    const cosmeticos = await lerCosmeticosDoNome(db, [jogador.id]);
+
+    expect(cosmeticos.has(jogador.id)).toBe(false);
   });
 });
 

@@ -696,12 +696,26 @@ export async function lerVitrine(exec: Executor, playerId: number): Promise<Badg
 }
 
 /**
- * O badge em destaque de cada jogador — o único cosmético que sai do perfil e
- * aparece em ranking, escalação e lista de presença.
+ * Os cosméticos que acompanham o nome de um jogador onde quer que ele apareça:
+ * o badge em destaque e a cor do nome.
+ *
+ * São os DOIS que saem do perfil e circulam pelo app — ranking, escalação, lista
+ * de presença, membros do grupo. O título ficou de fora e não é esquecimento: ele
+ * é texto de largura imprevisível e empurraria a nota para fora da tela no
+ * celular. Badge é imagem de 16px e cor não ocupa espaço nenhum; os dois cabem em
+ * qualquer linha.
  *
  * Em LOTE, e é o ponto desta função: as telas que desenham nome desenham dezenas
  * por vez, e uma consulta por linha seria N idas ao banco para enfeitar uma
  * lista. Quem chama faz UMA chamada com todos os ids e passa o Map para baixo.
+ *
+ * Duas consultas em paralelo porque são duas tabelas com regras diferentes —
+ * slot único em `zenha_equipados`, coleção ordenada em `zenha_vitrine` — e
+ * nenhuma depende da outra.
+ *
+ * Item fora de venda continua pintando: quem comprou continua exibindo, que é a
+ * contrapartida de o admin poder tirar do catálogo sem apagar nada. Por isso não
+ * há filtro por `ativo` em nenhuma das duas.
  *
  * Lista vazia não vai ao banco: um `in ()` sem elementos é desperdício garantido.
  */
@@ -711,37 +725,67 @@ export type DestaqueDoJogador = {
   imagemHash: string;
 };
 
-export async function lerDestaques(
+export type CosmeticosDoNome = {
+  destaque: DestaqueDoJogador | null;
+  /** A cor do slot `cor_do_nome`, em `#rrggbb`, quando há uma equipada. */
+  cor: string | null;
+};
+
+export async function lerCosmeticosDoNome(
   exec: Executor,
   playerIds: readonly number[],
-): Promise<Map<number, DestaqueDoJogador>> {
+): Promise<Map<number, CosmeticosDoNome>> {
   if (playerIds.length === 0) return new Map();
 
-  const linhas = await exec
-    .select({
-      playerId: zenhaVitrine.playerId,
-      itemId: lojaItens.id,
-      nome: lojaItens.nome,
-      imagemHash: lojaItens.imagemHash,
-    })
-    .from(zenhaVitrine)
-    .innerJoin(zenhaInventario, eq(zenhaInventario.id, zenhaVitrine.inventarioId))
-    .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
-    .where(
-      and(
-        eq(zenhaVitrine.destaque, true),
-        inArray(zenhaVitrine.playerId, [...new Set(playerIds)]),
-      ),
-    );
+  const ids = [...new Set(playerIds)];
 
-  // Só badge entra na vitrine e todo badge tem imagem (dois checks do banco
-  // dizem isso). O filtro existe para o caso impossível não virar `<img src="">`
-  // — que o navegador resolve como um segundo GET da própria página.
-  return new Map(
-    linhas.flatMap((l) =>
-      l.imagemHash === null
-        ? []
-        : [[l.playerId, { itemId: l.itemId, nome: l.nome, imagemHash: l.imagemHash }] as const],
-    ),
-  );
+  const [badges, cores] = await Promise.all([
+    exec
+      .select({
+        playerId: zenhaVitrine.playerId,
+        itemId: lojaItens.id,
+        nome: lojaItens.nome,
+        imagemHash: lojaItens.imagemHash,
+      })
+      .from(zenhaVitrine)
+      .innerJoin(zenhaInventario, eq(zenhaInventario.id, zenhaVitrine.inventarioId))
+      .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
+      .where(and(eq(zenhaVitrine.destaque, true), inArray(zenhaVitrine.playerId, ids))),
+    exec
+      .select({ playerId: zenhaEquipados.playerId, cor: lojaItens.cor })
+      .from(zenhaEquipados)
+      .innerJoin(zenhaInventario, eq(zenhaInventario.id, zenhaEquipados.inventarioId))
+      .innerJoin(lojaItens, eq(lojaItens.id, zenhaInventario.itemId))
+      // O filtro é pelo SLOT da linha, não pelo tipo do item no catálogo: o slot
+      // é a coluna da PK e é ele que garante um item por jogador. Se um item
+      // mudar de tipo depois de equipado, obedecer a linha mantém a promessa —
+      // obedecer o catálogo deixaria uma moldura pintar o nome.
+      .where(and(eq(zenhaEquipados.slot, "cor_do_nome"), inArray(zenhaEquipados.playerId, ids))),
+  ]);
+
+  const mapa = new Map<number, CosmeticosDoNome>();
+  const doJogador = (playerId: number) => {
+    const atual = mapa.get(playerId);
+    if (atual) return atual;
+    const novo: CosmeticosDoNome = { destaque: null, cor: null };
+    mapa.set(playerId, novo);
+    return novo;
+  };
+
+  for (const l of badges) {
+    // Só badge entra na vitrine e todo badge tem imagem (dois checks do banco
+    // dizem isso). O filtro existe para o caso impossível não virar `<img src="">`
+    // — que o navegador resolve como um segundo GET da própria página.
+    if (l.imagemHash === null) continue;
+    doJogador(l.playerId).destaque = { itemId: l.itemId, nome: l.nome, imagemHash: l.imagemHash };
+  }
+
+  for (const l of cores) {
+    // Mesma defesa, do outro lado: o check `loja_itens_cor_por_tipo` garante cor
+    // não-nula em item de cor, e sem isto o impossível viraria um `style` inválido.
+    if (l.cor === null) continue;
+    doJogador(l.playerId).cor = l.cor;
+  }
+
+  return mapa;
 }

@@ -1,6 +1,7 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { cx } from "@/lib/cx";
-import type { DestaqueDoJogador } from "@/lib/loja";
+import type { CosmeticosDoNome, DestaqueDoJogador } from "@/lib/loja";
 import { ImagemDoItem } from "./imagem-do-item";
 
 /**
@@ -12,36 +13,39 @@ import { ImagemDoItem } from "./imagem-do-item";
  * presença, escalação e MVP tinham cada um a sua, com tamanhos que já haviam
  * divergido entre si.
  *
- * ── O destaque ──────────────────────────────────────────────────────────────
+ * ── Os cosméticos que andam junto do nome ───────────────────────────────────
  *
- * É o único cosmético comprado que sai do perfil e circula pelo app: um badge de
- * 16px que o jogador escolheu, no meio de listas que não são sobre ele. Cabe
- * aqui — e o título não coube — porque é imagem de tamanho fixo: não empurra a
- * nota para fora da tela no celular, não muda a altura da linha, e some sozinho
- * quando ninguém escolheu nenhum.
+ * São dois, e são os únicos que saem do perfil e circulam pelo app: o badge em
+ * destaque e a cor do nome. Cabem aqui — e o título não coube — porque nenhum
+ * dos dois tem largura imprevisível: o badge é imagem de 16px e a cor não ocupa
+ * espaço NENHUM. Nem um nem outro empurra a nota para fora da tela no celular ou
+ * muda a altura da linha, e os dois somem sozinhos quando ninguém equipou nada.
  *
- * A prop é opcional e sem valor padrão, e sem ela nada é desenhado a mais — mas
- * o invólucro mudou para TODO chamador: o nome agora vive num `flex` (ver o
- * Miolo), com ou sem badge, e é o e2e/alinhamento.spec.ts quem guarda que as
- * listas não saíram do lugar. Quem quer mostrar carrega os destaques de TODA a
- * lista de uma vez (`lerDestaques`) e passa o Map para baixo — uma consulta por
- * linha para enfeitar um ranking seria o custo que fez esta prop não existir
- * antes.
+ * A cor era o buraco óbvio: comprar "seu nome, na cor que você escolher" e ver o
+ * efeito só numa tela que o dono visita sozinho, enquanto a lista de presença —
+ * onde o grupo inteiro olha — desenhava todo mundo igual.
+ *
+ * A prop é opcional e sem valor padrão, e sem ela nada muda no desenho — mas o
+ * invólucro mudou para TODO chamador: o nome vive num `flex` (ver o Miolo), com
+ * ou sem badge, e é o e2e/alinhamento.spec.ts quem guarda que as listas não
+ * saíram do lugar. Quem quer mostrar carrega os cosméticos de TODA a lista de uma
+ * vez (`lerCosmeticosDoNome`) e passa o Map para baixo — uma consulta por linha
+ * para enfeitar um ranking seria o custo que fez esta prop não existir antes.
  */
 export function NomeJogador({
   apelido,
   nome,
-  destaque,
+  cosmeticos,
   className,
 }: {
   apelido: string | null;
   nome: string;
-  destaque?: DestaqueDoJogador | null;
+  cosmeticos?: CosmeticosDoNome | null;
   className?: string;
 }) {
   return (
     <span className={cx("min-w-0 flex-1", className)}>
-      <Miolo apelido={apelido} nome={nome} destaque={destaque} />
+      <Miolo apelido={apelido} nome={nome} cosmeticos={cosmeticos} />
     </span>
   );
 }
@@ -58,14 +62,14 @@ export function LinkJogador({
   slug,
   apelido,
   nome,
-  destaque,
+  cosmeticos,
   className,
 }: {
   /** O endereço público do jogador — `players.slug`, nunca o id. */
   slug: string;
   apelido: string | null;
   nome: string;
-  destaque?: DestaqueDoJogador | null;
+  cosmeticos?: CosmeticosDoNome | null;
   className?: string;
 }) {
   return (
@@ -73,9 +77,33 @@ export function LinkJogador({
       href={`/jogador/${slug}`}
       className={cx("group min-w-0 flex-1 rounded-ctl", className)}
     >
-      <Miolo apelido={apelido} nome={nome} destaque={destaque} sublinhaNoHover />
+      <Miolo apelido={apelido} nome={nome} cosmeticos={cosmeticos} sublinhaNoHover />
     </Link>
   );
+}
+
+/**
+ * A cor comprada, para quem desenha o nome à mão.
+ *
+ * Devolve o par `style`/`className` porque a cor vem de uma COLUNA: o Tailwind
+ * varre o fonte para gerar a folha, então `text-[${cor}]` nunca existiria nela —
+ * o valor tem que entrar por custom property e a classe tem que ser literal (ver
+ * previa-do-item.tsx). As duas strings estão aqui, escritas, e é isso que faz o
+ * Tailwind emitir a regra.
+ *
+ * A cor SUBSTITUI o `text-fg`, não se soma a ele. Contraste é de quem cadastrou
+ * a cor no admin: o app não tem mais uma paleta fechada para garanti-lo, e a
+ * regra é a mesma do perfil desde que o cosmético existe.
+ */
+export function pinturaDoNome(cor?: string | null): {
+  style?: CSSProperties;
+  className: string;
+} {
+  if (!cor) return { className: "text-fg" };
+  return {
+    style: { "--cor-do-nome": cor } as CSSProperties,
+    className: "text-(--cor-do-nome)",
+  };
 }
 
 /**
@@ -100,14 +128,15 @@ export function DestaqueNoNome({ destaque }: { destaque?: DestaqueDoJogador | nu
 function Miolo({
   apelido,
   nome,
-  destaque,
+  cosmeticos,
   sublinhaNoHover = false,
 }: {
   apelido: string | null;
   nome: string;
-  destaque?: DestaqueDoJogador | null;
+  cosmeticos?: CosmeticosDoNome | null;
   sublinhaNoHover?: boolean;
 }) {
+  const pintura = pinturaDoNome(cosmeticos?.cor);
   return (
     <>
       {/* O `flex` com `min-w-0` no texto, e não a imagem solta antes do span: o
@@ -115,10 +144,15 @@ function Miolo({
           min-w-0 o nome longo empurraria o badge para fora da linha em vez de
           cortar a si mesmo. */}
       <span className="flex items-center gap-1.5">
-        <DestaqueNoNome destaque={destaque} />
+        <DestaqueNoNome destaque={cosmeticos?.destaque} />
+        {/* Só o apelido é pintado. O nome de batismo de baixo continua `fg-4`,
+            como no perfil: lá o h1 leva a cor e o `<p>` não. É o que mantém a
+            linha legível quando a cor comprada é fraca. */}
         <span
+          style={pintura.style}
           className={cx(
-            "min-w-0 truncate font-display text-[14px] leading-[1.2] font-bold text-fg",
+            "min-w-0 truncate font-display text-[14px] leading-[1.2] font-bold",
+            pintura.className,
             sublinhaNoHover && "group-hover:underline",
           )}
         >
