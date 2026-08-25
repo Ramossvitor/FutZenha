@@ -1,16 +1,10 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/db";
-import { attendances, invites } from "@/db/schema";
+import { invites } from "@/db/schema";
 import { enviarConvitePorEmail } from "@/lib/email-convite";
-import {
-  criarConta,
-  criarConvite,
-  criarFut,
-  criarJogador,
-  criarVolumeDeConvites,
-} from "@/test/fixtures";
-import { criarConviteDeGrupo, criarGrupo, criarVolumeDeAvisosDeGrupo } from "@/test/fixtures-grupo";
+import { criarConta, criarConvite, criarJogador } from "@/test/fixtures";
+import { criarConviteDeGrupo, criarGrupo } from "@/test/fixtures-grupo";
 import { payloadDoEnvio, stubResend } from "@/test/resend-fake";
 
 const EMAIL = "destino@example.com";
@@ -173,98 +167,11 @@ describe("enviarConvitePorEmail", () => {
     });
   });
 
-  describe("teto diário", () => {
-    it("com 100 envios nas últimas 24h devolve limite sem chamar a rede", async () => {
-      const volume = await criarJogador();
-      await criarVolumeDeConvites(volume, 100, { enviadoHaUmaHora: true });
-      const alvo = await criarJogador();
-      const convite = await criarConvite(alvo, { email: EMAIL });
-      const fetchMock = stubResend();
-
-      const resultado = await enviarConvitePorEmail(convite.token);
-
-      expect(resultado).toEqual({ ok: false, motivo: "limite" });
-      expect(fetchMock).not.toHaveBeenCalled();
-      const depois = await lerConvite(convite.id);
-      expect(depois.emailSentAt).toBeNull();
-    });
-
-    it("com 99 envios ainda envia — convite com email_sent_at nulo não conta", async () => {
-      const volume = await criarJogador();
-      await criarVolumeDeConvites(volume, 99, { enviadoHaUmaHora: true });
-      // Se estes nulos contassem, o total passaria de 100 e o envio seria barrado.
-      await criarVolumeDeConvites(volume, 5, { enviadoHaUmaHora: false });
-      const alvo = await criarJogador();
-      const convite = await criarConvite(alvo, { email: EMAIL });
-      const fetchMock = stubResend();
-
-      const resultado = await enviarConvitePorEmail(convite.token);
-
-      expect(resultado).toEqual({ ok: true });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it("o teto soma os avisos de grupo: 50 + 50 barra o convite de plataforma", async () => {
-      const volume = await criarJogador();
-      await criarVolumeDeConvites(volume, 50, { enviadoHaUmaHora: true });
-      const groupId = (await criarGrupo()).id;
-      await criarVolumeDeAvisosDeGrupo(groupId, volume, 50);
-      const alvo = await criarJogador();
-      const convite = await criarConvite(alvo, { email: EMAIL });
-      const fetchMock = stubResend();
-
-      const resultado = await enviarConvitePorEmail(convite.token);
-
-      expect(resultado).toEqual({ ok: false, motivo: "limite" });
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    // O resumo do fut é o fluxo de MAIOR volume (um fut de 20 gasta 20 de uma
-    // vez). Se ele ficasse fora da soma, o teto voltaria a medir meia realidade
-    // e o convite — que é recuperação de acesso — seria recusado por uma cota
-    // que ele acha livre, ou estouraria de verdade no Resend.
-    it("o teto soma os resumos de fut: 100 carimbos barram o convite", async () => {
-      const fut = await criarFut();
-      const jogadores = [];
-      for (let i = 0; i < 100; i += 1) jogadores.push(await criarJogador());
-      await db.insert(attendances).values(
-        jogadores.map((p) => ({
-          matchDayId: fut.id,
-          playerId: p.id,
-          status: "in" as const,
-          resumoEmailSentAt: sql`now() - interval '1 hour'`,
-        })),
-      );
-      const alvo = await criarJogador();
-      const convite = await criarConvite(alvo, { email: EMAIL });
-      const fetchMock = stubResend();
-
-      const resultado = await enviarConvitePorEmail(convite.token);
-
-      expect(resultado).toEqual({ ok: false, motivo: "limite" });
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it("carimbo de resumo fora da janela de 24h não conta", async () => {
-      const fut = await criarFut();
-      const jogadores = [];
-      for (let i = 0; i < 100; i += 1) jogadores.push(await criarJogador());
-      await db.insert(attendances).values(
-        jogadores.map((p) => ({
-          matchDayId: fut.id,
-          playerId: p.id,
-          status: "in" as const,
-          resumoEmailSentAt: sql`now() - interval '25 hours'`,
-        })),
-      );
-      const alvo = await criarJogador();
-      const convite = await criarConvite(alvo, { email: EMAIL });
-      const fetchMock = stubResend();
-
-      expect(await enviarConvitePorEmail(convite.token)).toEqual({ ok: true });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-  });
+  // O `describe("teto diário")` que morava aqui saiu junto com o TETO_DIARIO
+  // (ver o cabeçalho de src/lib/freios-de-envio.ts): não há mais soma dos fluxos
+  // nem recusa antes do envio. Estourar a cota do Resend continua coberto, pelo
+  // bloco "resposta do transporte" mais abaixo — é de lá que o "limite" vem
+  // agora.
 
   describe("modelo do email", () => {
     it("jogador sem conta recebe o convite de plataforma", async () => {

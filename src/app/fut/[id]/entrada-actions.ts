@@ -32,6 +32,7 @@ import { ehElegivel } from "@/lib/elegiveis";
 import { formatDate } from "@/lib/format";
 import { notificar } from "@/lib/notifications";
 import { entrarNaLista, recusouEsteFut } from "@/lib/presenca";
+import { agendarDespachoDeEmails } from "@/lib/email-avisos";
 import { agendarDespachoDePush } from "@/lib/push-envio";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { requirePlayer } from "@/lib/require-player";
@@ -110,6 +111,10 @@ export async function convidarParaOFut(matchDayId: number, playerId: number) {
   });
 
   agendarDespachoDePush(true);
+  // Fura o throttle pelo mesmo motivo do push acima: o convite tem prazo, e o
+  // fut pode ser amanhã. Esperar o próximo pageview de alguém logado é apostar
+  // que ele acontece antes da bola rolar.
+  agendarDespachoDeEmails(true);
   revalidateMatchDay(matchDayId);
   redirect(`/fut/${matchDayId}?ok=convite-enviado`);
 }

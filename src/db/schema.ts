@@ -850,6 +850,22 @@ export const users = pgTable("users", {
   // Quando a pessoa abriu as instruções de instalar. Clicar ≠ instalar: sem a
   // flag de cima, o convite volta depois do snooze.
   pwaCtaClicadoEm: timestamp("pwa_cta_clicado_em"),
+  // A porta de saída dos avisos por e-mail (o toggle de /perfil).
+  //
+  // Vale só para os AVISÁVEIS — convite de fut, véspera, votação, pedido de
+  // grupo. Os transacionais a ignoram de propósito, e são dois grupos: o de
+  // segurança (senha trocada, Google vinculado), porque avisar que a credencial
+  // mudou é o ponto, e o de dinheiro (recarga, estorno, compra), porque
+  // comprovante de valor pago não é assunto que se desliga. Quem separa um do
+  // outro é `AVISOS_POR_EMAIL` em src/lib/email-avisos.ts.
+  //
+  // Existe por entregabilidade, não por cota: sem saída, alguém marca como spam,
+  // e a reputação do domínio queimada derruba junto o convite — o único fluxo
+  // sem alternativa para quem perdeu o acesso. Pelo mesmo motivo o header
+  // List-Unsubscribe acompanha todo e-mail que respeita esta coluna.
+  //
+  // Default true: quem já usa o app não pediu para parar de receber nada.
+  avisosPorEmail: boolean("avisos_por_email").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -988,6 +1004,12 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // os ADMINS da plataforma, não para o comprador: o ledger não tem reversão e
   // quem decide o que fazer com o saldo é um humano — ver src/lib/recarga.ts.
   "recarga_estornada",
+  // A compra na loja. Nasceu junto com o e-mail de recibo: até então comprar
+  // era o único gasto de saldo sem aviso nenhum, em canal nenhum — debitava e
+  // redirecionava. O tipo entra aqui, e não como envio direto, porque a compra
+  // merece as três coisas que a caixa de entrada dá de graça: histórico, push
+  // e o e-mail que este enum agora despacha (ver src/lib/email-avisos.ts).
+  "loja_compra",
 ]);
 
 // Uma rodada por fut — a unique em match_day_id é o que garante isso e o que
@@ -1175,6 +1197,18 @@ export const notifications = pgTable(
     // nasce pendente e o despachante marca depois do commit. A migration fez
     // backfill com now() para o histórico não virar rajada no primeiro deploy.
     pushDispatchedAt: timestamp("push_dispatched_at"),
+    // Irmão do de cima, e pelo mesmo desenho: a caixa de entrada é o outbox dos
+    // DOIS canais de aceleração. Quem chama notificar() não sabe de nenhum dos
+    // dois — a linha nasce pendente e cada despachante marca a sua coluna.
+    //
+    // O que separa os dois é quem sai: o push vai para todo aviso, o e-mail só
+    // para os tipos da allowlist de src/lib/email-avisos.ts. Aviso de tipo de
+    // fora (ou de quem não tem endereço) é carimbado no próprio claim, sem
+    // envio — se ficasse pendente, seria candidato eterno a cada varredura.
+    //
+    // A migration fez backfill com now() pela mesma razão que a do push: sem
+    // ele, o primeiro deploy mandaria e-mail de todo aviso já gravado.
+    emailDispatchedAt: timestamp("email_dispatched_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
@@ -1185,6 +1219,9 @@ export const notifications = pgTable(
     index("notifications_push_pendentes_idx")
       .on(t.id)
       .where(sql`push_dispatched_at is null`),
+    index("notifications_email_pendentes_idx")
+      .on(t.id)
+      .where(sql`email_dispatched_at is null`),
   ],
 );
 

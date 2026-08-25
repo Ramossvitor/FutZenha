@@ -1,3 +1,4 @@
+import { agendarDespachoDeEmails } from "@/lib/email-avisos";
 import { validarAssinaturaMP, mercadoPago } from "@/lib/pagamentos/mercadopago";
 import { confirmarPedido, lerPedidoPorGatewayId, registrarEstorno } from "@/lib/recarga";
 import { db } from "@/db";
@@ -73,8 +74,14 @@ export async function POST(request: Request) {
 
   if (consulta.status === "pago") {
     await confirmarPedido(db, pedido.id, consulta.bruto);
+    // O comprovante sai daqui, e não do próximo pageview: quem pagou pode ter
+    // fechado a aba, e é justamente para essa pessoa que o e-mail existe. Vale
+    // para o estorno pela mesma razão do outro lado — o admin que precisa
+    // resolver na mão pode não abrir o app hoje.
+    agendarDespachoDeEmails(true);
   } else if (consulta.status === "estornado") {
     await registrarEstorno(db, pedido.id, consulta.bruto);
+    agendarDespachoDeEmails(true);
   } else if (consulta.status === "expirado") {
     await db
       .update(zenhaPedidos)

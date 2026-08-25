@@ -260,6 +260,13 @@
       "when": 1787612415846,
       "tag": "0036_a_recarga",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787659772851,
+      "tag": "0037_avisos_por_email",
+      "breakpoints": true
     }
   ]
 }

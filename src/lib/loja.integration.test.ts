@@ -16,6 +16,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   lojaItens,
+  notifications,
   zenhaCarteiras,
   zenhaConfig,
   zenhaEquipados,
@@ -774,5 +775,81 @@ describe("getVitrine e getInventario", () => {
     expect(inventario).toHaveLength(1);
     expect(inventario[0].item.ativo).toBe(false);
     await conferirFecho(jogador);
+  });
+});
+
+// O recibo da compra. Comprar era o único gasto de saldo sem aviso nenhum — a
+// linha em `notifications` dá os três canais de uma vez (caixa de entrada, push
+// e o e-mail de src/lib/email-avisos.ts).
+describe("comprar avisa quem comprou", () => {
+  async function avisosDe(jogador: Player) {
+    return db
+      .select()
+      .from(notifications)
+      .where(
+        and(eq(notifications.playerId, jogador.id), eq(notifications.type, "loja_compra")),
+      );
+  }
+
+  it("grava o recibo com preço e saldo que sobrou", async () => {
+    const jogador = await jogadorComSaldo(1000);
+    const badge = await criarBadge("Dono da bola", 250);
+
+    await comprar(jogador.id, badge.id);
+
+    const [aviso] = await avisosDe(jogador);
+    expect(aviso.title).toBe("Você comprou Dono da bola");
+    expect(aviso.body).toContain("250 zenhas");
+    expect(aviso.body).toContain("750");
+    expect(aviso.href).toBe("/perfil/inventario");
+    // Nasce pendente nos dois canais — é o que enfileira o push e o e-mail.
+    expect(aviso.pushDispatchedAt).toBeNull();
+    expect(aviso.emailDispatchedAt).toBeNull();
+  });
+
+  // Item de graça é decisão legítima do admin, e não passa pelo débito — então
+  // não há saldo lido para contar.
+  it("item de graça ganha recibo sem falar de saldo", async () => {
+    const jogador = await jogadorComSaldo(100);
+    const brinde = await criarBadge("Brinde", 0);
+
+    await comprar(jogador.id, brinde.id);
+
+    const [aviso] = await avisosDe(jogador);
+    expect(aviso.body).toContain("de graça");
+    expect(aviso.body).not.toContain("saldo");
+  });
+
+  // O aviso mora na mesma transação da compra: se ela rola para trás, ele vai
+  // junto. Sem isso, "você comprou" chegaria para quem não comprou nada.
+  it("compra recusada por saldo não deixa recibo", async () => {
+    const jogador = await jogadorComSaldo(10);
+    const badge = await criarBadge("Dono da bola", 250);
+
+    expect(await comprar(jogador.id, badge.id)).toBe("sem-saldo");
+    expect(await avisosDe(jogador)).toHaveLength(0);
+  });
+
+  it("segundo clique no mesmo badge não gera segundo recibo", async () => {
+    const jogador = await jogadorComSaldo(1000);
+    const badge = await criarBadge("Dono da bola", 250);
+
+    await comprar(jogador.id, badge.id);
+    expect(await comprar(jogador.id, badge.id)).toBe("ja-possui");
+
+    expect(await avisosDe(jogador)).toHaveLength(1);
+  });
+
+  // O consumível é comprável várias vezes de propósito, e a dedupeKey usa o id
+  // do INVENTÁRIO justamente por isso: uma chave por (jogador, item) faria a
+  // segunda compra ser engolida pela unique como se fosse repetição.
+  it("comprar o consumível duas vezes gera dois recibos", async () => {
+    const jogador = await jogadorComSaldo(10_000);
+    const item = await garantirMultiplicador(120);
+
+    await comprar(jogador.id, item.id);
+    await comprar(jogador.id, item.id);
+
+    expect(await avisosDe(jogador)).toHaveLength(2);
   });
 });

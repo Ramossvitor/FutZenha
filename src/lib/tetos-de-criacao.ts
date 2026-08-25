@@ -16,7 +16,7 @@
 // Sem tabela nova, pelo mesmo princípio de ./freios-de-envio: a linha de domínio
 // já registra quem criou e quando. São três `count` indexados
 // (`*_criador_idx`), com a mesma forma `now() - make_interval(...)` que
-// `tetoDiarioAtingido` usa.
+// `enviadosPelaAgendaNoDia` usa.
 //
 // Os números são folgados de propósito. Não é cota de uso, é teto de sanidade:
 // quem organiza de verdade marca um a três futs por semana, e nenhum destes

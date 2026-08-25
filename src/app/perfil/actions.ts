@@ -9,6 +9,7 @@ import { ratingReports, ratingRounds, ratings, users } from "@/db/schema";
 import { createSessionToken } from "@/lib/auth";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { parseEmailDeContato } from "@/lib/email-contato";
+import { agendarAvisoDeSenhaAlterada } from "@/lib/email-seguranca";
 import {
   MOVIMENTO_COOKIE,
   MOVIMENTO_COOKIE_OPTIONS,
@@ -182,10 +183,35 @@ export async function changePassword(
     .set({ passwordHash: await hashPassword(newPassword), tokenVersion })
     .where(eq(users.id, user.id));
 
+  // Depois da troca, e por `after()`: o e-mail não pode atrasar nem derrubar a
+  // resposta de quem acabou de mexer na própria credencial. O horário é o do
+  // FATO, capturado aqui — não o de quando o envio rodar.
+  agendarAvisoDeSenhaAlterada(user.id, new Date());
+
   // token_version novo derruba as outras sessões; reemite o próprio cookie na
   // mesma action, senão este usuário se desloga sozinho no próximo request.
   await setSessionCookie(await createSessionToken({ sub: user.id, v: tokenVersion }));
   return { success: true };
+}
+
+/**
+ * Liga ou desliga os avisos por e-mail desta conta.
+ *
+ * `ligado` chega pelo `.bind` — corpo do POST, portanto endereço de cliente —,
+ * mas aqui isso não pede saneamento como em `definirMovimento`: o valor é um
+ * boolean e o alvo é sempre a PRÓPRIA conta da sessão, nunca um id vindo de
+ * fora. O pior que um POST forjado consegue é mexer no próprio toggle.
+ *
+ * Não mexe em `token_version`: preferência não é credencial, e derrubar as
+ * sessões de alguém por desligar um e-mail seria uma surpresa e tanto.
+ */
+export async function definirAvisosPorEmail(ligado: boolean) {
+  const session = await requirePlayer();
+  await db
+    .update(users)
+    .set({ avisosPorEmail: ligado })
+    .where(eq(users.id, session.userId));
+  revalidatePath("/perfil");
 }
 
 /**

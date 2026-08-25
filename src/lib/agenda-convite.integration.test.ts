@@ -27,11 +27,7 @@ import { criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
 import { esperaRedirect } from "@/test/navigation-fake";
 import { flushAfter } from "@/test/after-flush";
 import { payloadDoEnvio, stubResend } from "@/test/resend-fake";
-import {
-  TETO_AGENDA_DIA,
-  TETO_AGENDA_POR_JOGADOR_DIA,
-  TETO_DIARIO,
-} from "@/lib/freios-de-envio";
+import { TETO_AGENDA_DIA, TETO_AGENDA_POR_JOGADOR_DIA } from "@/lib/freios-de-envio";
 
 const EMAIL = "jogador@example.com";
 const FUT_COM_HORA = { date: "2026-08-22", startTime: "20:00:00" };
@@ -579,8 +575,5 @@ describe("freio do e-mail de agenda", () => {
     await flushAfter();
 
     expect(fetchMock).not.toHaveBeenCalled();
-    // E a fatia que sobrou é justamente a que o convite/redefinição usa: o teto
-    // da agenda é menor que o da instalação, então ainda há margem lá.
-    expect(TETO_AGENDA_DIA).toBeLessThan(TETO_DIARIO);
   });
 });

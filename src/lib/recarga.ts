@@ -292,6 +292,9 @@ async function confirmarPedidoCom(
       id: zenhaPedidos.id,
       playerId: zenhaPedidos.playerId,
       zenhas: zenhaPedidos.zenhas,
+      // Só para o aviso: é o valor que sai da conta de alguém, e um comprovante
+      // que não diz quanto foi pago não é comprovante.
+      precoCentavos: zenhaPedidos.precoCentavos,
     });
   if (!pedido) return false;
 
@@ -309,12 +312,18 @@ async function confirmarPedidoCom(
   // O comprador pode ter fechado a aba antes de o Pix cair — o aviso é o que
   // fecha o ciclo para ele. Dedupe pela mesma chave do ledger: reconfirmação
   // impossível, mas a caixa de entrada não depende disso.
+  //
+  // O texto diz o VALOR e não "toque para ver": este é um dos tipos que também
+  // sai por e-mail (ver AVISOS_POR_EMAIL em ./email-avisos), e lá o mesmo `body`
+  // vai debaixo de um botão "Ver o extrato" — pedir um toque seria falar de um
+  // gesto que aquele canal não tem. Quem chegar por qualquer um dos três já tem
+  // o caminho na frente; o que só o texto pode dar é quanto foi pago.
   await notificar(exec, [
     {
       playerId: pedido.playerId,
       type: "recarga_confirmada",
       title: `Suas ${pedido.zenhas} zenhas chegaram`,
-      body: "O Pix caiu e o saldo já subiu. Toque para ver o extrato.",
+      body: `O Pix de ${formatarReais(pedido.precoCentavos)} caiu e o saldo já subiu.`,
       href: "/zenhas",
       dedupeKey: `recarga:pedido:${pedido.id}`,
     },

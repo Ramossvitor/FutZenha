@@ -17,6 +17,7 @@ import { getGrupoAtual } from "@/lib/grupo-atual";
 import { listarGruposDoSeletor } from "@/lib/grupos";
 import { getMovimento } from "@/lib/movimento";
 import { contarNaoLidas } from "@/lib/notifications";
+import { agendarDespachoDeEmails } from "@/lib/email-avisos";
 import { agendarRetomadaDeResumos } from "@/lib/email-resumo";
 import { agendarProcessamento } from "@/lib/pendencias";
 import { agendarDespachoDePush } from "@/lib/push-envio";
@@ -114,6 +115,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     // bastaria — ele roda 1×/dia, e um fut encerrado de manhã esperaria quase
     // 24h, encostando no fim da janela em que a retomada ainda vale.
     agendarRetomadaDeResumos();
+    // Os avisos que também saem por e-mail. Gatilho principal do despacho, e não
+    // rede de segurança: o cron roda 1×/dia, e um convite para o fut de amanhã
+    // que esperasse até lá chegaria depois da bola rolar. Throttle de 60s por
+    // instância, como o push — e, como ele, as actions sensíveis a tempo furam o
+    // throttle com agendarDespachoDeEmails(true).
+    agendarDespachoDeEmails();
   }
 
   return (

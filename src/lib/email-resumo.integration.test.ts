@@ -278,25 +278,13 @@ describe("o ledger do resumo", () => {
     expect(segundo).not.toHaveBeenCalled();
   });
 
-  it("o lote que não cabe na cota da instalação não sai — nenhum e-mail, não metade", async () => {
-    const { fut, admin, timeA } = await montarFutComPlacar();
-    // Enche com AGENDA, não com resumo: assim quem barra é o TETO_DIARIO, e não
-    // o sub-teto do teste abaixo. A agenda soma `agenda_emails_sent`, então uma
-    // linha só carrega os 95 (ver enviadosPelaAgendaNoDia).
-    await ocuparCotaDeAgenda(95);
-    const fetchMock = stubResend();
-
-    await encerrar(fut, admin);
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(await carimboDe(fut, timeA.jogadores[0])).toBeNull();
-  });
-
-  // O sub-teto do resumo, que é o que devolve ao convite a folga perdida quando
-  // o TETO_DIARIO subiu para 100. Os números são escolhidos para que só ele
-  // possa ter barrado: 58 + 6 passa longe dos 100 da instalação e estoura os 60
-  // do resumo.
-  it("o sub-teto do resumo barra o lote antes de a cota da instalação acabar", async () => {
+  // O caso do teto da instalação saiu junto com o TETO_DIARIO (ver o cabeçalho
+  // de src/lib/freios-de-envio.ts). Sobrou o teto deste fluxo, que é o único que
+  // o resumo confere — e o que ele conta agora é só o próprio gasto.
+  //
+  // Tudo-ou-nada é a parte que importa aqui: 58 + 6 estoura os 60, e o certo é
+  // NENHUM e-mail deste fut, não metade do elenco.
+  it("o lote que não cabe na cota do resumo não sai — nenhum e-mail, não metade", async () => {
     const { fut, admin, timeA } = await montarFutComPlacar();
     await ocuparCotaDeResumo(58);
     const fetchMock = stubResend();
@@ -307,9 +295,22 @@ describe("o ledger do resumo", () => {
     expect(await carimboDe(fut, timeA.jogadores[0])).toBeNull();
   });
 
-  // O contrapeso do teste acima: logo abaixo da linha, o mesmo lote sai. Sem
-  // ele, um sub-teto de zero passaria nos dois.
-  it("logo abaixo do sub-teto o lote sai inteiro", async () => {
+  // O e-mail de agenda gasta a mesma cota do Resend e tem teto PRÓPRIO: ele não
+  // entra mais em conta nenhuma do resumo. Sem esta asserção, um resumo que
+  // voltasse a somar fluxos alheios passaria despercebido.
+  it("o gasto da agenda não conta contra a cota do resumo", async () => {
+    const { fut, admin } = await montarFutComPlacar();
+    await ocuparCotaDeAgenda(95);
+    const fetchMock = stubResend();
+
+    await encerrar(fut, admin);
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  // O contrapeso do teste de cima: logo abaixo da linha, o mesmo lote sai. Sem
+  // ele, um teto de zero passaria nos dois.
+  it("logo abaixo do teto o lote sai inteiro", async () => {
     const { fut, admin } = await montarFutComPlacar();
     // 54 + 6 = 60, que é o teto e não o ultrapassa.
     await ocuparCotaDeResumo(54);

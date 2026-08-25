@@ -32,10 +32,26 @@ export function emailDeDestino() {
  * concordar exatamente. Divergir uma faz a página esconder o campo enquanto a
  * action ainda o exige, e a pessoa recebe "Informe seu e-mail." num formulário
  * sem onde digitar, sem saída a não ser um convite novo.
+ *
+ * Há um chamador com um motivo a mais para não escrever o `??` à mão:
+ * `vincularAConta` em src/lib/google-login.ts precisa do destino ANTERIOR ao
+ * vínculo, e aquele módulo é proibido por teste estrutural de sequer MENCIONAR
+ * `contact_email` (ver email-contato-nao-autentica.test.ts) — a coluna não é
+ * chave de autorização, e a proibição existe para que ninguém a transforme em
+ * uma. Pedindo o endereço a esta função, ele obtém o destino sem nomear a
+ * coluna, e a precedência continua definida num lugar só.
  */
+export function enderecoDeDestino(conta: {
+  email: string | null;
+  contactEmail: string | null;
+}): string | null {
+  return conta.email ?? conta.contactEmail;
+}
+
+/** Tem para onde mandar? A mesma precedência, respondida como sim/não. */
 export function temEmailDeDestino(conta: {
   email: string | null;
   contactEmail: string | null;
 }): boolean {
-  return conta.email !== null || conta.contactEmail !== null;
+  return enderecoDeDestino(conta) !== null;
 }

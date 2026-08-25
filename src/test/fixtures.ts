@@ -127,27 +127,6 @@ export async function confirmarPresenca(
 }
 
 /**
- * Volume para o teto diário, inserido DIRETO — nunca via gerarConvite, que
- * apaga a linha anterior do jogador e subcontaria o total.
- */
-export async function criarVolumeDeConvites(
-  jogador: Player,
-  quantos: number,
-  opcoes: { enviadoHaUmaHora: boolean },
-): Promise<void> {
-  const lote = randomBytes(4).toString("hex");
-  await db.insert(invites).values(
-    Array.from({ length: quantos }, (_, i) => ({
-      token: randomBytes(32).toString("base64url"),
-      playerId: jogador.id,
-      email: `volume-${lote}-${i}@example.com`,
-      expiresAt: sql`now() + interval '7 days'`,
-      emailSentAt: opcoes.enviadoHaUmaHora ? sql`now() - interval '60 minutes'` : null,
-    })),
-  );
-}
-
-/**
  * Convite de plataforma. `emailEnviadoHaMinutos` carimba email_sent_at
  * retroativo (relógio do banco) para os testes de rate limit; `expiradoHa`
  * positivo cria convite vencido.
