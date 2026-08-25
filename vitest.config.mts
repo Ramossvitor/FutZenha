@@ -94,6 +94,10 @@ export default defineConfig({
             // custariam 2,5s de setTimeout real por teste, contra o testTimeout
             // de 5s, e o que estaria sendo medido era o relógio.
             RESUMO_ESPERA_MS: "0",
+            // A irmã do lote de avisos (ver email-avisos.ts), zerada pelo mesmo
+            // motivo: a votação de exclusão manda para o elenco inteiro, e a
+            // pausa de 500ms por envio mediria o relógio, não o despacho.
+            AVISOS_ESPERA_MS: "0",
           },
         },
       },

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  emailDeAviso,
   emailDeAvisoDeGrupo,
   emailDeConvitePlataforma,
   emailDeEventoDeAgenda,
+  emailDeGoogleVinculado,
   emailDeResetDeAcesso,
   emailDeResumoDoFut,
+  emailDeSenhaAlterada,
   escaparHtml,
   type TipoDeEventoDeAgenda,
 } from "./email-modelos";
@@ -429,5 +432,118 @@ describe("emailDeResumoDoFut", () => {
     const email = emailDeResumoDoFut({ ...dados, resumo: vazio });
     expect(email.html).toContain("Sem gols lançados");
     expect(email.texto).not.toContain("Artilharia do dia");
+  });
+});
+
+describe("emailDeAviso", () => {
+  const dados = {
+    nome: "Zé <script>",
+    title: "Te chamaram para um fut",
+    body: "Ana chamou você para o fut de 24/08, em Quadra do Zé & Cia.",
+    href: "/fut/12",
+    rotuloDoBotao: "Ver o convite",
+    rodape: "Você recebeu porque alguém chamou você para um fut.",
+  };
+
+  it("o assunto é o título do aviso", () => {
+    expect(emailDeAviso(dados).assunto).toBe("Te chamaram para um fut");
+  });
+
+  it("html e texto levam o link do aviso", () => {
+    const email = emailDeAviso(dados);
+    expect(email.html).toContain("/fut/12");
+    expect(email.texto).toContain("/fut/12");
+  });
+
+  // O corpo carrega nome de jogador e local de fut — texto livre dos dois lados.
+  it("escapa no html e não escapa no texto", () => {
+    const email = emailDeAviso(dados);
+    expect(email.html).toContain("Zé &lt;script&gt;");
+    expect(email.html).not.toContain("<script>");
+    expect(email.html).toContain("Zé &amp; Cia");
+    expect(email.texto).toContain("Zé <script>");
+    expect(email.texto).toContain("Zé & Cia");
+  });
+
+  it("o rodapé recebido é o que sai no e-mail", () => {
+    const email = emailDeAviso(dados);
+    expect(email.html).toContain("Você recebeu porque alguém chamou você para um fut.");
+  });
+
+  it("o rótulo do botão é o que foi pedido", () => {
+    expect(emailDeAviso(dados).html).toContain("Ver o convite");
+  });
+
+  // Aviso que não leva a lugar nenhum não ganha botão nem "se o botão não abrir".
+  it("sem href, sai sem botão", () => {
+    const email = emailDeAviso({ ...dados, href: null });
+    expect(email.html).not.toContain("Ver o convite");
+    expect(email.html).not.toContain("copie e cole");
+    expect(email.texto).not.toContain("http");
+  });
+
+  it("sem body, o e-mail ainda monta", () => {
+    const email = emailDeAviso({ ...dados, body: null });
+    expect(email.html).toContain("Te chamaram para um fut");
+    expect(email.texto).toContain("Te chamaram para um fut");
+  });
+});
+
+describe("emailDeSenhaAlterada", () => {
+  // 21:14 em Brasília (UTC-3) — o Date é construído em UTC de propósito, para o
+  // teste não depender do fuso da máquina que roda a suíte.
+  const quando = new Date(Date.UTC(2026, 7, 25, 0, 14));
+  const dados = { nome: "Zé <script>", quando };
+
+  it("diz o horário do fato, com o fuso escrito", () => {
+    const email = emailDeSenhaAlterada(dados);
+    expect(email.html).toContain("21:14");
+    expect(email.html).toContain("24/08/2026");
+    expect(email.html).toContain("horário de Brasília");
+  });
+
+  it("avisa que as outras sessões caíram", () => {
+    expect(emailDeSenhaAlterada(dados).texto).toContain("encerradas");
+  });
+
+  it("diz o que fazer quando não foi você", () => {
+    expect(emailDeSenhaAlterada(dados).texto).toContain("Se não foi");
+  });
+
+  // Ver o bloco de segurança em email-modelos.ts: um botão aqui ensinaria o
+  // reflexo que o phishing explora.
+  it("não tem botão nem link", () => {
+    const email = emailDeSenhaAlterada(dados);
+    expect(email.html).not.toContain("<a href=");
+    expect(email.texto).not.toContain("http");
+  });
+
+  it("escapa no html e não escapa no texto", () => {
+    const email = emailDeSenhaAlterada(dados);
+    expect(email.html).toContain("Zé &lt;script&gt;");
+    expect(email.texto).toContain("Zé <script>");
+  });
+});
+
+describe("emailDeGoogleVinculado", () => {
+  const quando = new Date(Date.UTC(2026, 7, 25, 0, 14));
+  const dados = { nome: "Zé", emailVinculado: "ze+fut@gmail.com", quando };
+
+  it("diz qual endereço passou a entrar na conta", () => {
+    const email = emailDeGoogleVinculado(dados);
+    expect(email.html).toContain("ze+fut@gmail.com");
+    expect(email.texto).toContain("ze+fut@gmail.com");
+  });
+
+  it("diz o horário do fato e que as outras sessões caíram", () => {
+    const email = emailDeGoogleVinculado(dados);
+    expect(email.html).toContain("21:14");
+    expect(email.texto).toContain("encerradas");
+  });
+
+  it("não tem botão nem link", () => {
+    const email = emailDeGoogleVinculado(dados);
+    expect(email.html).not.toContain("<a href=");
+    expect(email.texto).not.toContain("http");
   });
 });

@@ -3,7 +3,6 @@ import {
   motivoDeBloqueioDeAgenda,
   TETO_AGENDA_DIA,
   TETO_AGENDA_POR_JOGADOR_DIA,
-  TETO_DIARIO,
   type ContagensDeAgenda,
 } from "./freios-de-envio";
 
@@ -56,15 +55,3 @@ describe("motivoDeBloqueioDeAgenda", () => {
   });
 });
 
-// A asserção que dá sentido ao sub-teto: se ele deixar de ser menor que o teto
-// geral, a agenda volta a poder consumir a cota inteira e o link de redefinição
-// de acesso fica sem margem. É o invariante do módulo, não um detalhe.
-describe("o sub-teto protege o canal de recuperação de conta", () => {
-  it("a agenda nunca pode gastar a cota inteira da instalação", () => {
-    expect(TETO_AGENDA_DIA).toBeLessThan(TETO_DIARIO);
-  });
-
-  it("sobra margem de verdade para convite e redefinição de acesso", () => {
-    expect(TETO_DIARIO - TETO_AGENDA_DIA).toBeGreaterThanOrEqual(50);
-  });
-});

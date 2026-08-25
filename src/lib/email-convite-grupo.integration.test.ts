@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/db";
 import { groupInvitations, users, type Player } from "@/db/schema";
 import { reenviarAvisoDeGrupo } from "@/lib/email-convite";
-import { criarConta, criarConvite, criarJogador, criarVolumeDeConvites } from "@/test/fixtures";
+import { criarConta, criarConvite, criarJogador } from "@/test/fixtures";
 import {
   criarConviteDeGrupo,
   criarGrupo,
@@ -378,19 +378,9 @@ describe("reenviarAvisoDeGrupo", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it("o teto diário combinado também barra o aviso de grupo", async () => {
-      const volume = await criarJogador();
-      await criarVolumeDeConvites(volume, 100, { enviadoHaUmaHora: true });
-      const groupId = (await criarGrupo()).id;
-      const convidado = await criarConvidado();
-      const convite = await criarConviteDeGrupo(groupId, convidado);
-      const fetchMock = stubResend();
-
-      const resultado = await reenviarAvisoDeGrupo(groupId, convite.id);
-
-      expect(resultado).toEqual({ ok: false, motivo: "limite" });
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
+    // O caso do teto diário combinado saiu com o TETO_DIARIO (ver o cabeçalho de
+    // src/lib/freios-de-envio.ts). O freio deste fluxo que sobrou é o de cima,
+    // por convidante; a cota do Resend chega pelo transporte, logo abaixo.
   });
 
   describe("resposta do transporte", () => {

@@ -1,6 +1,6 @@
 import "server-only";
 import { after } from "next/server";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   attendances,
@@ -12,11 +12,10 @@ import {
   ratingRounds,
   users,
 } from "@/db/schema";
-import { contagensDoDia } from "./contagem-de-envios";
 import { emailDeDestino } from "./email-destino";
 import { emailConfigurado, enviarEmail } from "./email-envio";
 import { emailDeResumoDoFut } from "./email-modelos";
-import { TETO_DIARIO, TETO_RESUMO_DIA } from "./freios-de-envio";
+import { JANELA_DIARIA_HORAS, TETO_RESUMO_DIA } from "./freios-de-envio";
 import { PRAZO_AVALIACAO_HORAS } from "./regras";
 import { getResumoDoFut } from "./resumo-do-fut";
 
@@ -65,6 +64,38 @@ function esperaEntreEnvios(): number {
 function esperar(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Quantos e-mails de resumo a instalação mandou nas últimas 24h — o número que
+ * `TETO_RESUMO_DIA` lê.
+ *
+ * Mora aqui, junto do único fluxo que a consome, como `enviadosPelaAgendaNoDia`
+ * mora em ./agenda-convite. Foi um módulo compartilhado enquanto existiu um teto
+ * geral somando todos os fluxos; sem ele, cada fluxo conta o próprio (ver o
+ * cabeçalho de ./freios-de-envio).
+ *
+ * Aqui a contagem de LINHAS está certa, ao contrário da agenda. A agenda
+ * precisou de um contador (`agenda_emails_sent`) porque reenvia no mesmo par
+ * (fut, jogador) e o carimbo é sobrescrito: dez envios viravam 1. O resumo sai
+ * uma vez por par e nunca mais — o `resumo_email_sent_at is null` do envio é o
+ * que garante isso —, então linha carimbada e e-mail enviado são a mesma coisa.
+ * Ver o cabeçalho de drizzle/0029_resumo_do_fut.sql.
+ *
+ * Sem `export`, ao contrário da irmã da agenda: aquela é lida por quem decide o
+ * bloqueio noutro módulo, esta só pelo envio logo abaixo.
+ */
+async function enviadosPeloResumoNoDia(): Promise<number> {
+  const [linha] = await db
+    .select({ total: count() })
+    .from(attendances)
+    .where(
+      gt(
+        attendances.resumoEmailSentAt,
+        sql`now() - make_interval(hours => ${JANELA_DIARIA_HORAS})`,
+      ),
+    );
+  return linha?.total ?? 0;
 }
 
 /** Best-effort, como os carimbos irmãos: o e-mail já saiu, e falhar aqui custa
@@ -154,21 +185,14 @@ async function enviarResumoDoFut(matchDayId: number): Promise<void> {
 
   // Tudo-ou-nada, e não "manda o que couber": metade do elenco com o placar na
   // caixa e a outra metade sem é o estado que ninguém consegue explicar no
-  // grupo. Por isso os dois tetos olham o LOTE INTEIRO, e não cada envio.
+  // grupo. Por isso o teto olha o LOTE INTEIRO, e não cada envio.
   //
-  // São dois porque protegem coisas diferentes. O da instalação é o limite do
-  // Resend. O do resumo é a linha que impede o fluxo de maior volume do produto
-  // de comer sozinho a cota do convite/redefinição de acesso — o único fluxo sem
-  // alternativa. Ver TETO_RESUMO_DIA em ./freios-de-envio.
-  const gasto = await contagensDoDia();
-  const teto =
-    gasto.total + comEndereco.length > TETO_DIARIO
-      ? "da instalação"
-      : gasto.resumo + comEndereco.length > TETO_RESUMO_DIA
-        ? "do resumo"
-        : null;
-  if (teto !== null) {
-    console.warn(`[email-resumo] o lote não cabe na cota ${teto} — nenhum e-mail deste fut:`, {
+  // Era conferido contra dois tetos — o da instalação e o do resumo. O geral
+  // saiu (ver o cabeçalho de ./freios-de-envio); ficou o deste fluxo, que é o de
+  // maior volume do produto e o único que precisa de um limite próprio.
+  const gasto = await enviadosPeloResumoNoDia();
+  if (gasto + comEndereco.length > TETO_RESUMO_DIA) {
+    console.warn("[email-resumo] o lote não cabe na cota do resumo — nenhum e-mail deste fut:", {
       matchDayId,
       destinos: comEndereco.length,
       gasto,

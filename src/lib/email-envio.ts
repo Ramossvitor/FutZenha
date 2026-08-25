@@ -20,6 +20,10 @@
 // o projeto recusa isso para continuar custando R$ 0 (ver README) — o fallback
 // do WhatsApp já existe e sempre funciona.
 
+// Relativo e sem `server-only` do outro lado — o mesmo motivo que deixa este
+// arquivo rodar no vitest sem config nem alias.
+import { siteUrl } from "./site-url";
+
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 // Segura a lentidão do outro lado sem prender a action para sempre; o pior caso
@@ -144,9 +148,22 @@ function retryAfterDaResposta(resposta: Response): number | null {
  * Envia um email. **Nunca lança**: falha de email não pode derrubar a action que
  * a causou — o convite já está criado e o link continua entregável na mão. Quem
  * chama decide o que fazer com o motivo.
+ *
+ * `listUnsubscribe` é o caminho relativo da página que desliga aquele tipo de
+ * e-mail (hoje `/perfil`). Vira o header `List-Unsubscribe`, que o Gmail lê para
+ * mostrar o "cancelar inscrição" ao lado do remetente. Só quem PODE ser
+ * desligado o passa: anunciar descadastro num comprovante de pagamento que
+ * continuará saindo é pior do que não anunciar nenhum.
+ *
+ * Sem `List-Unsubscribe-Post` (o one-click do RFC 8058), de propósito: ele exige
+ * uma rota que desliga o aviso sem sessão, portanto com token no link — e um
+ * link desses é aberto sozinho por prefetcher de cliente de e-mail e antivírus
+ * corporativo, que é a razão de nenhuma rota deste projeto executar ação no GET
+ * (ver o comentário do e-mail de agenda em ./email-modelos). O header simples
+ * leva à página, onde a pessoa desliga logada e de propósito.
  */
 export async function enviarEmail(
-  msg: { para: string; anexos?: AnexoDeEmail[] } & EmailPronto,
+  msg: { para: string; anexos?: AnexoDeEmail[]; listUnsubscribe?: string } & EmailPronto,
 ): Promise<ResultadoEnvio> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, motivo: "nao-configurado" };
@@ -160,6 +177,11 @@ export async function enviarEmail(
     html: msg.html,
     text: msg.texto,
   };
+  if (msg.listUnsubscribe) {
+    // Os sinais obrigatórios do RFC 2369: URL absoluta e entre sinais de menor
+    // e maior. Sem eles o header é ignorado em silêncio.
+    payload.headers = { "List-Unsubscribe": `<${siteUrl()}${msg.listUnsubscribe}>` };
+  }
   if (msg.anexos && msg.anexos.length > 0) {
     payload.attachments = msg.anexos.map((anexo) => ({
       filename: anexo.nomeDoArquivo,

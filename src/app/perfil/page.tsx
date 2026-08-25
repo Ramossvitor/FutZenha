@@ -21,6 +21,7 @@ import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
 import { ChangePasswordForm } from "./change-password-form";
+import { AvisosPorEmailToggle } from "./avisos-por-email-toggle";
 import { EmailDeContatoForm } from "./email-de-contato-form";
 import { MovimentoToggle } from "./movimento-toggle";
 import { PushToggle } from "./push-toggle";
@@ -45,6 +46,7 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
         contactEmail: users.contactEmail,
         googleSub: users.googleSub,
         passwordHash: users.passwordHash,
+        avisosPorEmail: users.avisosPorEmail,
       })
       .from(users)
       .where(eq(users.id, session.userId)),
@@ -186,6 +188,13 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
       {/* Some sozinha quando o aparelho não suporta push — a Section mora
           dentro do componente por isso. */}
       <PushToggle />
+
+      {/* Logo abaixo do push de propósito: os dois são "onde os avisos me
+          alcançam", e quem vem desligar um costuma querer olhar o outro. */}
+      <AvisosPorEmailToggle
+        ligado={conta?.avisosPorEmail ?? false}
+        para={conta?.email ?? conta?.contactEmail ?? null}
+      />
 
       <MovimentoToggle />
 

@@ -3,7 +3,6 @@ import { after } from "next/server";
 import { and, count, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { groupInvitations, groups, invites, players, users } from "@/db/schema";
-import { tetoDiarioAtingido } from "./contagem-de-envios";
 import { mesmoEmail } from "./email";
 import { emailDeDestino } from "./email-destino";
 import { emailConfigurado, enviarEmail } from "./email-envio";
@@ -41,10 +40,13 @@ export type ResultadoEnvioDeConvite =
         | "nao-configurado"
         | "convite-inelegivel"
         | "envio-recente"
+        // A cota do Resend, e só ela: o app não tem mais teto próprio (ver o
+        // cabeçalho de ./freios-de-envio), então isto agora chega SEMPRE do
+        // transporte, nunca de uma conferência nossa antes do envio.
         | "limite"
-        // Separado de "limite" porque a saída de quem leu é outra: o teto da
-        // instalação volta amanhã, o teto de quem convida é do próprio ator e
-        // some sozinho conforme as 24h correm. Dizer "limite diário de e-mails
+        // Separado de "limite" porque a saída de quem leu é outra: a cota do
+        // Resend volta amanhã, o teto de quem convida é do próprio ator e some
+        // sozinho conforme as 24h correm. Dizer "limite diário de e-mails
         // atingido" para o segundo culpa a plataforma por uma conta.
         | "limite-do-convidante"
         | "rajada"
@@ -58,16 +60,15 @@ export type ResultadoEnvioDeConvite =
 // caixa de entrada, quantas vezes quiser — e ainda queima a cota de todo mundo.
 //
 // A janela por destinatário é o que impede encher a caixa de uma pessoa; o teto
-// diário é o que impede espalhar por muitas. A janela vale para os DOIS fluxos
-// daqui — convite de plataforma e aviso de grupo — e sai de `email_sent_at`
-// (invites e group_invitations), sem tabela nova. O teto diário é mais largo que
-// este arquivo: ele soma os QUATRO fluxos da instalação, porque a cota que ele
-// protege é a do Resend, e ela não distingue quem gastou.
-// Os números moram em ./freios-de-envio, com o porquê de cada um — inclusive os
-// sub-tetos que separam conveniência (agenda) e volume (resumo do fut) de
-// recuperação de acesso (este arquivo). A soma dos fluxos mora em
-// ./contagem-de-envios, que saiu daqui quando o resumo virou o segundo leitor
-// dela. Aqui ficou só o uso.
+// por convidante é o que impede espalhar por muitas. A janela vale para os DOIS
+// fluxos daqui — convite de plataforma e aviso de grupo — e sai de
+// `email_sent_at` (invites e group_invitations), sem tabela nova.
+//
+// Havia um terceiro, o teto diário da instalação, que somava todos os fluxos e
+// recusava o envio ao encostar na cota do Resend. Ele saiu: ver o cabeçalho de
+// ./freios-de-envio para o que o derrubou. Estourar a cota agora volta pelo
+// transporte como `motivo: "limite"`, com o mesmo banner de copiar o link.
+// Os números moram em ./freios-de-envio, com o porquê de cada um.
 
 /**
  * Esta caixa de entrada já recebeu email nosso na janela por destinatário?
@@ -137,14 +138,11 @@ function traduzirFalhaDeTransporte(
   return { ok: false, motivo: "falha" };
 }
 
-async function motivoDeBloqueio(para: string): Promise<"envio-recente" | "limite" | null> {
-  if (await destinatarioRecebeuHaPouco(para)) return "envio-recente";
-
-  // Subcontagem conhecida: gerarConvite apaga a linha antiga antes de criar a
-  // nova, então um reenvio seguido de "gerar convite novo" some do total. Serve
-  // ao propósito mesmo assim — o caminho que precisa de teto (criar jogador
-  // atrás de jogador) deixa cada linha para trás.
-  return (await tetoDiarioAtingido()) ? "limite" : null;
+async function motivoDeBloqueio(para: string): Promise<"envio-recente" | null> {
+  // Sobrou um freio só, e é o que sempre importou: a janela por caixa de
+  // entrada. O teto da instalação que ficava aqui saiu junto com a soma que o
+  // alimentava — ver o cabeçalho de ./freios-de-envio.
+  return (await destinatarioRecebeuHaPouco(para)) ? "envio-recente" : null;
 }
 
 export async function enviarConvitePorEmail(token: string): Promise<ResultadoEnvioDeConvite> {
@@ -302,8 +300,6 @@ async function enviarAvisoDeGrupo(
       return { ok: false, motivo: "limite-do-convidante" };
     }
   }
-
-  if (await tetoDiarioAtingido()) return { ok: false, motivo: "limite" };
 
   const resultado = await enviarEmail({
     para: convite.para,

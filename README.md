@@ -114,7 +114,7 @@ Enquanto a votação corre, quem propôs vê só **quantos** faltam votar — n�
 - **Desativar conta**: derruba a sessão do jogador no próximo acesso (a conta some sem apagar histórico; desativar o *jogador* é outra coisa — tira das listas mas a conta continua entrando).
 - **Meu perfil** (`/perfil`): nota atual, estatísticas próprias (só futs encerrados), as estrelas recebidas em cada rodada e troca de senha.
 - Cadastrar um jogador **já gera o convite** — ninguém nasce sem acesso a caminho. Com e-mail preenchido e `RESEND_API_KEY` configurada, o convite **já sai por e-mail** (e dá para reenviar); sem isso, o link segue saindo no WhatsApp como sempre. Quem já tem conta recebe o texto de **redefinir acesso**, não o de boas-vindas — é o mesmo botão de "Resetar acesso".
-- **Freio do envio**: o mesmo endereço só recebe convite de 10 em 10 minutos, e o app para no 90º e-mail do dia (a cota do Resend é 100). Não é economia: qualquer jogador logado marca um fut e vira admin dele, e daí alcançaria o cadastro com e-mail à escolha — sem freio, uma conta sozinha mandaria e-mail do nosso domínio para qualquer caixa de entrada e ainda queimaria a cota de todo mundo. Barrado, o banner manda copiar o link e mandar no WhatsApp.
+- **Freio do envio**: o mesmo endereço só recebe convite de 10 em 10 minutos, e quem convida para um grupo para no 40º aviso do dia. Não é economia: qualquer jogador logado marca um fut e vira admin dele, e daí alcançaria o cadastro com e-mail à escolha — sem freio, uma conta sozinha mandaria e-mail do nosso domínio para qualquer caixa de entrada. Os dois fluxos de lote têm teto próprio (40/dia a agenda, 60/dia o resumo do fut), porque mandam para o elenco inteiro de uma vez. **Não existe teto geral somando tudo**: existiu, e saiu porque a soma só funcionava enquanto todo fluxo soubesse contar os próprios envios — o dos avisos da caixa de entrada não sabia, e sozinho recusava o convite num dia de fut encerrado (o porquê está no cabeçalho de `src/lib/freios-de-envio.ts`). A cota do Resend continua sendo 100/dia; estourá-la agora volta como recusa dele, com o mesmo banner de copiar o link e mandar no WhatsApp.
 - Logins de exemplo do seed: quatro contas com `senha123`, impressas no console (a primeira é o admin da plataforma) + um convite pendente.
 - **Admin da plataforma**: `PLATFORM_ADMIN_USERNAMES` (lista por vírgula) vale como chave-mestra em runtime **e** liga a flag `users.is_platform_admin` a cada build. É o que impede ficar trancado do lado de fora de um banco sem shell. O build também **cria a conta** de quem está na lista e ainda não existe, imprimindo o link para definir a senha — é assim que nasce o primeiro admin de uma instalação nova. Esses usernames ficam **reservados**: ninguém consegue escolhê-los ao resgatar um convite, senão bastaria digitar o nome certo para sair admin.
 - **Promover e rebaixar**: em `/admin/jogadores` dá para tornar outra conta admin da plataforma, ou tirar o papel. Mexer nisso encerra a sessão em curso da pessoa (`token_version + 1`). Ninguém se rebaixa sozinho, e quem está em `PLATFORM_ADMIN_USERNAMES` continua admin de qualquer jeito — a env var vence o banco.
@@ -182,7 +182,7 @@ Limites esperados do free tier: o Neon dorme após ~5 min sem uso, então a prim
 
 `game_players` é a fonte de verdade de quem jogou: `teams` guarda só o colete do fut. É dela que saem o V/E/D e os "companheiros" da avaliação.
 
-Avaliação: `rating_rounds` (uma por fut) → `rating_round_raters` (o denominador congelado de quem deve avaliar) e `ratings` (`discarded_at` nulo = vale) → `rating_reports`. `skill_history` é **projeção** do replay, reescrita inteira a cada recálculo. `notifications` tem unique em `(player_id, dedupe_key)`, o que torna notificar idempotente.
+Avaliação: `rating_rounds` (uma por fut) → `rating_round_raters` (o denominador congelado de quem deve avaliar) e `ratings` (`discarded_at` nulo = vale) → `rating_reports`. `skill_history` é **projeção** do replay, reescrita inteira a cada recálculo. `notifications` tem unique em `(player_id, dedupe_key)`, o que torna notificar idempotente — e é também o outbox dos dois canais de aceleração, pelas colunas `push_dispatched_at` e `email_dispatched_at` (ver *Avisos: onde cada coisa chega*).
 
 Exclusão por votação: `match_day_deletion_votes` (uma por fut) → `match_day_deletion_voters` (eleitorado congelado + o voto).
 
@@ -193,6 +193,42 @@ Estatísticas são derivadas por query (`src/lib/stats.ts`), contando só futs e
 ### Prazos e o varredor
 
 Prazos são timestamps absolutos gravados na criação, comparados sempre com o `now()` do Postgres. Quem os aplica é `processarPendencias()` (`src/lib/pendencias.ts`), disparado pelo `after()` no layout (no máximo 1× por minuto por instância) e por `GET /api/cron/pendencias` como rede de segurança — protegido por `CRON_SECRET` e agendado no `vercel.json`. É idempotente: cada transição é `UPDATE ... WHERE status = 'open' RETURNING` e o replay recalcula do zero.
+
+### Avisos: onde cada coisa chega
+
+A **caixa de entrada** (`/notificacoes`) é a fonte de verdade e recebe tudo. Os
+outros dois canais são aceleração, e a mesma tabela `notifications` é o outbox
+dos dois: `push_dispatched_at` para o Web Push, `email_dispatched_at` para o
+e-mail. Quem grava o aviso não sabe de nenhum dos dois.
+
+**O que também sai por e-mail** (allowlist em `src/lib/email-avisos.ts` — tipo
+que não está lá fica só no app):
+
+| Aviso | Vai para | Desligável? |
+|---|---|---|
+| Te chamaram para um fut | o convidado | sim |
+| Amanhã tem fut, você não respondeu | quem não respondeu | sim |
+| Votação para excluir um fut | quem jogou | sim |
+| Pediram para entrar no seu grupo | o admin do grupo | sim |
+| Comprovante da recarga (Pix) | quem pagou | não |
+| Recibo da compra na loja | quem comprou | não |
+| Recarga estornada | admins da plataforma | não |
+
+Mais dois que **não** passam pela caixa de entrada, porque existem para alcançar
+quem *não* está no app — a pessoa cuja conta foi tomada: **senha alterada** e
+**conta Google vinculada** (`src/lib/email-seguranca.ts`). Os dois saem sem
+botão e sem link, de propósito: e-mail que avisa de credencial trocada e pede
+clique ensina o reflexo que o phishing explora.
+
+**Desligar**: `/perfil` → *Avisos por e-mail* (`users.avisos_por_email`). Vale só
+para os avisáveis — comprovante de dinheiro e aviso de segurança continuam
+saindo, e por isso só os desligáveis levam o header `List-Unsubscribe`.
+
+O despacho é **at-most-once** (marca antes de enviar, como o push): um crash
+perde aquele lote e nunca duplica — o aviso continua na caixa de entrada, que é
+o que torna a perda aceitável. Roda no `after()` do layout (1× por minuto por
+instância) e no cron; convite de fut e confirmação de Pix furam o throttle,
+porque esperar o próximo pageview é apostar que ele acontece a tempo.
 
 ## Grupos
 

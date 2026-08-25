@@ -6,59 +6,41 @@
 // ./agenda-convite e ./email-convite.
 //
 // ---------------------------------------------------------------------------
-// A decisão de arquitetura que este arquivo carrega
+// O teto geral que existiu aqui, e por que não existe mais
 // ---------------------------------------------------------------------------
 //
-// O free tier do Resend dá 100 e-mails por dia para a instalação inteira, e é
-// isso que o TETO_DIARIO abaixo vale hoje (era 90, com margem, até o resumo do
-// fut chegar — ver o comentário dele). O que faltava era dividir esse teto
-// entre coisas que NÃO valem o mesmo:
+// Havia um `TETO_DIARIO` que somava TODOS os fluxos e recusava o convite ao
+// encostar nos 100 do free tier do Resend. Ele saiu, e o que o derrubou não foi
+// o número: foi a contagem. Somar fluxos exige que cada um saiba contar os
+// PRÓPRIOS envios, e o dos avisos da caixa de entrada não sabia — ele contava
+// linhas de `notifications` carimbadas, e o carimbo cai também nos 19 de 26
+// tipos que nunca viram e-mail. Um dia com dois futs encerrados (~50 linhas
+// cada) zerava sozinho a cota de quem tinha perdido a senha, sem um único
+// e-mail ter saído.
 //
-// - o **link de convite / redefinição de acesso** é recuperação de conta. Sem
-//   ele, quem perdeu a senha não entra — não há outro caminho;
-// - o **e-mail de agenda** é conveniência. Sem ele, a pessoa abre o app e vê o
-//   fut, como sempre viu;
-// - o **resumo do fut** é notícia, e é o de maior volume: um fut de 20 pessoas
-//   gasta 20 de uma vez. Sem ele, o placar continua na página do fut.
+// Corrigir aquela soma era fácil; manter uma soma correta para sempre, com cada
+// fluxo novo tendo de se declarar nela sob pena de recusar o convite por engano,
+// não é. Então o teto geral acabou. O que ficou:
 //
-// Antes desta divisão, um vetor de conveniência derrubava o canal de
-// recuperação: `setMyAttendance` alternando "Vou"/"Fora" mandava dois e-mails
-// por ciclo, ilimitado, e ~50 ciclos zeravam a cota do dia para todo mundo.
-// Daí TETO_AGENDA_DIA e TETO_RESUMO_DIA serem SUB-tetos: nenhum dos dois
-// alcança a cota inteira, e o convite nunca é recusado por e-mail que podia
-// esperar.
+// - **por destinatário** (JANELA_POR_DESTINATARIO_MIN) e **por convidante**
+//   (TETO_POR_CONVIDANTE_DIA): é onde o abuso mora de verdade. Qualquer jogador
+//   logado marca um fut e vira admin dele, e daí alcança o cadastro com e-mail à
+//   escolha — o freio que importa é o que limita AQUELA conta e AQUELA caixa de
+//   entrada, não o que soma a instalação;
+// - **por fluxo de lote** (TETO_AGENDA_DIA, TETO_RESUMO_DIA): agenda e resumo
+//   mandam para o elenco inteiro de uma vez, e cada um responde pelo próprio
+//   volume;
+// - **e o Resend**, que continua sendo 100/dia. Estourar agora volta como recusa
+//   dele: um 429 sem `rate_limit_exceeded` vira `motivo: "limite"` em
+//   ./email-envio, que a UI já traduz no banner de copiar o link e mandar no
+//   WhatsApp. Perdeu-se o pré-aviso, não o fallback.
 //
-// Um teto só vale se o ledger contar a coisa certa. O primeiro desenho carimbava
-// `attendances.agenda_email_sent_at` e somava LINHAS carimbadas — mas o carimbo
-// é sobrescrito, então o mesmo par (fut, jogador) valia 1 para sempre, e o
-// mesmo loop de alternar presença passava por baixo dos dois tetos. Por isso a
-// coluna irmã `agenda_emails_sent`: o que se conta são envios.
-
-/**
- * Teto diário da instalação, somando TODOS os fluxos (ver ./contagem-de-envios).
- *
- * É o free tier do Resend inteiro, sem margem — e isso é uma decisão, não um
- * descuido. Eram 90 justamente para sobrar folga, porque a cota do Resend conta
- * e-mails RECEBIDOS também; a folga foi gasta quando o resumo do fut entrou,
- * porque ele é o fluxo de maior volume do produto: um fut de 20 pessoas gasta 20
- * de uma vez, contra o 1 de um convite.
- *
- * O que isso significa na prática, e que vale reler antes de mexer aqui:
- *
- * - este teto deixou de ser o limite que quase nunca morde e virou **o** limite
- *   que vai morder;
- * - quem NÃO pode ser o recusado quando ele morder é o convite / redefinição de
- *   acesso, o único fluxo sem alternativa (quem perdeu a senha não entra sem
- *   ele). Quem garante isso não é este número e sim os dois sub-tetos abaixo:
- *   TETO_AGENDA_DIA contra a conveniência e TETO_RESUMO_DIA contra o volume.
- *   Entre os dois, o convite tem sempre uma faixa que ninguém mais alcança;
- * - qualquer envio fora da nossa contagem (um reenvio manual, um webhook) passa
- *   a estourar de verdade no Resend, não aqui.
- *
- * A saída é plano pago, não um número maior: acima de 100 o Resend recusa, e
- * subir isto só troca uma recusa que sabemos explicar por uma que não.
- */
-export const TETO_DIARIO = 100;
+// Um teto só vale se o ledger contar a coisa certa — a lição que o de agenda
+// aprendeu primeiro. O primeiro desenho carimbava
+// `attendances.agenda_email_sent_at` e somava LINHAS carimbadas, mas o carimbo
+// é sobrescrito: o mesmo par (fut, jogador) valia 1 para sempre, e o loop de
+// alternar presença passava por baixo do teto. Por isso a coluna irmã
+// `agenda_emails_sent` — o que se conta são envios.
 
 /** Janela por caixa de entrada, em qualquer fluxo. */
 export const JANELA_POR_DESTINATARIO_MIN = 10;
@@ -92,21 +74,25 @@ export const JANELA_AGENDA_POR_FUT_MIN = 10;
 export const TETO_AGENDA_POR_JOGADOR_DIA = 12;
 
 /**
- * Sub-teto da instalação para agenda. **Menor que TETO_DIARIO de propósito** —
- * é a linha que garante que conveniência não come a cota de quem perdeu a senha.
+ * Teto diário da instalação para o e-mail de agenda.
+ *
+ * Era a fatia que impedia a conveniência de comer a cota do convite; sem o teto
+ * geral, virou o que já era na prática — o limite absoluto de quanto ESTE fluxo
+ * gasta num dia. O que ele barra continua sendo o vetor de sempre:
+ * `setMyAttendance` alternando "Vou"/"Fora" mandava dois e-mails por ciclo,
+ * ilimitado, e ~50 ciclos queimavam o domínio do projeto de graça.
+ *
+ * Quarenta passa longe de um dia movimentado de verdade.
  */
 export const TETO_AGENDA_DIA = 40;
 
 /**
- * Sub-teto da instalação para o resumo do fut, pelo MESMO motivo do de agenda —
- * e é ele que devolve ao convite a folga que o TETO_DIARIO perdeu ao subir para
- * 100.
+ * Teto diário da instalação para o resumo do fut, pelo MESMO motivo do de
+ * agenda: é o fluxo de maior volume do produto — um fut de 20 pessoas gasta 20
+ * e-mails de uma vez, contra o 1 de um convite.
  *
- * Sem esta linha, o fluxo de maior volume do produto e o único fluxo sem
- * alternativa disputavam a mesma cota sem árbitro: três futs de 20 encerrados
- * numa quinta à noite gastam 60 e-mails, e quem perdeu a senha às 23h descobre
- * que não entra mais hoje. Sessenta porque três futs cheios é um dia movimentado
- * de verdade, e ainda sobram 40 garantidos para convite e redefinição.
+ * Sessenta porque três futs cheios encerrados na mesma noite é um dia
+ * movimentado de verdade; acima disso é backlog anormal, não uso.
  *
  * Ele é conferido contra o LOTE INTEIRO, não e-mail a e-mail: o resumo é
  * tudo-ou-nada por fut (ver `enviarResumoDoFut`), porque metade do elenco com o

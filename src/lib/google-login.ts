@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { invites, players, users } from "@/db/schema";
 import { createSessionToken } from "./auth";
 import { isUniqueViolation } from "./db-errors";
+import { enderecoDeDestino } from "./email-destino";
+import { agendarAvisoDeGoogleVinculado } from "./email-seguranca";
 import type { GoogleIdentity } from "./google-oauth";
 import { conviteAutoriza, decidirPorContas, type ErroLogin } from "./regras-login-google";
 import { comSufixo, sugerirUsername, variacaoDeUsername } from "./username";
@@ -98,6 +100,21 @@ async function vincularAConta(userId: number, identidade: GoogleIdentity): Promi
     if (isUniqueViolation(error)) return { ok: false, erro: "google-ja-vinculado" };
     throw error;
   }
+
+  // Só depois do UPDATE ter passado: avisar de um vínculo que a unique recusou
+  // seria contar um fato que não aconteceu. Vale para os dois caminhos que
+  // chegam aqui — o vínculo pedido no /perfil e o primeiro login de quem já
+  // tinha senha —, porque os dois mudam quem entra na conta.
+  //
+  // O último argumento é para onde a conta mandava e-mail ANTES deste UPDATE. O
+  // UPDATE acabou de gravar `email`, e o destino da conta passou a ser o
+  // endereço novo; sem levar o antigo daqui, o aviso de que a credencial mudou
+  // só alcançaria quem a mudou. Ver o cabeçalho de agendarAvisoDeGoogleVinculado.
+  //
+  // Pela função, e não com um `??` escrito aqui: a precedência mora em
+  // ./email-destino, e este módulo não pode nomear a coluna de contato (ver
+  // email-contato-nao-autentica.test.ts).
+  agendarAvisoDeGoogleVinculado(userId, identidade.email, new Date(), enderecoDeDestino(user));
 
   return { ok: true, token: await createSessionToken({ sub: userId, v: tokenVersion }) };
 }

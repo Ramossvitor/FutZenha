@@ -17,6 +17,7 @@ import {
   type SlotDeExibicao,
 } from "./item-da-loja";
 import { lerItem, lerItensAVenda } from "./loja-itens";
+import { notificar } from "./notifications";
 import { comSobrescritas, precoDoMultiplicador } from "./zenha";
 import { lerSobrescritas } from "./zenha-config";
 
@@ -373,6 +374,10 @@ export async function comprar(playerId: number, itemId: number): Promise<ErroDeC
       // não-positivo. Item de graça entra no inventário sem linha no extrato,
       // que é a leitura honesta do que aconteceu — e o fecho
       // `saldo == sum(amount)` continua de pé.
+      // O saldo que sobrou, para o recibo mais abaixo. Fica null na compra de
+      // preço zero, que não passa pelo débito e portanto não tem saldo lido —
+      // e o recibo daquela não fala de saldo nenhum.
+      let saldoFinal: number | null = null;
       if (preco > 0) {
         const saldo = await debitar(
           tx,
@@ -386,9 +391,36 @@ export async function comprar(playerId: number, itemId: number): Promise<ErroDeC
         // escreveu. Lançar é o que desfaz os dois — devolver aqui entregaria o
         // item de graça.
         if (saldo === null) throw new SaldoInsuficiente();
+        saldoFinal = saldo;
       }
 
       await colocarAoComprar(tx, playerId, novo.id, item);
+
+      // O recibo. Dentro da transação, como todo `notificar()`: se a compra
+      // rolar para trás, o aviso vai junto.
+      //
+      // Comprar era o único gasto de saldo sem aviso nenhum — debitava e
+      // redirecionava, e dias depois o extrato era a única memória de para onde
+      // as zenhas tinham ido. A linha aqui resolve os três canais de uma vez:
+      // caixa de entrada, push e o e-mail de ./email-avisos.
+      //
+      // A dedupeKey é o id do inventário porque é ele que identifica ESTA
+      // compra: o consumível é comprável várias vezes de propósito, e uma chave
+      // por (jogador, item) faria a segunda compra do mesmo multiplicador ser
+      // engolida pela unique como se fosse repetição.
+      await notificar(tx, [
+        {
+          playerId,
+          type: "loja_compra",
+          title: `Você comprou ${item.nome}`,
+          body:
+            preco > 0
+              ? `Custou ${preco} zenhas e seu saldo ficou em ${saldoFinal}. O item já está no seu inventário.`
+              : `Item de graça, já está no seu inventário.`,
+          href: "/perfil/inventario",
+          dedupeKey: `loja:compra:${novo.id}`,
+        },
+      ]);
       return null;
     });
   } catch (erro) {

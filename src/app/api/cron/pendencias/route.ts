@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { despacharEmailsDeAvisos } from "@/lib/email-avisos";
 import { retomarResumosPendentes } from "@/lib/email-resumo";
 import { processarPendencias } from "@/lib/pendencias";
 import { despacharPush } from "@/lib/push-envio";
@@ -42,6 +43,17 @@ export async function GET(request: NextRequest) {
   // lote cortado no meio, e reaproveita a cota renovada para o fut que foi
   // recusado inteiro ontem. Idempotente — quem já recebeu não recebe de novo.
   const resumos = await retomarResumosPendentes();
+  // Depois do push e pelo mesmo motivo que ele vem depois das pendências: as
+  // etapas acima geram avisos (rodada fechada, votação resolvida, lembrete de
+  // véspera), e despachar em seguida os entrega no mesmo disparo. Antes das
+  // recargas, que são a etapa que pode demorar por culpa de terceiro.
+  //
+  // Esta etapa também fala com terceiro (o Resend) e ainda pausa entre envios,
+  // então ela cabe aqui por orçamento, não por sorte: o teto de lote de
+  // `email-avisos` está calibrado contra o `maxDuration` desta rota justamente
+  // para sobrar tempo à recarga logo abaixo. Ver LIMITE_POR_VARREDURA antes de
+  // subir aquele número.
+  const avisos = await despacharEmailsDeAvisos();
   // A recarga fica por ÚLTIMO, e por FORA da transação das pendências: é a única
   // etapa que fala HTTP com terceiro, e a única que pode demorar por culpa de
   // alguém de fora. Vindo antes, um Mercado Pago degradado gastaria o
@@ -53,5 +65,5 @@ export async function GET(request: NextRequest) {
   // É o preço aceito: o caminho feliz da recarga é o webhook mais o vigia da
   // tela, e este cron é a rede de segurança da rede de segurança.
   const recargas = await processarRecargas();
-  return NextResponse.json({ ...resultado, recargas, push, resumos });
+  return NextResponse.json({ ...resultado, recargas, push, resumos, avisos });
 }

@@ -284,8 +284,8 @@ async function sincronizar(
  *
  * Soma envios, não linhas carimbadas — o carimbo é sobrescrito, e um `count(*)`
  * aqui contava pares (fut, jogador) achando que contava e-mails. É a mesma
- * régua de ./contagem-de-envios, que soma este número aos outros três fluxos
- * para o teto da instalação.
+ * régua de `enviadosPeloResumoNoDia` em ./email-resumo: cada fluxo de lote conta
+ * o próprio gasto e responde pelo próprio teto (ver ./freios-de-envio).
  */
 export async function enviadosPelaAgendaNoDia(): Promise<number> {
   const [linha] = await db

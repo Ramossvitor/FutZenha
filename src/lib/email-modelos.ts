@@ -469,3 +469,171 @@ export function emailDeResumoDoFut(dados: {
 
   return { assunto: `Como foi o fut de ${quando}`, html, texto };
 }
+
+// ---------------------------------------------------------------------------
+// Os avisos da caixa de entrada que também saem por e-mail
+// ---------------------------------------------------------------------------
+//
+// Um template para todos, e não um por tipo, porque o texto já está escrito: os
+// construtores de `NovaNotificacao` (./avisos-fut, ./presenca, ./recarga e
+// companhia) montam `title` e `body` com data, local e quem chamou — "Fulano
+// chamou você para o fut de 24/08, em Quadra X". Reescrever isso aqui criaria
+// uma segunda versão da mesma frase, e as duas divergiriam no primeiro ajuste.
+//
+// O que NÃO dá para reaproveitar é o rodapé. "Você recebeu porque alguém
+// convidou você" é mentira para o admin que recebe um pedido de entrada, e o
+// rodapé é justamente onde quem não esperava o e-mail vai procurar o porquê.
+// Por isso ele é parâmetro, junto do rótulo do botão. Quem decide os dois por
+// tipo é ./email-avisos — este módulo continua puro e sem opinião sobre quais
+// tipos existem.
+
+/**
+ * O e-mail de um aviso da caixa de entrada.
+ *
+ * `href` é o caminho relativo da notificação (`/fut/12`, `/zenhas`); vira URL
+ * absoluta aqui, porque `siteUrl()` mora deste lado. Nulo, o e-mail sai sem
+ * botão — é o que acontece com aviso que não leva a lugar nenhum.
+ */
+export function emailDeAviso(dados: {
+  nome: string;
+  title: string;
+  body: string | null;
+  href: string | null;
+  rotuloDoBotao: string;
+  rodape: string;
+}): EmailPronto {
+  const url = dados.href === null ? null : `${siteUrl()}${dados.href}`;
+  const nome = escaparHtml(dados.nome);
+
+  const html = moldura(
+    [
+      `<p style="margin:0 0 4px 0;font-size:18px;font-weight:bold;color:${FG};">${escaparHtml(dados.title)}</p>`,
+      `<p style="margin:12px 0;">Olá, <strong>${nome}</strong>!</p>`,
+      dados.body ? `<p style="margin:12px 0;">${escaparHtml(dados.body)}</p>` : "",
+      url ? `<p style="margin:20px 0;">${botao(url, dados.rotuloDoBotao)}</p>` : "",
+      url ? urlDeApoio(url) : "",
+    ].join(""),
+    dados.rodape,
+  );
+
+  // Dos valores CRUS, como todo template daqui: `body` carrega nome de jogador e
+  // local de fut, que são texto livre.
+  const texto = [
+    dados.title,
+    ``,
+    `Olá, ${dados.nome}!`,
+    ...(dados.body ? [``, dados.body] : []),
+    ...(url ? [``, url] : []),
+  ].join("\n");
+
+  return { assunto: dados.title, html, texto };
+}
+
+// ---------------------------------------------------------------------------
+// Segurança da conta
+// ---------------------------------------------------------------------------
+//
+// Os dois abaixo são os únicos e-mails do projeto SEM botão, e é deliberado.
+// Eles avisam que uma credencial mudou, e a ação que propõem — "se não foi
+// você, procure quem administra" — não é um clique. Um botão aqui ensinaria
+// justamente o reflexo que o phishing explora: clicar no link do e-mail que diz
+// que sua senha mudou. Quem quiser conferir a conta abre o app como sempre abre.
+//
+// Eles também não passam pela caixa de entrada, ao contrário de todos os outros
+// avisos: quem trocou a senha está na tela e já viu a confirmação. O valor deste
+// e-mail é inteiramente alcançar quem NÃO está — e para essa pessoa a caixa de
+// entrada do app é o lugar onde ela não vai olhar.
+
+// Local, como o TZID de ./agenda e o formatador de ./match-day-form: cada
+// módulo que precisa do fuso declara o seu, e nenhum deles importa dos outros.
+const FUSO = "America/Sao_Paulo";
+
+/**
+ * O horário do evento, por extenso e com fuso declarado.
+ *
+ * "às 21:14 de 25/08/2026" e não "agora": o e-mail pode chegar minutos depois, e
+ * quem está decidindo se reconhece a própria ação precisa do horário do FATO. O
+ * fuso vai escrito porque a resposta certa a "não fui eu" depende de ler a hora
+ * certa — e a Vercel roda em UTC.
+ */
+function momento(quando: Date): string {
+  const data = quando.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: FUSO,
+  });
+  const hora = quando.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: FUSO,
+  });
+  return `${hora} de ${data} (horário de Brasília)`;
+}
+
+/** O aviso de que a senha mudou. Ver o bloco acima: sem botão, de propósito. */
+export function emailDeSenhaAlterada(dados: { nome: string; quando: Date }): EmailPronto {
+  const nome = escaparHtml(dados.nome);
+  const quando = momento(dados.quando);
+
+  const html = moldura(
+    [
+      `<p style="margin:0 0 4px 0;font-size:18px;font-weight:bold;color:${FG};">Sua senha foi alterada</p>`,
+      `<p style="margin:12px 0;">Olá, <strong>${nome}</strong>! A senha da sua conta no FutZenha foi alterada às <strong>${escaparHtml(quando)}</strong>.</p>`,
+      `<p style="margin:12px 0;">As sessões abertas nos outros aparelhos foram encerradas — em cada um deles será preciso entrar de novo.</p>`,
+      `<p style="margin:12px 0 0 0;font-size:12px;color:${FG_MUDO};">Se foi você, não precisa fazer nada. <strong>Se não foi</strong>, procure agora quem administra o FutZenha: só quem administra gera um link novo de acesso, e é assim que sua conta volta a ser sua.</p>`,
+    ].join(""),
+    "Você recebeu este e-mail porque a senha da sua conta no FutZenha mudou.",
+  );
+
+  const texto = [
+    `Sua senha foi alterada`,
+    ``,
+    `Olá, ${dados.nome}! A senha da sua conta no FutZenha foi alterada às ${quando}.`,
+    ``,
+    `As sessões abertas nos outros aparelhos foram encerradas — em cada um deles será preciso entrar de novo.`,
+    ``,
+    `Se foi você, não precisa fazer nada. Se não foi, procure agora quem administra o FutZenha: só quem administra gera um link novo de acesso.`,
+  ].join("\n");
+
+  return { assunto: "Sua senha do FutZenha foi alterada", html, texto };
+}
+
+/**
+ * O aviso de que uma conta Google passou a abrir esta conta.
+ *
+ * Mesmo peso do de cima e pelo mesmo motivo: vincular bumpa `token_version` (ver
+ * `vincularAConta` em ./google-login), então é troca de credencial — a partir
+ * daqui aquele endereço entra na conta.
+ */
+export function emailDeGoogleVinculado(dados: {
+  nome: string;
+  emailVinculado: string;
+  quando: Date;
+}): EmailPronto {
+  const nome = escaparHtml(dados.nome);
+  const email = escaparHtml(dados.emailVinculado);
+  const quando = momento(dados.quando);
+
+  const html = moldura(
+    [
+      `<p style="margin:0 0 4px 0;font-size:18px;font-weight:bold;color:${FG};">Uma conta Google foi vinculada</p>`,
+      `<p style="margin:12px 0;">Olá, <strong>${nome}</strong>! A conta Google <strong>${email}</strong> foi vinculada ao seu FutZenha às <strong>${escaparHtml(quando)}</strong>. A partir de agora ela entra na sua conta.</p>`,
+      `<p style="margin:12px 0;">As sessões abertas nos outros aparelhos foram encerradas — em cada um deles será preciso entrar de novo.</p>`,
+      `<p style="margin:12px 0 0 0;font-size:12px;color:${FG_MUDO};">Se foi você, não precisa fazer nada. <strong>Se não foi</strong>, procure agora quem administra o FutZenha.</p>`,
+    ].join(""),
+    "Você recebeu este e-mail porque uma conta Google foi vinculada ao seu FutZenha.",
+  );
+
+  const texto = [
+    `Uma conta Google foi vinculada`,
+    ``,
+    `Olá, ${dados.nome}! A conta Google ${dados.emailVinculado} foi vinculada ao seu FutZenha às ${quando}. A partir de agora ela entra na sua conta.`,
+    ``,
+    `As sessões abertas nos outros aparelhos foram encerradas — em cada um deles será preciso entrar de novo.`,
+    ``,
+    `Se foi você, não precisa fazer nada. Se não foi, procure agora quem administra o FutZenha.`,
+  ].join("\n");
+
+  return { assunto: "Uma conta Google foi vinculada ao seu FutZenha", html, texto };
+}
