@@ -1740,7 +1740,9 @@ export const zenhaEquipados = pgTable(
  * que ponha um sexto.
  *
  * `destaque` é o badge que aparece ao lado do nome em ranking, escalação e lista
- * de presença — o único cosmético que sai do perfil e circula pelo app. Uma
+ * de presença. Ele e a cor do slot `cor_do_nome` são os cosméticos que saem do
+ * perfil e circulam pelo app — os dois porque não têm largura própria; o título
+ * ficou no perfil por isso mesmo (ver src/lib/loja.ts, lerCosmeticosDoNome). Uma
  * coluna booleana com **unique parcial**, e não um `destaque_inventario_id` em
  * outra tabela: assim "ser o destaque" é uma propriedade da linha que já está na
  * vitrine, e é impossível destacar o que não está sendo mostrado. O parcial é o

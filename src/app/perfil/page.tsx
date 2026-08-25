@@ -9,12 +9,15 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { GoogleButton } from "@/components/ui/google-button";
 import { HairlineList, HairlineRow, HairlineRowLink } from "@/components/ui/hairline-list";
 import { IconeLuva, IconeSeta } from "@/components/ui/icons";
+import { pinturaDoNome } from "@/components/ui/nome-jogador";
 import { Nota } from "@/components/ui/nota";
 import { StatGrid, StatTile } from "@/components/ui/stat";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { cx } from "@/lib/cx";
 import { ERROS_LOGIN } from "@/lib/erros-login";
 import { googleLoginConfigurado } from "@/lib/google-oauth";
+import { lerCosmeticosDoNome } from "@/lib/loja";
 import { contarNaoLidas } from "@/lib/notifications";
 import { posicoes } from "@/lib/posicao";
 import { getEstrelasRecebidas } from "@/lib/ratings";
@@ -34,12 +37,16 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
   const { player } = session;
   const { erro } = await searchParams;
 
-  const [scorers, records, attendance, rodadas, naoLidas, [conta]] = await Promise.all([
+  const [scorers, records, attendance, rodadas, naoLidas, cosmeticos, [conta]] = await Promise.all([
     getTopScorers(),
     getPlayerRecords(),
     getAttendanceStats(),
     getEstrelasRecebidas(player.id),
     contarNaoLidas(player.id),
+    // A cor do nome do próprio dono. É o mesmo loader em lote das listas, com um
+    // id só: não vale um segundo caminho de leitura para o caso de um jogador —
+    // e sem isto esta era a única tela onde quem comprou a cor não a via.
+    lerCosmeticosDoNome(db, [player.id]),
     db
       .select({
         email: users.email,
@@ -61,6 +68,7 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
   const indiceArtilharia = scorers.findIndex((s) => s.playerId === player.id);
   const posicaoArtilharia =
     indiceArtilharia < 0 ? 0 : posicoes(scorers, (s) => s.total)[indiceArtilharia];
+  const pintura = pinturaDoNome(cosmeticos.get(player.id)?.cor);
 
   return (
     <div className="flex flex-col gap-7">
@@ -68,7 +76,13 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
           onde ela é mais pessoal. */}
       <header className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-[28px] leading-none font-black font-stretch-125% tracking-[-.015em] text-fg uppercase">
+          <h1
+            style={pintura.style}
+            className={cx(
+              "font-display text-[28px] leading-none font-black font-stretch-125% tracking-[-.015em] uppercase",
+              pintura.className,
+            )}
+          >
             {player.nickname ?? player.name.split(" ")[0]}
           </h1>
           <p className="mt-1.5 text-[14px] text-fg-2">

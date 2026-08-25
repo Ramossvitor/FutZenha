@@ -145,7 +145,7 @@ export function CamposDoItem({
 export const AJUDA_DO_TIPO: Readonly<Record<TipoDeItem, string>> = {
   badge: "Uma figura para a vitrine do perfil. Precisa de imagem.",
   moldura: "Um anel colorido em volta do avatar.",
-  cor_do_nome: "Pinta o nome do jogador no perfil.",
+  cor_do_nome: "Pinta o nome do jogador no perfil e nas listas.",
   titulo: "Uma cápsula de texto ao lado do nome. O nome do item É o texto.",
   consumivel: "Faz alguma coisa em campo. O efeito é código — não se cria por aqui.",
 };

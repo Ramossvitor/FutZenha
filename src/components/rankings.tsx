@@ -5,13 +5,13 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import { Meter } from "@/components/ui/meter";
-import { DestaqueNoNome, LinkJogador } from "@/components/ui/nome-jogador";
+import { DestaqueNoNome, LinkJogador, pinturaDoNome } from "@/components/ui/nome-jogador";
 import { Nota, NotaVariacao } from "@/components/ui/nota";
 import { Pilula } from "@/components/ui/pilula";
 import { Podium } from "@/components/ui/podium";
 import { db } from "@/db";
 import { cx } from "@/lib/cx";
-import { lerDestaques } from "@/lib/loja";
+import { lerCosmeticosDoNome } from "@/lib/loja";
 import { posicoes } from "@/lib/posicao";
 import { MIN_JOGOS_APROVEITAMENTO } from "@/lib/regras";
 import {
@@ -118,10 +118,10 @@ export async function Rankings({
   // perguntar "qual era a nota em 2024".
   const temFiltroDeAno = aba !== "notas";
 
-  // Os badges em destaque da aba que está aberta, numa consulta só. Depois das
+  // Os cosméticos de nome da aba que está aberta, numa consulta só. Depois das
   // estatísticas porque são elas que dizem QUEM aparece — e só da aba visível,
   // porque as outras cinco não renderizam nada.
-  const destaques = await lerDestaques(db, [
+  const cosmeticos = await lerCosmeticosDoNome(db, [
     ...notas.map((n) => n.playerId),
     ...artilheiros.map((a) => a.playerId),
     ...records.map((r) => r.playerId),
@@ -177,7 +177,7 @@ export async function Rankings({
                   slug={n.slug}
                   apelido={n.nickname}
                   nome={n.name}
-                  destaque={destaques.get(n.playerId)}
+                  cosmeticos={cosmeticos.get(n.playerId)}
                 />
                 <NotaVariacao valor={n.variacao} />
                 <Nota valor={n.skill} tamanho="lg" className="min-w-[3.5rem] text-right" />
@@ -218,7 +218,7 @@ export async function Rankings({
                   slug={a.slug}
                   apelido={a.nickname}
                   nome={a.name}
-                  destaque={destaques.get(a.playerId)}
+                  cosmeticos={cosmeticos.get(a.playerId)}
                 />
                 <span
                   className="font-display text-[22px] leading-none font-black font-stretch-125% text-fg"
@@ -272,40 +272,47 @@ export async function Rankings({
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((r, i) => (
-                    <tr
-                      key={r.playerId}
-                      className={cx(
-                        "[&>td]:border-b [&>td]:border-line-soft [&>td]:px-2 [&>td]:py-2 [&>td]:text-center last:[&>td]:border-0",
-                        r.playerId === destaquePlayerId && "bg-accent-tint",
-                      )}
-                      data-num
-                    >
-                      <td className="text-left font-display font-extrabold text-fg-4">
-                        {posicoes(records, (x) => x.winRate)[i]}º
-                      </td>
-                      {/* Sem o NomeJogador: numa célula de tabela o nome de
-                          batismo embaixo desalinharia a linha inteira. O que
-                          não pode faltar é o destino — era a única aba em que
-                          o nome não levava a lugar nenhum. */}
-                      <td className="text-left font-display font-bold text-fg">
-                        <Link
-                          href={`/jogador/${r.slug}`}
-                          className="inline-flex items-center gap-1.5 hover:underline"
+                  {records.map((r, i) => {
+                    const pintura = pinturaDoNome(cosmeticos.get(r.playerId)?.cor);
+                    return (
+                      <tr
+                        key={r.playerId}
+                        className={cx(
+                          "[&>td]:border-b [&>td]:border-line-soft [&>td]:px-2 [&>td]:py-2 [&>td]:text-center last:[&>td]:border-0",
+                          r.playerId === destaquePlayerId && "bg-accent-tint",
+                        )}
+                        data-num
+                      >
+                        <td className="text-left font-display font-extrabold text-fg-4">
+                          {posicoes(records, (x) => x.winRate)[i]}º
+                        </td>
+                        {/* Sem o NomeJogador: numa célula de tabela o nome de
+                            batismo embaixo desalinharia a linha inteira. O que
+                            não pode faltar é o destino — era a única aba em que
+                            o nome não levava a lugar nenhum. Os dois cosméticos
+                            vêm à mão pelo mesmo motivo, com os helpers DELE. */}
+                        <td
+                          style={pintura.style}
+                          className={cx("text-left font-display font-bold", pintura.className)}
                         >
-                          <DestaqueNoNome destaque={destaques.get(r.playerId)} />
-                          {r.nickname ?? r.name}
-                        </Link>
-                      </td>
-                      <td className="text-fg-2">{r.gamesPlayed}</td>
-                      <td className="text-accent-ink">{r.wins}</td>
-                      <td className="text-fg-3">{r.draws}</td>
-                      <td className="text-danger-ink">{r.losses}</td>
-                      <td className="text-right font-display text-[15px] font-black">
-                        {(r.winRate * 100).toFixed(0)}%
-                      </td>
-                    </tr>
-                  ))}
+                          <Link
+                            href={`/jogador/${r.slug}`}
+                            className="inline-flex items-center gap-1.5 hover:underline"
+                          >
+                            <DestaqueNoNome destaque={cosmeticos.get(r.playerId)?.destaque} />
+                            {r.nickname ?? r.name}
+                          </Link>
+                        </td>
+                        <td className="text-fg-2">{r.gamesPlayed}</td>
+                        <td className="text-accent-ink">{r.wins}</td>
+                        <td className="text-fg-3">{r.draws}</td>
+                        <td className="text-danger-ink">{r.losses}</td>
+                        <td className="text-right font-display text-[15px] font-black">
+                          {(r.winRate * 100).toFixed(0)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </Card>
@@ -329,44 +336,51 @@ export async function Rankings({
               />
             }
           >
-            {presenca.perPlayer.map((p, i) => (
-              <HairlineRow as="li" key={p.playerId} destaque={p.playerId === destaquePlayerId}>
-                <Posicao n={posicoes(presenca.perPlayer, (x) => x.attended)[i]} />
-                <span className="min-w-0 flex-1">
-                  {/* Só o nome é âncora: a barra abaixo é informação, não
-                      destino, e engoli-la no link roubaria o alvo de toque. O
-                      LinkJogador faz o mesmo recorte, mas não cabe aqui — ele é
-                      o próprio flex-1 da linha, e esta coluna ainda tem o Meter
-                      embaixo. Daí a repetição das classes, que por isso mesmo
-                      precisam ser as DELE: divergir aqui é como o nome já
-                      chegou em cinco tamanhos diferentes uma vez. */}
-                  <Link
-                    href={`/jogador/${p.slug}`}
-                    className="flex items-center gap-1.5 font-display text-[14px] leading-[1.2] font-bold text-fg hover:underline"
-                  >
-                    <DestaqueNoNome destaque={destaques.get(p.playerId)} />
-                    <span className="min-w-0 truncate">{p.nickname ?? p.name}</span>
-                  </Link>
-                  <Meter
-                    valor={p.attended}
-                    total={presenca.totalDays}
-                    className="mt-1.5"
-                    rotulo={`${p.attended} de ${presenca.totalDays} futs`}
-                  />
-                </span>
-                <span className="text-right">
-                  <span
-                    className="block font-display text-[17px] leading-none font-black font-stretch-112% text-fg"
-                    data-num
-                  >
-                    {p.attended}
+            {presenca.perPlayer.map((p, i) => {
+              const pintura = pinturaDoNome(cosmeticos.get(p.playerId)?.cor);
+              return (
+                <HairlineRow as="li" key={p.playerId} destaque={p.playerId === destaquePlayerId}>
+                  <Posicao n={posicoes(presenca.perPlayer, (x) => x.attended)[i]} />
+                  <span className="min-w-0 flex-1">
+                    {/* Só o nome é âncora: a barra abaixo é informação, não
+                        destino, e engoli-la no link roubaria o alvo de toque. O
+                        LinkJogador faz o mesmo recorte, mas não cabe aqui — ele é
+                        o próprio flex-1 da linha, e esta coluna ainda tem o Meter
+                        embaixo. Daí a repetição das classes, que por isso mesmo
+                        precisam ser as DELE: divergir aqui é como o nome já
+                        chegou em cinco tamanhos diferentes uma vez. */}
+                    <Link
+                      href={`/jogador/${p.slug}`}
+                      style={pintura.style}
+                      className={cx(
+                        "flex items-center gap-1.5 font-display text-[14px] leading-[1.2] font-bold hover:underline",
+                        pintura.className,
+                      )}
+                    >
+                      <DestaqueNoNome destaque={cosmeticos.get(p.playerId)?.destaque} />
+                      <span className="min-w-0 truncate">{p.nickname ?? p.name}</span>
+                    </Link>
+                    <Meter
+                      valor={p.attended}
+                      total={presenca.totalDays}
+                      className="mt-1.5"
+                      rotulo={`${p.attended} de ${presenca.totalDays} futs`}
+                    />
                   </span>
-                  <span className="block font-display text-[10px] font-bold text-fg-4">
-                    de {presenca.totalDays}
+                  <span className="text-right">
+                    <span
+                      className="block font-display text-[17px] leading-none font-black font-stretch-112% text-fg"
+                      data-num
+                    >
+                      {p.attended}
+                    </span>
+                    <span className="block font-display text-[10px] font-bold text-fg-4">
+                      de {presenca.totalDays}
+                    </span>
                   </span>
-                </span>
-              </HairlineRow>
-            ))}
+                </HairlineRow>
+              );
+            })}
           </HairlineList>
         </>
       )}
@@ -409,7 +423,7 @@ export async function Rankings({
                   slug={m.slug}
                   apelido={m.nickname}
                   nome={m.name}
-                  destaque={destaques.get(m.playerId)}
+                  cosmeticos={cosmeticos.get(m.playerId)}
                 />
                 <span
                   className="font-display text-[22px] leading-none font-black font-stretch-125% text-fg"

@@ -43,10 +43,10 @@ describe("carregarPainel", () => {
 
     expect(painel.pedidosDeEntrada.map((p) => p.playerId)).toEqual([pedinte.id]);
     expect(painel.convitesDeFut.map((c) => c.playerId)).toEqual([convidado.id]);
-    expect(painel.destaques.get(pedinte.id)?.itemId).toBe(badges.get(pedinte.id));
-    expect(painel.destaques.get(convidado.id)?.itemId).toBe(badges.get(convidado.id));
+    expect(painel.cosmeticos.get(pedinte.id)?.destaque?.itemId).toBe(badges.get(pedinte.id));
+    expect(painel.cosmeticos.get(convidado.id)?.destaque?.itemId).toBe(badges.get(convidado.id));
     // O criador não está em fila nenhuma, então não pode estar no mapa — é
     // exatamente o que o id do pedido (que coincide com o dele) traria.
-    expect(painel.destaques.has(criador.id)).toBe(false);
+    expect(painel.cosmeticos.has(criador.id)).toBe(false);
   });
 });

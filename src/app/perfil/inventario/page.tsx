@@ -30,7 +30,10 @@ export const dynamic = "force-dynamic";
  */
 const PRATELEIRAS: Readonly<Record<SlotDeExibicao, { titulo: string; vazio: string }>> = {
   moldura: { titulo: "Molduras", vazio: "Nenhuma moldura ainda." },
-  cor_do_nome: { titulo: "Cores do nome", vazio: "Seu nome está na cor padrão." },
+  cor_do_nome: {
+    titulo: "Cores do nome",
+    vazio: "Seu nome está na cor padrão, no perfil e nas listas.",
+  },
   titulo: { titulo: "Títulos", vazio: "Nenhum título ainda." },
 };
 
@@ -81,9 +84,9 @@ export default async function InventarioPage({ searchParams }: PageProps<"/perfi
         <>
           <Section titulo="Vitrine">
             <p className="text-[12.5px] leading-[1.5] text-fg-4">
-              As cinco vagas do seu perfil. A que estiver <strong>em destaque</strong> é a única que
-              sai daqui: ela aparece do lado do seu nome no ranking, na escalação e na lista de
-              presença.
+              As cinco vagas do seu perfil. A que estiver <strong>em destaque</strong> é a que sai
+              daqui: ela aparece do lado do seu nome no ranking, na escalação e na lista de presença
+              — os mesmos lugares por onde a cor do nome equipada também acompanha você.
             </p>
             <Vagas naVitrine={naVitrine} />
           </Section>

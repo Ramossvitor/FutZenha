@@ -56,8 +56,9 @@ test("compra um badge e ele aparece no perfil e ao lado do nome", async ({ page 
   await expect(page).toHaveURL(/\/jogador\/[a-z0-9._-]+$/);
   await expect(page.getByRole("img", { name: BADGE }).first()).toBeVisible();
 
-  // E o destaque sai do perfil: ele anda junto do nome nas listas. É a única
-  // coisa comprada que aparece numa tela que não é sobre o dono dela.
+  // E o destaque sai do perfil: ele anda junto do nome nas listas, numa tela que
+  // não é sobre o dono dela. Não é o único que faz esse caminho — a cor do nome
+  // faz o mesmo, e é o e2e/cor-do-nome.spec.ts quem guarda a outra metade.
   await page.goto("/rankings");
   await expect(page.locator('img[src^="/imagens/loja/"]').first()).toBeVisible();
 });

@@ -25,7 +25,7 @@ import {
 } from "@/lib/fut-entrada-db";
 import { FIM_DA_JANELA_CORRECAO } from "@/lib/janela-correcao";
 import { repartirLista } from "@/lib/lista-presenca";
-import { lerDestaques } from "@/lib/loja";
+import { lerCosmeticosDoNome } from "@/lib/loja";
 
 // Quem lançou e quem desfez cada gol na súmula ao vivo — duas pontas
 // diferentes da mesma tabela de jogadores.
@@ -127,17 +127,23 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
     linkAtivoDoFut(matchDayId),
   ]);
 
-  // Os badges em destaque de quem aparece nas duas filas de entrada. Depois da
-  // onda, e não dentro dela, porque são os resultados dela que dizem os ids —
-  // e numa consulta só, como no resto do app.
+  // Os cosméticos de nome de quem este painel desenha: as duas filas de entrada
+  // e a lista de presença. Depois da onda, e não dentro dela, porque são os
+  // resultados dela que dizem os ids — e numa consulta só, como no resto do app.
   //
-  // Pelo `playerId`, e não pelo `id`: nessas linhas o `id` é o do PEDIDO e o do
-  // CONVITE, e `lerDestaques` indexa por jogador. Os dois são serial e começam
-  // em 1, então coincidem o tempo inteiro — com a chave errada, o badge de um
-  // jogador aparecia ao lado do nome de outro.
-  const destaques = await lerDestaques(db, [
+  // Pelo `playerId`, e não pelo `id`: nas linhas das filas o `id` é o do PEDIDO e
+  // o do CONVITE, e `lerCosmeticosDoNome` indexa por jogador. Os dois são serial
+  // e começam em 1, então coincidem o tempo inteiro — com a chave errada, o badge
+  // de um jogador aparecia ao lado do nome de outro.
+  //
+  // `attendanceRows` cru, e não a `lista` repartida lá embaixo: ela depende do
+  // `jogadorPorId`, que só existe depois da SEGUNDA onda, e esperar por ela
+  // atrasaria esta consulta sem precisar. O excedente (quem tem linha mas não
+  // está mais elegível) não custa nada: o Map só é lido por quem a tela desenha.
+  const cosmeticos = await lerCosmeticosDoNome(db, [
     ...pedidosDeEntrada.map((p) => p.playerId),
     ...convitesDeFut.map((c) => c.playerId),
+    ...attendanceRows.map((a) => a.playerId),
   ]);
 
   const dentroDaJanela = matchDay.finishedAt !== null && matchDay.segundosDeJanela > 0;
@@ -269,7 +275,7 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
     pedidosDeEntrada,
     convitesDeFut,
     linkDoFut,
-    destaques,
+    cosmeticos,
   };
 }
 
