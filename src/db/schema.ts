@@ -873,6 +873,22 @@ export const users = pgTable("users", {
   //
   // Default true: quem já usa o app não pediu para parar de receber nada.
   avisosPorEmail: boolean("avisos_por_email").notNull().default(true),
+  // Token de API do relógio: é com ele que o Atalho do Apple Watch opera a
+  // súmula ao vivo (src/app/api/sumula, src/lib/token-de-api.ts). Só o SHA-256
+  // fica aqui — o token é mostrado uma vez, na geração, e não é recuperável:
+  // vazar o banco não vaza credencial. Um por conta; gerar de novo substitui,
+  // revogar zera as três colunas.
+  //
+  // Independe de `token_version` de propósito, nos dois sentidos: trocar o
+  // token não pode deslogar o celular, e trocar a senha não mexe aqui (o
+  // relógio não é sessão — quem quer cortá-lo, revoga no perfil). Conta
+  // desativada mata o token pelo `active = true` no join da leitura
+  // (src/lib/sessao-por-token.ts), sem ninguém lembrar de apagar o hash.
+  apiTokenHash: text("api_token_hash").unique(),
+  apiTokenCriadoEm: timestamp("api_token_criado_em"),
+  // O último request autenticado por ele — o "último uso" do perfil, a prova de
+  // que o atalho está chegando ao servidor.
+  apiTokenUsadoEm: timestamp("api_token_usado_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

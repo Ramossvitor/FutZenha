@@ -36,6 +36,7 @@ export const CAPITULOS = [
   { id: "a-aposta", titulo: "A aposta", resumo: "Apostar zenhas na própria vitória, antes de saber os times.", camada: "no-fut" },
   { id: "marcar-um-fut", titulo: "Marcar um fut", resumo: "Criar, definir vagas e cuidar da lista.", camada: "organiza" },
   { id: "a-sumula", titulo: "A súmula ao vivo", resumo: "Lançar gol em campo e passar a súmula.", camada: "organiza" },
+  { id: "a-sumula-no-relogio", titulo: "A súmula no relógio", resumo: "Lançar gol pelo Apple Watch, com Atalhos.", camada: "organiza" },
   { id: "encerrar", titulo: "Encerrar o fut", resumo: "O que trava para sempre e o que ainda dá para corrigir.", camada: "organiza" },
   { id: "os-grupos", titulo: "Os grupos", resumo: "Papéis, convites e o ranking do grupo.", camada: "organiza" },
   { id: "nota-injusta", titulo: "Nota injusta", resumo: "Como contestar e o que acontece depois.", camada: "deu-ruim" },

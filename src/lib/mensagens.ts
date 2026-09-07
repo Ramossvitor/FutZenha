@@ -90,6 +90,18 @@ export const MENSAGENS: Record<string, string> = {
   "jogador-fora-do-jogo": "Só quem entrou nesse jogo pode trocar de lado nele.",
   "troca-ja-feita": "Alguém já trocou essa pessoa de lado — confira a escalação.",
 
+  // Súmula pelo relógio (src/app/api/sumula). Recusas que só a API emite — no
+  // painel do celular o fut está na URL e o autor é escolhido tocando no nome,
+  // então ele nunca cai nelas. Os textos são o que o atalho mostra no pulso:
+  // uma linha, com o conserto dentro.
+  "token-invalido": "Token inválido ou revogado. Gere outro em Meu perfil → Súmula no relógio.",
+  "sem-fut-para-operar": "Nenhum fut com times sorteados para você operar agora.",
+  "varios-futs":
+    "Há mais de um fut com times sorteados para você. Diga qual no campo fut do atalho.",
+  "sem-gol-para-desfazer": "Não há gol desse lado para desfazer.",
+  "autor-nao-encontrado":
+    "Não achei esse nome na escalação desse lado — confira o apelido ou escolha da lista.",
+
   // Multiplicador. Os dois textos explicam o PRAZO, e não o botão, porque é o
   // prazo que a pessoa não vê: o corte é o horário de início do fut, e não o
   // encerramento — que costuma acontecer horas depois de a bola parar. Sem

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { logout } from "@/app/(esqueleto)/login/actions";
 import { Badge } from "@/components/ui/badge";
 import { BannerDaQuery } from "@/components/ui/banner";
@@ -22,13 +22,16 @@ import { contarNaoLidas } from "@/lib/notifications";
 import { posicoes } from "@/lib/posicao";
 import { getEstrelasRecebidas } from "@/lib/ratings";
 import { requirePlayer } from "@/lib/require-player";
+import { siteUrl } from "@/lib/site-url";
 import { getAttendanceStats, getPlayerRecords, getTopScorers } from "@/lib/stats";
+import { tempoAtras } from "@/lib/sumula";
 import { ChangePasswordForm } from "./change-password-form";
 import { AvisosPorEmailToggle } from "./avisos-por-email-toggle";
 import { EmailDeContatoForm } from "./email-de-contato-form";
 import { MovimentoToggle } from "./movimento-toggle";
 import { PushToggle } from "./push-toggle";
 import { RodadaRecebida } from "./rodada-recebida";
+import { TokenDeApi } from "./token-de-api";
 
 export const metadata: Metadata = { title: "Meu perfil" };
 
@@ -54,6 +57,12 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
         googleSub: users.googleSub,
         passwordHash: users.passwordHash,
         avisosPorEmail: users.avisosPorEmail,
+        // O token do relógio: só SE existe, nunca o hash — e os tempos em
+        // segundos contados pelo Postgres, porque o render não olha o relógio
+        // da aplicação (a mesma regra da súmula, ver tempoAtras).
+        temTokenDeApi: sql<boolean>`${users.apiTokenHash} is not null`,
+        tokenCriadoHa: sql<number | null>`extract(epoch from (now() - ${users.apiTokenCriadoEm}))::int`,
+        tokenUsadoHa: sql<number | null>`extract(epoch from (now() - ${users.apiTokenUsadoEm}))::int`,
       })
       .from(users)
       .where(eq(users.id, session.userId)),
@@ -211,6 +220,17 @@ export default async function PerfilPage({ searchParams }: PageProps<"/perfil">)
       />
 
       <MovimentoToggle />
+
+      {/* O token do Apple Watch. Fica aqui, e não na súmula, porque é da CONTA:
+          vale para todo fut que a pessoa operar, e é aqui que ela vem revogar
+          quando perde o relógio. */}
+      <TokenDeApi
+        temToken={conta?.temTokenDeApi ?? false}
+        criadoHa={conta?.tokenCriadoHa == null ? null : tempoAtras(conta.tokenCriadoHa)}
+        usadoHa={conta?.tokenUsadoHa == null ? null : tempoAtras(conta.tokenUsadoHa)}
+        urlDaApi={`${siteUrl()}/api/sumula`}
+        hrefDoGuia="/guia#a-sumula-no-relogio"
+      />
 
       {/* No celular não há barra lateral, e o cabeçalho só tem o chip do grupo,
           o sino e o avatar. Então é aqui que moram as portas que não couberam

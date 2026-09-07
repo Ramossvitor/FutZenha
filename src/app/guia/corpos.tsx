@@ -32,6 +32,16 @@ import { PRAZO_ABERTURA_EXCLUSAO_HORAS, PRAZO_VOTACAO_HORAS, QUORUM } from "@/li
 import type { IdDeCapitulo } from "./capitulos";
 import { ValoresDaZenha } from "./valores-da-zenha";
 
+// Endereço, campo ou valor que a pessoa vai DIGITAR num atalho — o capítulo do
+// relógio é o único que precisa disso, e um <code> cru some no texto corrido.
+function Codigo({ children }: { children: ReactNode }) {
+  return (
+    <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[12.5px] text-fg">
+      {children}
+    </code>
+  );
+}
+
 // A nota é guardada em centésimos (500 = 5,0). Exibir sem dividir escreveria
 // "começa em 500".
 const NOTA_INICIAL = formatSkill(SKILL_INICIAL_CENT / 100);
@@ -580,6 +590,70 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         Quem administra pode passar a súmula para alguém que está jogando. Essa pessoa ganha
         só a súmula — abrir jogo, lançar e desfazer gol, e trocar jogador de lado. Não ganha a
         lista, o sorteio, nem o encerramento. E perde a súmula na hora se sair da lista do fut.
+      </Banner>
+    </>
+  ),
+
+  "a-sumula-no-relogio": (
+    <>
+      <p>
+        Dá para operar a súmula do <strong className="text-fg">Apple Watch</strong>, sem tirar
+        o celular do bolso: cada toque no pulso é um atalho do app Atalhos que fala com o
+        FutZenha. Não é um app de relógio — é a súmula de sempre, com um token do seu perfil no
+        lugar do login.
+      </p>
+      <p>
+        <strong className="text-fg">O que você precisa.</strong> Um Apple Watch com watchOS 7
+        ou mais novo, o app Atalhos no iPhone e um token gerado em Meu perfil → Súmula no
+        relógio. O token aparece uma vez só: copie na hora. Ele serve apenas para a súmula ao
+        vivo dos futs que você já opera; perdeu o relógio, revogue ali mesmo.
+      </p>
+      <p>
+        <strong className="text-fg">Antes de montar tudo, o teste que vale a tarde.</strong> A
+        Apple não publica quais ações rodam no relógio sem o iPhone por perto. Monte um atalho
+        só com &ldquo;Obter Conteúdo da URL&rdquo; apontando para <Codigo>/api/sumula</Codigo>,
+        ligue &ldquo;Mostrar no Apple Watch&rdquo; e rode com o iPhone longe. Se voltar o
+        placar, o resto é montar botões.
+      </p>
+      <p>
+        <strong className="text-fg">A receita de um atalho.</strong> &ldquo;Obter Conteúdo da
+        URL&rdquo; com o endereço <Codigo>/api/sumula/gol</Codigo>, método POST, o cabeçalho{" "}
+        <Codigo>Authorization</Codigo> com o valor <Codigo>Bearer</Codigo> seguido de um espaço
+        e do seu token, e o corpo em JSON com <Codigo>side</Codigo> igual a{" "}
+        <Codigo>A</Codigo>. Depois, &ldquo;Obter Valor do Dicionário&rdquo; para a chave{" "}
+        <Codigo>mensagem</Codigo> e &ldquo;Mostrar Resultado&rdquo;. Pronto: é o Gol A. Duplique
+        trocando <Codigo>A</Codigo> por <Codigo>B</Codigo>.
+      </p>
+      <p>
+        <strong className="text-fg">Os outros botões</strong> são a mesma receita com outro
+        endereço: <Codigo>/api/sumula/desfazer</Codigo> desfaz o último gol do lado que você
+        mandar; <Codigo>/api/sumula/jogo</Codigo>, com corpo vazio, abre o próximo jogo com os
+        dois primeiros times; <Codigo>/api/sumula/jogo/fim</Codigo> encerra. No fim de jogo,
+        vale pôr um &ldquo;Escolher do Menu&rdquo; com Confirmar e Cancelar antes — no pulso, o
+        toque errado é fácil.
+      </p>
+      <p>
+        <strong className="text-fg">Gol com autor, de dois jeitos.</strong> Pela lista: o atalho
+        faz um GET em <Codigo>/api/sumula</Codigo>, pega <Codigo>rotulos</Codigo> → A (ou B) com
+        &ldquo;Obter Valor do Dicionário&rdquo;, oferece as chaves em &ldquo;Escolher da
+        Lista&rdquo; e manda o valor da chave escolhida como <Codigo>playerId</Codigo> no POST
+        do gol. Pela voz: um &ldquo;Ditar Texto&rdquo; perguntando quem fez, e o texto vai no
+        campo <Codigo>autor</Codigo>. O servidor procura o nome na escalação daquele lado, sem
+        ligar para acento nem maiúscula; se não achar, ou achar dois parecidos, recusa e nada é
+        lançado — melhor do que creditar o gol errado. Trocar de lado é igual à lista, no
+        endereço <Codigo>/api/sumula/trocar-de-lado</Codigo>.
+      </p>
+      <p>
+        <strong className="text-fg">Qual fut?</strong> Você não digita: a API acha o fut com
+        times sorteados que você opera — o que tiver jogo rolando ou, sem jogo aberto, o de
+        data mais próxima. Se houver dois empatados, a resposta lista os candidatos, e o atalho
+        manda o número escolhido no campo <Codigo>fut</Codigo>.
+      </p>
+      <Banner tom="aviso">
+        Ligue &ldquo;Mostrar no Apple Watch&rdquo; nos detalhes de cada atalho. No relógio,
+        eles aparecem no app Atalhos e podem virar complicação no mostrador — um toque, um gol.
+        Cada toque responde com uma frase; se vier &ldquo;Token inválido&rdquo;, é hora de gerar
+        outro no perfil.
       </Banner>
     </>
   ),

@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Select } from "@/components/ui/field";
 import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
+import { useArmado } from "@/components/ui/use-armado";
 import { VestChip } from "@/components/ui/vest";
 import {
   delegarSumula,
@@ -585,8 +586,7 @@ function SecaoDelegacao({ matchDayId, operadores, candidatos }: PainelSumulaProp
 
 /**
  * Remoção com dois toques: o primeiro arma ("Confirma?"), o segundo submete.
- * Proteção contra dedo errado, não contra má-fé — a de má-fé é a regra do
- * servidor. Desarma sozinho em 4s para o botão não ficar engatilhado esquecido.
+ * O timer e o porquê estão em `useArmado` (src/components/ui/use-armado.ts).
  */
 function ConfirmarSubmit({
   rotulo,
@@ -601,12 +601,7 @@ function ConfirmarSubmit({
   varianteArmado?: BotaoVariante;
   className?: string;
 }) {
-  const [armado, setArmado] = useState(false);
-  useEffect(() => {
-    if (!armado) return;
-    const timer = setTimeout(() => setArmado(false), 4000);
-    return () => clearTimeout(timer);
-  }, [armado]);
+  const [armado, setArmado] = useArmado();
 
   if (!armado) {
     return (
