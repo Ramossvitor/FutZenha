@@ -13,6 +13,7 @@ import {
   criarFut,
   criarJogador,
   criarJogadorComConta,
+  diaDoFut,
   logarComo,
 } from "@/test/fixtures";
 import { criarGrupo, entrarNoGrupo } from "@/test/fixtures-grupo";
@@ -20,7 +21,8 @@ import { esperaRedirect } from "@/test/navigation-fake";
 
 function formDeFut(campos: Partial<Record<string, string>> = {}): FormData {
   const form = new FormData();
-  form.set("date", campos.date ?? "2026-08-20");
+  // Hoje, não literal: o parse do formulário tem teto retroativo (ver diaDoFut).
+  form.set("date", campos.date ?? diaDoFut());
   form.set("startTime", campos.startTime ?? "");
   form.set("location", campos.location ?? "Quadra Nova");
   form.set("notes", campos.notes ?? "");
