@@ -24,6 +24,7 @@ import {
   type Player,
 } from "@/db/schema";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { hojeNoFusoDoFut } from "@/lib/match-day-form";
 import { hashPassword } from "@/lib/password";
 import { slugBase } from "@/lib/slug";
 import { cookieJar } from "./cookie-store";
@@ -103,6 +104,22 @@ export async function criarFut(
     .values({ date: "2026-08-12", location: "Quadra de Teste", ...extra })
     .returning();
   return fut;
+}
+
+/**
+ * "YYYY-MM-DD" a `dias` de hoje, no fuso do fut — para formulário que passa por
+ * parseMatchDayForm, cuja faixa de data é relativa a hoje
+ * (MAX_DIAS_RETROATIVOS_DO_FUT). Literal fixo apodrece: "2026-08-20" saiu da
+ * faixa em 2026-08-28 e derrubou o gate de todo PR aberto. Para linha inserida
+ * direto pelo `criarFut` não faz diferença — o teto é só do formulário.
+ *
+ * Aritmética ao meio-dia UTC, como o diasEntre de lá, para o horário de verão
+ * nunca virar meio dia a mais. Este `Date` só vira string de formulário — nunca
+ * entra em SQL cru.
+ */
+export function diaDoFut(dias = 0): string {
+  const meioDia = Date.parse(`${hojeNoFusoDoFut()}T12:00:00Z`) + dias * 86_400_000;
+  return new Date(meioDia).toISOString().slice(0, 10);
 }
 
 /**

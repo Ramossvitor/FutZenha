@@ -20,7 +20,7 @@ import {
 import { JANELA_CORRECAO_HORAS } from "@/lib/regras";
 import { esperaRedirect } from "@/test/navigation-fake";
 import { golsDoJogo, montarSumula, type Sumula } from "@/test/fixtures-sumula";
-import { criarFut, criarJogadorComConta, logarComo } from "@/test/fixtures";
+import { criarFut, criarJogadorComConta, diaDoFut, logarComo } from "@/test/fixtures";
 import { criarJogo, criarTrioComConta } from "@/test/fixtures-avaliacao";
 import { confirmarEncerramento } from "./encerrar/actions";
 import {
@@ -239,9 +239,17 @@ describe("definirAutorDoGol", () => {
 // nota e streak sem aviso — e o replay é sempre do zero, então não há como
 // desfazer depois.
 describe("data travada do fut encerrado", () => {
+  // Datas relativas a hoje, nunca literais: o parse do formulário tem teto
+  // retroativo de 7 dias (MAX_DIAS_RETROATIVOS_DO_FUT), e uma data fixa sai da
+  // faixa com o tempo e vira `dados-invalidos` ANTES de chegar na trava que
+  // este bloco testa. Ontem para o fut encerrado; amanhã para onde se tenta
+  // movê-lo — as duas dentro da faixa, e diferentes entre si.
+  const DATA_DO_FUT = diaDoFut(-1);
+  const OUTRA_DATA = diaDoFut(1);
+
   const formDeFut = (campos: Partial<Record<string, string>> = {}) => {
     const form = new FormData();
-    form.set("date", campos.date ?? "2026-08-22");
+    form.set("date", campos.date ?? DATA_DO_FUT);
     form.set("startTime", campos.startTime ?? "20:00");
     form.set("endTime", campos.endTime ?? "");
     form.set("location", campos.location ?? "Quadra de Teste");
@@ -254,7 +262,7 @@ describe("data travada do fut encerrado", () => {
     const s = await montarSumula();
     await db
       .update(matchDays)
-      .set({ date: "2026-08-22", startTime: "20:00", status: "finished" })
+      .set({ date: DATA_DO_FUT, startTime: "20:00", status: "finished" })
       .where(eq(matchDays.id, s.fut.id));
     return s;
   }
@@ -263,12 +271,12 @@ describe("data travada do fut encerrado", () => {
     const s = await futEncerrado();
 
     const url = await esperaRedirect(
-      updateMatchDay(s.fut.id, formDeFut({ date: "2026-08-29" })),
+      updateMatchDay(s.fut.id, formDeFut({ date: OUTRA_DATA })),
     );
 
     expect(url).toBe(`/fut/${s.fut.id}/gerenciar?erro=data-travada`);
     const [linha] = await db.select().from(matchDays).where(eq(matchDays.id, s.fut.id));
-    expect(linha.date).toBe("2026-08-22");
+    expect(linha.date).toBe(DATA_DO_FUT);
   });
 
   it("recusa mudar o horário pelo mesmo motivo", async () => {
@@ -294,7 +302,7 @@ describe("data travada do fut encerrado", () => {
 
     const [linha] = await db.select().from(matchDays).where(eq(matchDays.id, s.fut.id));
     expect(linha.location).toBe("Quadra Nova");
-    expect(linha.date).toBe("2026-08-22");
+    expect(linha.date).toBe(DATA_DO_FUT);
   });
 
   // O escape do `dataAtual`: reenviar a MESMA data de um fut antigo não pode
