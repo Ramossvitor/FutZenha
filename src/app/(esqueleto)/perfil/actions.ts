@@ -20,6 +20,7 @@ import { prazoEmHoras, resolverAvaliacaoPorIndice } from "@/lib/ratings";
 import { MIN_AVALIACOES_PARA_DENUNCIAR, PRAZO_ADMIN_HORAS } from "@/lib/regras";
 import { requirePlayer } from "@/lib/require-player";
 import { setSessionCookie } from "@/lib/session";
+import { hashDoToken, novoTokenDeApi } from "@/lib/token-de-api";
 
 export type DenunciarState = { error?: string; success?: boolean };
 
@@ -210,6 +211,40 @@ export async function definirAvisosPorEmail(ligado: boolean) {
   await db
     .update(users)
     .set({ avisosPorEmail: ligado })
+    .where(eq(users.id, session.userId));
+  revalidatePath("/perfil");
+}
+
+/**
+ * Gera o token de API do relógio desta conta — e o devolve UMA vez, na resposta
+ * desta action. É a única vez que ele existe em claro: no banco fica só o hash
+ * (src/lib/token-de-api.ts), e nada aqui o loga. Quem fechou a tela sem copiar
+ * gera outro.
+ *
+ * Gerar de novo substitui: o token anterior deixa de valer no mesmo UPDATE, e
+ * o "último uso" recomeça do zero, porque é do token novo que se quer a prova.
+ *
+ * Não mexe em `token_version` — o relógio não é sessão, e trocar o token não
+ * pode deslogar o celular. O alvo é sempre `session.userId`, como nas irmãs:
+ * Server Action é endpoint HTTP público.
+ */
+export async function gerarTokenDeApi(): Promise<{ token: string }> {
+  const session = await requirePlayer();
+  const token = novoTokenDeApi();
+  await db
+    .update(users)
+    .set({ apiTokenHash: hashDoToken(token), apiTokenCriadoEm: sql`now()`, apiTokenUsadoEm: null })
+    .where(eq(users.id, session.userId));
+  revalidatePath("/perfil");
+  return { token };
+}
+
+/** Zera as três colunas: o token para de valer no request seguinte do relógio. */
+export async function revogarTokenDeApi(): Promise<void> {
+  const session = await requirePlayer();
+  await db
+    .update(users)
+    .set({ apiTokenHash: null, apiTokenCriadoEm: null, apiTokenUsadoEm: null })
     .where(eq(users.id, session.userId));
   revalidatePath("/perfil");
 }

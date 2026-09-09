@@ -204,5 +204,11 @@ describe("tempoAtras", () => {
     expect(tempoAtras(3600)).toBe("há 1h00");
     expect(tempoAtras(3660)).toBe("há 1h01");
     expect(tempoAtras(7740)).toBe("há 2h09");
+    expect(tempoAtras(86399)).toBe("há 23h59");
+  });
+
+  it("passando de um dia, conta em dias", () => {
+    expect(tempoAtras(86400)).toBe("há 1 dia");
+    expect(tempoAtras(86400 * 3 + 100)).toBe("há 3 dias");
   });
 });

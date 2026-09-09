@@ -71,7 +71,8 @@ export type LancamentoDesfazivel = { id: number; side: "A" | "B" | null; desfeit
  * `page.tsx` está fora do coverage do vitest (ver `vitest.config.mts`), então
  * a regra ficava sem teste justamente na metade que o usuário enxerga. O
  * segundo é não ter uma segunda definição de "último do lado" — a autoridade é
- * o `ULTIMO_DO_LADO` da action, e esta função existe para concordar com ele: o
+ * o `ULTIMO_DO_LADO` do serviço da súmula (src/lib/sumula-servico.ts), e esta
+ * função existe para concordar com ele: o
  * mesmo recorte por lado, os desfeitos fora da conta, e a decisão final
  * delegada a `podeDesfazerLancamento`. Divergir daria botão que o servidor
  * recusa.
@@ -146,10 +147,17 @@ export function montarLinhaDoTempo<
  * relógio da aplicação (regra de pureza do render), e por isso o rótulo congela
  * até o próximo refresh, o que para uma súmula é o comportamento certo: quem
  * quer o placar novo puxa para atualizar.
+ *
+ * O ramo de dias existe para o "criado há" / "último uso há" do token do
+ * relógio no perfil; na súmula, um jogo aberto há um dia já é absurdo, e
+ * "há 1 dia" descreve o absurdo melhor do que "há 25h00".
  */
 export function tempoAtras(segundos: number): string {
   if (segundos < 60) return "agora";
   const minutos = Math.floor(segundos / 60);
   if (minutos < 60) return `há ${minutos} min`;
-  return `há ${Math.floor(minutos / 60)}h${String(minutos % 60).padStart(2, "0")}`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `há ${horas}h${String(minutos % 60).padStart(2, "0")}`;
+  const dias = Math.floor(horas / 24);
+  return `há ${dias} ${dias === 1 ? "dia" : "dias"}`;
 }

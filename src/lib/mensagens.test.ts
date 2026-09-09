@@ -1,11 +1,16 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ERROS_LOGIN } from "./erros-login";
 import { MENSAGENS, resolverMensagem } from "./mensagens";
 
-const APP = fileURLToPath(new URL("../app", import.meta.url));
+const SRC = fileURLToPath(new URL("..", import.meta.url));
+const APP = join(SRC, "app");
+// O serviço da súmula mora em src/lib (tem dois chamadores: as actions do
+// painel e a API do relógio), mas emite slug como qualquer action — e é o
+// único módulo fora de src/app que emite.
+const SERVICO_DA_SUMULA = join(SRC, "lib", "sumula-servico.ts");
 
 function arquivos(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -15,21 +20,25 @@ function arquivos(dir: string): string[] {
   });
 }
 
-// Duas formas de emitir slug no app:
+// Quatro formas de emitir slug no app:
 //   redirect(`/rota?erro=slug`)          — literal na query string
 //   erro(grupo.slug, "slug")             — helper do grupo/[slug]/gerenciar
+//   new ErroDaSumula("slug")             — o serviço da súmula (src/lib/sumula-servico.ts),
+//                                          que as actions traduzem em `?erro=${slug}`
+//   respostaDeErro("slug")               — a API do relógio (api/sumula/comum.ts)
 const NA_QUERY = /[?&](?:erro|ok)=([a-z0-9-]+)/g;
 const NO_HELPER = /\b(?:erro|ok)\(\s*[A-Za-z0-9_.]+\s*,\s*"([a-z0-9-]+)"\s*\)/g;
+const NO_TIPO = /\b(?:ErroDaSumula|respostaDeErro)\(\s*"([a-z0-9-]+)"/g;
 
 function slugsEmitidos(): Map<string, string[]> {
   const achados = new Map<string, string[]>();
-  for (const arquivo of arquivos(APP)) {
+  for (const arquivo of [...arquivos(APP), SERVICO_DA_SUMULA]) {
     const fonte = readFileSync(arquivo, "utf8");
-    for (const re of [NA_QUERY, NO_HELPER]) {
+    for (const re of [NA_QUERY, NO_HELPER, NO_TIPO]) {
       for (const m of fonte.matchAll(re)) {
         const slug = m[1];
         const onde = achados.get(slug) ?? [];
-        const curto = arquivo.slice(APP.length + 1).replace(/\\/g, "/");
+        const curto = relative(SRC, arquivo).replace(/\\/g, "/");
         if (!onde.includes(curto)) onde.push(curto);
         achados.set(slug, onde);
       }

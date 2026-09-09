@@ -3,7 +3,7 @@ import { cache } from "react";
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { db } from "@/db";
-import { players, users, type Player } from "@/db/schema";
+import { players, users, type Player, type User } from "@/db/schema";
 import { SESSION_COOKIE, SESSION_DURATION_MS, verifySessionToken } from "./auth";
 import { temEmailDeDestino } from "./email-destino";
 import { platformAdminsDoAmbiente } from "./platform-admins";
@@ -43,6 +43,20 @@ export const getSession = cache(async (): Promise<Session | null> => {
     .where(eq(users.id, payload.sub));
   if (!row || !row.user.active || row.user.tokenVersion !== payload.v) return null;
 
+  return montarSessao(row);
+});
+
+/**
+ * A linha de `users ⋈ players` no formato que o app inteiro consome.
+ *
+ * Extraída porque a sessão tem DOIS nascimentos: o cookie (aqui) e o token de
+ * API do relógio (src/lib/sessao-por-token.ts). Uma definição só é o que
+ * garante que `isPlatformAdmin` — inclusive a chave-mestra da env var — e os
+ * demais campos digam a mesma coisa nos dois caminhos; com o mapeamento dentro
+ * de `getSession`, o segundo caminho teria de copiá-lo, e a cópia divergiria
+ * no primeiro campo novo.
+ */
+export function montarSessao(row: { user: User; player: Player }): Session {
   return {
     userId: row.user.id,
     username: row.user.username,
@@ -56,7 +70,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     isPlatformAdmin:
       row.user.isPlatformAdmin || platformAdminsDoAmbiente().has(row.user.username),
   };
-});
+}
 
 // Exportado porque o callback do OAuth (src/app/api/auth/google/callback) grava
 // o cookie direto na NextResponse do redirect, não pelo cookies() do

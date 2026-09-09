@@ -27,6 +27,25 @@ export type OperadorDeSumula = {
  * fut alheio dão o mesmo 404, porque quem não opera não precisa saber que o
  * id existe.
  *
+ * O guard é o transporte (cookie → redirect/404); a decisão mora em
+ * `operadorDeSumula` logo abaixo, que a API do relógio chama com a sessão do
+ * token e responde 404 em JSON.
+ */
+export async function requireOperadorSumula(matchDayId: number): Promise<OperadorDeSumula> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const operador = await operadorDeSumula(session, matchDayId);
+  if (!operador) notFound();
+  return operador;
+}
+
+/**
+ * A decisão sem o transporte: dada uma sessão — venha ela do cookie ou do
+ * token do relógio (src/lib/sessao-por-token.ts) —, esta pessoa opera a súmula
+ * deste fut? `null` cobre id inválido, fut inexistente e fut alheio de uma vez,
+ * porque quem chama responde às três coisas do mesmo jeito.
+ *
  * A consulta à delegação só roda para quem NÃO gerencia — o caminho do admin
  * continua custando o mesmo que no guard irmão.
  *
@@ -36,13 +55,14 @@ export type OperadorDeSumula = {
  * própria, os testes de `podeOperarSumula` davam garantia sobre uma função que
  * nada chamava.
  */
-export async function requireOperadorSumula(matchDayId: number): Promise<OperadorDeSumula> {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (!Number.isInteger(matchDayId)) notFound();
+export async function operadorDeSumula(
+  session: Session,
+  matchDayId: number,
+): Promise<OperadorDeSumula | null> {
+  if (!Number.isInteger(matchDayId)) return null;
 
   const [matchDay] = await db.select().from(matchDays).where(eq(matchDays.id, matchDayId));
-  if (!matchDay) notFound();
+  if (!matchDay) return null;
 
   const papel =
     matchDay.groupId !== null ? await papelNoGrupo(matchDay.groupId, session.player.id) : null;
@@ -53,7 +73,7 @@ export async function requireOperadorSumula(matchDayId: number): Promise<Operado
     ? false
     : await temSumulaDelegada(matchDayId, session.player.id);
 
-  if (!podeOperarSumula(ator, matchDay, papel, ehDelegado)) notFound();
+  if (!podeOperarSumula(ator, matchDay, papel, ehDelegado)) return null;
 
   return { session, matchDay, ehAdminDoFut };
 }

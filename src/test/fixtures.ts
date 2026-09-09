@@ -12,7 +12,7 @@
 //   porque ali o domínio deixa de ser a rede de proteção.
 
 import { randomBytes } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   attendances,
@@ -27,6 +27,7 @@ import { createSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { hojeNoFusoDoFut } from "@/lib/match-day-form";
 import { hashPassword } from "@/lib/password";
 import { slugBase } from "@/lib/slug";
+import { hashDoToken, novoTokenDeApi } from "@/lib/token-de-api";
 import { cookieJar } from "./cookie-store";
 
 export const SENHA_DE_TESTE = "senha-de-teste-123";
@@ -94,6 +95,20 @@ export async function logarComo(conta: Usuario): Promise<void> {
 
 export function deslogar(): void {
   cookieJar.delete(SESSION_COOKIE);
+}
+
+/**
+ * Um token de API do relógio para a conta — gerado como a action do perfil
+ * gera (src/lib/token-de-api.ts) e gravado direto no banco. Devolve o token
+ * cru, que é o que vai no header `Authorization: Bearer …` dos testes da API.
+ */
+export async function criarTokenDeApi(conta: Usuario): Promise<string> {
+  const token = novoTokenDeApi();
+  await db
+    .update(users)
+    .set({ apiTokenHash: hashDoToken(token), apiTokenCriadoEm: sql`now()` })
+    .where(eq(users.id, conta.id));
+  return token;
 }
 
 export async function criarFut(

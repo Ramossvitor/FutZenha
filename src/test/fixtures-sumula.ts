@@ -15,6 +15,7 @@ import {
   teams,
   type MatchDay,
   type Player,
+  type User,
 } from "@/db/schema";
 import {
   confirmarPresenca,
@@ -27,6 +28,8 @@ import {
 export type Sumula = {
   fut: MatchDay;
   admin: Player;
+  /** A conta do admin — os testes da API do relógio geram o token dela. */
+  adminConta: User;
   timeAId: number;
   timeBId: number;
   ladoA: Player[];
@@ -61,7 +64,7 @@ export async function montarSumula(opcoes: { comContas?: boolean } = {}): Promis
     ...ladoB.map((p) => ({ teamId: timeB.id, playerId: p.id })),
   ]);
 
-  return { fut, admin, timeAId: timeA.id, timeBId: timeB.id, ladoA, ladoB };
+  return { fut, admin, adminConta: conta, timeAId: timeA.id, timeBId: timeB.id, ladoA, ladoB };
 }
 
 /**
