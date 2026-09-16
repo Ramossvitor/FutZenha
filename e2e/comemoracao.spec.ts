@@ -107,7 +107,7 @@ for (const tema of ["light", "dark"] as const) {
     });
 
     // 3:1 é o piso de componente gráfico não-textual da WCAG — o mesmo que a
-    // borda dos coletes carrega em team-colors.
+    // borda dos coletes carrega (ver `colete-livre` no globals.css).
     expect(contraste(tinta, fundo), `bola ${tinta} sobre ${fundo}`).toBeGreaterThan(3);
   });
 }

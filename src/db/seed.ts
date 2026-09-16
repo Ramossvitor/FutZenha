@@ -12,6 +12,7 @@ import { pngDeUmaCor } from "../test/fixtures-imagem";
 import { PRAZO_AVALIACAO_HORAS } from "../lib/regras";
 import { siteUrl } from "../lib/site-url";
 import { slugBase } from "../lib/slug";
+import { CORES_DE_COLETE } from "../lib/team-colors";
 import * as schema from "./schema";
 
 // Este script APAGA todas as tabelas antes de popular. A trava evita destruir a
@@ -267,11 +268,11 @@ async function seedPastMatchDay(
 
   const [teamA] = await db
     .insert(schema.teams)
-    .values({ matchDayId: matchDay.id, name: "Preto", sortOrder: 0 })
+    .values({ matchDayId: matchDay.id, name: "Preto", cor: CORES_DE_COLETE.preto, sortOrder: 0 })
     .returning();
   const [teamB] = await db
     .insert(schema.teams)
-    .values({ matchDayId: matchDay.id, name: "Branco", sortOrder: 1 })
+    .values({ matchDayId: matchDay.id, name: "Branco", cor: CORES_DE_COLETE.branco, sortOrder: 1 })
     .returning();
   await db.insert(schema.teamPlayers).values([
     ...teamAPlayers.map((p) => ({ teamId: teamA.id, playerId: p.id })),

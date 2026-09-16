@@ -11,6 +11,7 @@
 // arquivo (useOptimistic sobre scoreA/scoreB), sem mexer em action nenhuma.
 
 import { useEffect, useRef, useState } from "react";
+import { FormulariosDeColete } from "@/components/fut/formularios-de-colete";
 import { Badge } from "@/components/ui/badge";
 import { Button, SubmitButton, type BotaoVariante } from "@/components/ui/button";
 import { Card, CardBody, CardHeader, Eyebrow, Section } from "@/components/ui/card";
@@ -23,6 +24,7 @@ import { VestChip } from "@/components/ui/vest";
 import {
   delegarSumula,
   desfazerLancamento,
+  editarTimeNaSumula,
   finalizarJogo,
   iniciarJogo,
   lancarGol,
@@ -65,6 +67,9 @@ export type JogoAberto = {
   scoreB: number;
   timeA: string;
   timeB: string;
+  /** O colete de cada lado (`teams.cor`): hex, ou nulo = sem colete. */
+  corA: string | null;
+  corB: string | null;
   emAndamentoHa: string;
   ladoA: { playerId: number; rotulo: string }[];
   ladoB: { playerId: number; rotulo: string }[];
@@ -75,8 +80,16 @@ export type PainelSumulaProps = {
   matchDayId: number;
   ehAdminDoFut: boolean;
   jogo: JogoAberto | null;
-  times: { id: number; nome: string }[];
-  jogosAnteriores: { id: number; timeA: string; timeB: string; scoreA: number; scoreB: number }[];
+  times: { id: number; nome: string; cor: string | null }[];
+  jogosAnteriores: {
+    id: number;
+    timeA: string;
+    timeB: string;
+    corA: string | null;
+    corB: string | null;
+    scoreA: number;
+    scoreB: number;
+  }[];
   operadores: { playerId: number; rotulo: string; delegadoPor: string | null }[];
   candidatos: { playerId: number; rotulo: string }[];
 };
@@ -114,6 +127,7 @@ export function PainelSumula(props: PainelSumulaProps) {
 
   const doLado = ladoAberto === "A" ? jogo.ladoA : jogo.ladoB;
   const nomeDoLado = ladoAberto === "A" ? jogo.timeA : jogo.timeB;
+  const corDoLado = ladoAberto === "A" ? jogo.corA : jogo.corB;
 
   return (
     <div className="flex flex-col gap-7">
@@ -126,7 +140,7 @@ export function PainelSumula(props: PainelSumulaProps) {
         </div>
         <div className="mt-2 flex items-center justify-center gap-4">
           <span className="flex flex-1 flex-col items-end gap-1 text-right">
-            <VestChip time={jogo.timeA} tamanho="lg" />
+            <VestChip cor={jogo.corA} tamanho="lg" />
             <span className="truncate font-display text-[13px] font-bold text-fg-2">
               {jogo.timeA}
             </span>
@@ -138,7 +152,7 @@ export function PainelSumula(props: PainelSumulaProps) {
             {jogo.scoreA} × {jogo.scoreB}
           </span>
           <span className="flex flex-1 flex-col items-start gap-1">
-            <VestChip time={jogo.timeB} tamanho="lg" />
+            <VestChip cor={jogo.corB} tamanho="lg" />
             <span className="truncate font-display text-[13px] font-bold text-fg-2">
               {jogo.timeB}
             </span>
@@ -148,8 +162,8 @@ export function PainelSumula(props: PainelSumulaProps) {
 
       {/* Os dois botões gigantes: um toque abre a escalação do lado que marcou. */}
       <div className="grid grid-cols-2 gap-3">
-        <BotaoDeGol time={jogo.timeA} onClick={() => setLadoAberto("A")} />
-        <BotaoDeGol time={jogo.timeB} onClick={() => setLadoAberto("B")} />
+        <BotaoDeGol time={jogo.timeA} cor={jogo.corA} onClick={() => setLadoAberto("A")} />
+        <BotaoDeGol time={jogo.timeB} cor={jogo.corB} onClick={() => setLadoAberto("B")} />
       </div>
 
       <SecaoEscalacao matchDayId={matchDayId} jogo={jogo} />
@@ -179,6 +193,7 @@ export function PainelSumula(props: PainelSumulaProps) {
           gameId={jogo.id}
           lado={ladoAberto}
           nomeDoTime={nomeDoLado}
+          cor={corDoLado}
           jogadores={doLado}
           aoFechar={() => setLadoAberto(null)}
         />
@@ -188,10 +203,18 @@ export function PainelSumula(props: PainelSumulaProps) {
 }
 
 /** ≥96px de alvo: o painel é operado com o polegar, no sol, entre um jogo e outro. */
-function BotaoDeGol({ time, onClick }: { time: string; onClick: () => void }) {
+function BotaoDeGol({
+  time,
+  cor,
+  onClick,
+}: {
+  time: string;
+  cor: string | null;
+  onClick: () => void;
+}) {
   return (
     <Button variante="secondary" onClick={onClick} className="h-24 flex-col gap-1.5">
-      <VestChip time={time} tamanho="lg" />
+      <VestChip cor={cor} tamanho="lg" />
       <span className="max-w-full truncate">Gol do {time}</span>
     </Button>
   );
@@ -208,6 +231,7 @@ function SheetDeAutor({
   gameId,
   lado,
   nomeDoTime,
+  cor,
   jogadores,
   aoFechar,
 }: {
@@ -215,6 +239,7 @@ function SheetDeAutor({
   gameId: number;
   lado: "A" | "B";
   nomeDoTime: string;
+  cor: string | null;
   jogadores: { playerId: number; rotulo: string }[];
   aoFechar: () => void;
 }) {
@@ -233,7 +258,7 @@ function SheetDeAutor({
       />
       <div className="absolute inset-x-0 bottom-0 max-h-[75dvh] overflow-y-auto rounded-t-card border-t border-line bg-surface p-4 pb-[calc(env(safe-area-inset-bottom)+var(--tabbar-h)+1rem)]">
         <div className="mb-3 flex items-center gap-2">
-          <VestChip time={nomeDoTime} />
+          <VestChip cor={cor} />
           <span className="flex-1 font-display text-[15px] font-extrabold font-stretch-112% text-fg">
             Quem marcou pelo {nomeDoTime}?
           </span>
@@ -279,6 +304,7 @@ function SecaoEscalacao({ matchDayId, jogo }: { matchDayId: number; jogo: JogoAb
           matchDayId={matchDayId}
           gameId={jogo.id}
           time={jogo.timeA}
+          cor={jogo.corA}
           outroTime={jogo.timeB}
           jogadores={jogo.ladoA}
         />
@@ -286,6 +312,7 @@ function SecaoEscalacao({ matchDayId, jogo }: { matchDayId: number; jogo: JogoAb
           matchDayId={matchDayId}
           gameId={jogo.id}
           time={jogo.timeB}
+          cor={jogo.corB}
           outroTime={jogo.timeA}
           jogadores={jogo.ladoB}
         />
@@ -303,12 +330,14 @@ function ListaDoLado({
   matchDayId,
   gameId,
   time,
+  cor,
   outroTime,
   jogadores,
 }: {
   matchDayId: number;
   gameId: number;
   time: string;
+  cor: string | null;
   outroTime: string;
   jogadores: { playerId: number; rotulo: string }[];
 }) {
@@ -316,7 +345,7 @@ function ListaDoLado({
     <Card>
       <CardHeader>
         <span className="flex items-center gap-2">
-          <VestChip time={time} tamanho="sm" />
+          <VestChip cor={cor} tamanho="sm" />
           <span className="truncate font-display text-[13px] font-extrabold font-stretch-112% text-fg">
             {time}
           </span>
@@ -371,6 +400,9 @@ function SecaoLancamentos({
   }
   const nomeDoLado = (lado: "A" | "B" | null) =>
     lado === "A" ? jogo.timeA : lado === "B" ? jogo.timeB : "";
+  // Lado nulo (gol de antes da súmula) sai como chip neutro, não "sem colete".
+  const corDoLado = (lado: "A" | "B" | null) =>
+    lado === "A" ? jogo.corA : lado === "B" ? jogo.corB : undefined;
 
   return (
     <Section titulo="Lançamentos">
@@ -381,7 +413,7 @@ function SecaoLancamentos({
             // linhas ficam. O chip é o do time de DESTINO — a linha se lê como
             // "fulano agora é do verde".
             <HairlineRow as="li" key={`troca-${e.id}`}>
-              <VestChip time={nomeDoLado(e.para)} tamanho="sm" />
+              <VestChip cor={corDoLado(e.para)} tamanho="sm" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-display text-[14px] font-bold text-fg">
                   {e.jogador} foi para o {nomeDoLado(e.para)}
@@ -393,7 +425,7 @@ function SecaoLancamentos({
             </HairlineRow>
           ) : (
             <HairlineRow as="li" key={`gol-${e.id}`} apagado={e.desfeito}>
-              <VestChip time={nomeDoLado(e.lado)} tamanho="sm" />
+              <VestChip cor={corDoLado(e.lado)} tamanho="sm" />
               <span className="min-w-0 flex-1">
                 <span
                   className={`block truncate font-display text-[14px] font-bold ${
@@ -480,15 +512,21 @@ function SecaoIniciarJogo({ matchDayId, times }: PainelSumulaProps) {
       <p className="text-[11.5px] text-fg-4">
         O jogo abre 0 × 0 e o placar sobe a cada toque. Um jogo em andamento por vez.
       </p>
+      {/* Para quem está com a súmula acertar "Com Colete" × "Sem Colete" no
+          campo, antes de abrir o jogo, sem depender de quem gerencia — o mesmo
+          bloco do /gerenciar, sobre a mesma regra; só o guard é o do operador. */}
+      <FormulariosDeColete
+        times={times}
+        acaoDoTime={(teamId) => editarTimeNaSumula.bind(null, matchDayId, teamId)}
+        idBase="sumula-time"
+        dica="antes de abrir o jogo"
+        rodape="O nome vai para os botões de gol, a página do fut e o relógio. Um novo sorteio recria os times com os coletes do grupo."
+      />
     </Section>
   );
 }
 
-function SecaoJogosDoDia({
-  jogos,
-}: {
-  jogos: { id: number; timeA: string; timeB: string; scoreA: number; scoreB: number }[];
-}) {
+function SecaoJogosDoDia({ jogos }: { jogos: PainelSumulaProps["jogosAnteriores"] }) {
   if (jogos.length === 0) return null;
   return (
     <Section titulo="Jogos de hoje">
@@ -499,13 +537,13 @@ function SecaoJogosDoDia({
               <span className="truncate font-display text-[12px] font-bold text-fg-2">
                 {j.timeA}
               </span>
-              <VestChip time={j.timeA} tamanho="sm" />
+              <VestChip cor={j.corA} tamanho="sm" />
             </span>
             <span className="font-display text-[16px] font-black font-stretch-125% text-fg" data-num>
               {j.scoreA} × {j.scoreB}
             </span>
             <span className="flex flex-1 items-center gap-2">
-              <VestChip time={j.timeB} tamanho="sm" />
+              <VestChip cor={j.corB} tamanho="sm" />
               <span className="truncate font-display text-[12px] font-bold text-fg-2">
                 {j.timeB}
               </span>

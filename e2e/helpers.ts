@@ -67,11 +67,23 @@ export async function loginPelaUI(page: Page, usuario: string, senha = "senha123
  */
 export async function criarFut(
   page: Page,
-  opcoes: { local: string; vagas?: number; dias?: number; inicio?: string; termino?: string },
+  opcoes: {
+    local: string;
+    vagas?: number;
+    dias?: number;
+    inicio?: string;
+    termino?: string;
+    /** O NOME do grupo, como está no select — só existe se quem loga tem grupo. */
+    grupo?: string;
+  },
 ): Promise<string> {
   await page.goto("/futs/novo");
   await page.getByLabel("Data").fill(dataFutura(opcoes.dias ?? 30));
   await page.getByLabel("Local").fill(opcoes.local);
+  if (opcoes.grupo !== undefined) {
+    // `exact`: o seletor de grupo do cabeçalho também se rotula "Grupo: …".
+    await page.getByLabel("Grupo", { exact: true }).selectOption({ label: opcoes.grupo });
+  }
   // Horário e término são opcionais — o fut sem hora marcada continua válido, e
   // os outros specs criam fut sem tocar nos dois.
   if (opcoes.inicio !== undefined) await page.getByLabel("Horário").fill(opcoes.inicio);

@@ -1,17 +1,22 @@
 import { Badge } from "@/components/ui/badge";
 import { SubmitButton } from "@/components/ui/button";
+import { CamposDoColete } from "@/components/ui/campos-do-colete";
 import { Card, CardBody, CardHeader, Section } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { AcaoDaLinha, LinhaDeCampos } from "@/components/ui/linha-de-campos";
 import { HairlineList, HairlineRow } from "@/components/ui/hairline-list";
 import type { Group } from "@/db/schema";
+import { cx } from "@/lib/cx";
 import { papelLabel } from "@/lib/grupos-permissions";
 import { urlDoLink } from "@/lib/grupos";
+import { TIMES_MAX, TIMES_MIN } from "@/lib/regras";
+import { COLETES_PADRAO, type Colete } from "@/lib/team-colors";
 import { BuscaJogador, type ItemJogador } from "@/components/ui/busca-jogador";
 import {
   aprovarPedido,
   atualizarGrupo,
+  definirColetesDoGrupo,
   definirPapel,
   excluirGrupo,
   gerarLinkDoGrupo,
@@ -72,6 +77,55 @@ export function SecaoDadosDoGrupo({ grupo, groupId }: { grupo: Group; groupId: n
               Ao tornar o grupo privado, os pedidos que estiverem na fila são recusados.
             </p>
             <SubmitButton className="self-start">Salvar</SubmitButton>
+          </form>
+        </CardBody>
+      </Card>
+    </Section>
+  );
+}
+
+/**
+ * Os coletes do grupo: até TIMES_MAX blocos de nome + cor, na ordem do sorteio,
+ * num form só (a action substitui a lista inteira). Linha em branco é linha não
+ * usada — por isso o nome não é `required` aqui, ao contrário do form do fut.
+ */
+export function SecaoColetesDoGrupo({ groupId, coletes }: { groupId: number; coletes: Colete[] }) {
+  return (
+    <Section titulo="Coletes do grupo">
+      <Card>
+        <CardBody>
+          <form
+            action={definirColetesDoGrupo.bind(null, groupId)}
+            className="flex flex-col gap-5"
+          >
+            <p className="text-[13px] leading-[1.5] text-fg-2">
+              Na ordem em que os times saem no sorteio. Deixe tudo em branco para usar os padrões
+              (Preto, Branco, Verde, Laranja, Azul, Vermelho); preenchendo, são pelo menos{" "}
+              {TIMES_MIN}, sem pular linha. Vale para os próximos sorteios — os futs já sorteados
+              não mudam.
+            </p>
+            {Array.from({ length: TIMES_MAX }, (_, i) => (
+              // A borda fica no div, e não no fieldset: o browser desenha a
+              // legend por cima da borda do fieldset, cortando a linha.
+              <div key={i} className={cx(i > 0 && "border-t border-line-soft pt-4")}>
+                <fieldset className="flex flex-col gap-3">
+                  <legend className="mb-2 font-display text-[14px] font-extrabold font-stretch-112% text-fg">
+                    Time {i + 1}
+                  </legend>
+                  <CamposDoColete
+                    idBase={`colete-${i}`}
+                    sufixo={`-${i}`}
+                    nome={coletes[i]?.nome ?? ""}
+                    cor={coletes[i]?.cor}
+                    corPadrao={COLETES_PADRAO[i]?.cor ?? null}
+                    obrigatorio={false}
+                  />
+                </fieldset>
+              </div>
+            ))}
+            <SubmitButton className="self-start" labelPending="Salvando…">
+              Salvar coletes
+            </SubmitButton>
           </form>
         </CardBody>
       </Card>

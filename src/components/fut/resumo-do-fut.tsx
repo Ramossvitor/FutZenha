@@ -39,7 +39,7 @@ export function CartaoDeJogo({ jogo }: { jogo: JogoDoResumo }) {
           <span className="truncate font-display text-[12px] font-bold text-fg-2">
             {jogo.timeA}
           </span>
-          <VestChip time={jogo.timeA} />
+          <VestChip cor={jogo.corA} />
         </span>
         <span
           className="font-display text-[26px] leading-none font-black font-stretch-125% text-fg"
@@ -48,7 +48,7 @@ export function CartaoDeJogo({ jogo }: { jogo: JogoDoResumo }) {
           {jogo.placarA} × {jogo.placarB}
         </span>
         <span className="flex flex-1 items-center gap-2">
-          <VestChip time={jogo.timeB} />
+          <VestChip cor={jogo.corB} />
           <span className="truncate font-display text-[12px] font-bold text-fg-2">
             {jogo.timeB}
           </span>
@@ -60,10 +60,13 @@ export function CartaoDeJogo({ jogo }: { jogo: JogoDoResumo }) {
           {/* O colete é o do lado em que a pessoa jogou NESTE jogo — é o que
               permite ler de relance para que lado foi o gol. Quem resolve os
               fallbacks (gol sem autor, e quem marcou sem linha de escalação) é o
-              montarResumo, não esta tela. */}
+              montarResumo, não esta tela; lado nulo sai como chip neutro. */}
           {jogo.gols.map((gol, i) => (
             <li key={i} className="flex items-center gap-2">
-              <VestChip time={gol.time} tamanho="sm" />
+              <VestChip
+                cor={gol.lado === "A" ? jogo.corA : gol.lado === "B" ? jogo.corB : undefined}
+                tamanho="sm"
+              />
               <span
                 className={`flex-1 truncate text-[12.5px] ${
                   gol.autor === null ? "text-fg-4 italic" : "text-fg-2"
@@ -127,7 +130,7 @@ export function ResumoDoFutView({
           {resumo.times.map((time) => (
             <Card key={time.id} className="p-3.5">
               <div className="mb-2 flex items-center gap-2">
-                <VestChip time={time.nome} />
+                <VestChip cor={time.cor} />
                 <span className="flex-1 truncate font-display text-[14px] font-extrabold font-stretch-112% text-fg">
                   {time.nome}
                 </span>

@@ -5,12 +5,14 @@ import { PageHeader } from "@/components/ui/card";
 import type { ItemJogador } from "@/components/ui/busca-jogador";
 import { db } from "@/db";
 import { players, users } from "@/db/schema";
+import { listarColetesDoGrupo } from "@/lib/coletes-do-grupo";
 import { emailConfigurado } from "@/lib/email-envio";
 import { podeGerenciarGrupo } from "@/lib/grupos-permissions";
 import { contarFuts, convitesEnviados, linkAtivo, listarMembros, pedidosPendentes } from "@/lib/grupos";
 import { requireGrupoOrganizador } from "@/lib/require-grupo";
 import { convidarJogador } from "./actions";
 import {
+  SecaoColetesDoGrupo,
   SecaoConvidar,
   SecaoDadosDoGrupo,
   SecaoLink,
@@ -40,14 +42,15 @@ export default async function GerenciarGrupoPage({
 
   const { erro, ok } = await searchParams;
 
-  // `pedidos` e `totalFuts` só alimentam seções de admin — organizador não
-  // paga por elas.
-  const [membros, convites, link, pedidos, totalFuts] = await Promise.all([
+  // `pedidos`, `totalFuts` e `coletes` só alimentam seções de admin —
+  // organizador não paga por elas.
+  const [membros, convites, link, pedidos, totalFuts, coletes] = await Promise.all([
     listarMembros(groupId),
     convitesEnviados(groupId),
     linkAtivo(groupId),
     souAdmin ? pedidosPendentes(groupId) : [],
     souAdmin ? contarFuts(groupId) : 0,
+    souAdmin ? listarColetesDoGrupo(db, groupId) : [],
   ]);
 
   // Candidatos ao convite nominal: quem tem conta ativa e ainda não está no
@@ -96,6 +99,7 @@ export default async function GerenciarGrupoPage({
       <BannerDaQuery erro={erro} ok={ok} />
 
       {souAdmin && <SecaoDadosDoGrupo grupo={grupo} groupId={groupId} />}
+      {souAdmin && <SecaoColetesDoGrupo groupId={groupId} coletes={coletes} />}
       {souAdmin && <SecaoPedidos groupId={groupId} pedidos={pedidos} />}
       {souAdmin && (
         <SecaoMembros groupId={groupId} membros={membros} meuPlayerId={session.player.id} />

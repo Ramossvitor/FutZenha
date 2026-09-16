@@ -609,14 +609,29 @@ export const matchDayInviteLinks = pgTable(
   (t) => [index("match_day_invite_links_fut_idx").on(t.matchDayId, t.revokedAt)],
 );
 
-export const teams = pgTable("teams", {
-  id: serial("id").primaryKey(),
-  matchDayId: integer("match_day_id")
-    .notNull()
-    .references(() => matchDays.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  sortOrder: integer("sort_order").notNull().default(0),
-});
+// O colete do fut: nome e cor de cada time. Nascem no sorteio (ou no "montar")
+// copiados dos `coletes_do_grupo` — ou dos padrões de src/lib/team-colors.ts,
+// para fut avulso e grupo sem coletes — e podem ser editados depois, pelo
+// /gerenciar ou pela súmula. Re-sortear apaga e recria as linhas (ver
+// gravarTimes), então a edição vale até o próximo sorteio.
+export const teams = pgTable(
+  "teams",
+  {
+    id: serial("id").primaryKey(),
+    matchDayId: integer("match_day_id")
+      .notNull()
+      .references(() => matchDays.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /**
+     * `#rrggbb` minúsculo, como `loja_itens.cor`. Nulo = "sem colete": o time
+     * que joga sem camisa por cima, desenhado como chip vazado. Nunca deriva
+     * do nome — "Com Colete" pode ser laranja, "Preto" pode ser sem colete.
+     */
+    cor: text("cor"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [check("teams_cor_valida", sql`${t.cor} is null or ${t.cor} ~ '^#[0-9a-f]{6}$'`)],
+);
 
 export const teamPlayers = pgTable(
   "team_players",
@@ -629,6 +644,38 @@ export const teamPlayers = pgTable(
       .references(() => players.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.teamId, t.playerId] })],
+);
+
+/**
+ * Os coletes do grupo: o molde de nome e cor que o sorteio copia para `teams`
+ * na ordem — o primeiro time sai com a linha 0, o segundo com a 1. É molde, não
+ * ponteiro (como `game_players` é snapshot de `team_players`): editar aqui não
+ * mexe em fut já sorteado, e apagar o grupo leva as linhas junto sem tocar nos
+ * futs, que viram avulsos com os times que já tinham.
+ *
+ * `sort_order between 0 and 5` é o par de `TIMES_MAX` (src/lib/regras.ts) no
+ * banco, no mesmo espírito do `posicao between 1 and 5` da vitrine: mudar um
+ * sem o outro quebra alto. Grupo sem linha nenhuma usa os padrões do código.
+ */
+export const coletesDoGrupo = pgTable(
+  "coletes_do_grupo",
+  {
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull(),
+    nome: text("nome").notNull(),
+    /** Mesma regra de `teams.cor`: `#rrggbb` minúsculo, ou nulo = sem colete. */
+    cor: text("cor"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.groupId, t.sortOrder] }),
+    check("coletes_do_grupo_ordem_valida", sql`${t.sortOrder} between 0 and 5`),
+    check(
+      "coletes_do_grupo_cor_valida",
+      sql`${t.cor} is null or ${t.cor} ~ '^#[0-9a-f]{6}$'`,
+    ),
+  ],
 );
 
 export const games = pgTable("games", {
@@ -2156,6 +2203,7 @@ export type MatchDayJoinRequest = typeof matchDayJoinRequests.$inferSelect;
 export type MatchDayInviteLink = typeof matchDayInviteLinks.$inferSelect;
 export type Attendance = typeof attendances.$inferSelect;
 export type Team = typeof teams.$inferSelect;
+export type ColeteDoGrupo = typeof coletesDoGrupo.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type GamePlayer = typeof gamePlayers.$inferSelect;
 export type Goal = typeof goals.$inferSelect;

@@ -74,9 +74,6 @@ export type ItemDaLoja = Readonly<{
  */
 export const VAGAS_NA_VITRINE = 5;
 
-/** Formato de cor aceito. Minúsculas: a normalização é da escrita, não da leitura. */
-export const REGEX_DE_COR = /^#[0-9a-f]{6}$/;
-
 /**
  * Os limites do formulário do admin.
  *

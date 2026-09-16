@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 // um tipo novo na migration sem lugar nas prateleiras quebrar este teste em vez
 // de sumir da loja em silêncio.
 import { lojaTipoEnum, zenhaSlotEnum, type LojaTipo } from "@/db/schema";
+import { REGEX_DE_COR } from "./cor";
 import {
   EFEITO_DO_MULTIPLICADOR,
   ORDEM_DAS_PRATELEIRAS,
-  REGEX_DE_COR,
   VAGAS_NA_VITRINE,
   ehConsumivel,
   ehMultiplicador,

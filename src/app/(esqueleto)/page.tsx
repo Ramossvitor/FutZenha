@@ -107,7 +107,7 @@ export default async function HomePage() {
         db.select().from(teams).where(inArray(teams.matchDayId, ids)),
       ])
     : [[], []];
-  const nomeDoTime = new Map(teamRows.map((t) => [t.id, t.name]));
+  const timePorId = new Map(teamRows.map((t) => [t.id, t]));
 
   const artilheiros = (await getTopScorers({ groupId: grupo?.id })).slice(0, 3);
   const posDoPodio = posicoes(artilheiros, (a) => a.total);
@@ -340,16 +340,16 @@ export default async function HomePage() {
                       )}
                       {dayGames.map((g) => (
                         <span key={g.id} className="flex items-center gap-1.5">
-                          <VestChip time={nomeDoTime.get(g.teamAId) ?? ""} tamanho="sm" />
+                          <VestChip cor={timePorId.get(g.teamAId)?.cor} tamanho="sm" />
                           <span
                             className="font-display text-[14px] font-extrabold font-stretch-112% text-fg"
                             data-num
                           >
                             {g.scoreA} × {g.scoreB}
                           </span>
-                          <VestChip time={nomeDoTime.get(g.teamBId) ?? ""} tamanho="sm" />
+                          <VestChip cor={timePorId.get(g.teamBId)?.cor} tamanho="sm" />
                           <span className="truncate text-[12px] text-fg-4">
-                            {nomeDoTime.get(g.teamAId)} × {nomeDoTime.get(g.teamBId)}
+                            {timePorId.get(g.teamAId)?.name} × {timePorId.get(g.teamBId)?.name}
                           </span>
                         </span>
                       ))}

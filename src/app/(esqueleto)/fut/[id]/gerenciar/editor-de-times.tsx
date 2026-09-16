@@ -182,7 +182,7 @@ export function EditorDeTimes({
   const jogadores = doServidor.flatMap((c) => c.jogadores);
   const times = doServidor
     .filter((c) => c.chave !== null)
-    .map((c) => ({ chave: c.chave!, nome: c.nome }));
+    .map((c) => ({ chave: c.chave!, nome: c.nome, cor: c.cor }));
   const ladoPorJogador = ladoPorJogadorDe(doServidor);
   if (modo === "rascunho") {
     for (const [id, lado] of lerRascunho(rascunhoSalvo)) {
@@ -225,7 +225,7 @@ export function EditorDeTimes({
   };
 
   const editavel = modo !== "leitura";
-  const destinos = colunas.map((c) => ({ chave: c.chave, nome: c.nome }));
+  const destinos = colunas.map((c) => ({ chave: c.chave, nome: c.nome, cor: c.cor }));
   // Em leitura a coluna "Sem time" só aparece se tiver alguém.
   const visiveis = colunas.filter(
     (c) => c.chave !== null || editavel || c.jogadores.length > 0,
@@ -262,7 +262,7 @@ export function EditorDeTimes({
               )}
             >
               <CardHeader>
-                {!semTime && <VestChip time={coluna.nome} tamanho="lg" />}
+                {!semTime && <VestChip cor={coluna.cor} tamanho="lg" />}
                 <span className="flex flex-1 items-baseline gap-2">
                   <span className="font-display text-[15px] font-extrabold font-stretch-112% text-fg">
                     {coluna.nome}
@@ -439,7 +439,7 @@ function Linha({
   editavel: boolean;
   arrastando: boolean;
   emVoo: boolean;
-  destinos: { chave: string | null; nome: string }[];
+  destinos: { chave: string | null; nome: string; cor: string | null }[];
   aoMandar: (destino: string | null) => void;
   aoPegar: PointerEventHandler<HTMLButtonElement>;
   aoMover: PointerEventHandler<HTMLButtonElement>;
@@ -501,7 +501,7 @@ function Linha({
                   ×
                 </span>
               ) : (
-                <VestChip time={d.nome} tamanho="md" />
+                <VestChip cor={d.cor} tamanho="md" />
               )}
             </BotaoDeDestino>
           ))}

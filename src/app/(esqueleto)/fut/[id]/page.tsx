@@ -430,10 +430,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
             </span>
           }
         >
-          <ConfeteDoSorteio
-            chave={String(matchDay.id)}
-            times={teamList.map((t) => t.name)}
-          />
+          <ConfeteDoSorteio chave={String(matchDay.id)} times={teamList} />
           <div className="grid gap-3 sm:grid-cols-2">
             {teamList.map((team, i) => {
               const doTime = teamMembers.filter((m) => m.teamId === team.id);
@@ -449,7 +446,7 @@ export default async function FutPage({ params, searchParams }: PageProps<"/fut/
                   style={{ animationDelay: `${Math.min(i, 3) * 70}ms` }}
                 >
                   <CardHeader>
-                    <VestChip time={team.name} tamanho="lg" className="animate-pulo" />
+                    <VestChip cor={team.cor} tamanho="lg" className="animate-pulo" />
                     <span className="flex-1 font-display text-[15px] font-extrabold font-stretch-112% text-fg">
                       {team.name}
                     </span>

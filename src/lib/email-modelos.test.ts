@@ -293,8 +293,8 @@ describe("emailDeEventoDeAgenda", () => {
 describe("emailDeResumoDoFut", () => {
   const resumo = montarResumo({
     times: [
-      { id: 1, name: "Verde", sortOrder: 0 },
-      { id: 2, name: "Azul & Cia", sortOrder: 1 },
+      { id: 1, name: "Verde", cor: "#16a868", sortOrder: 0 },
+      { id: 2, name: "Azul & Cia", cor: null, sortOrder: 1 },
     ],
     jogos: [
       {

@@ -91,7 +91,7 @@ export default async function EncerrarFutPage({
       : [];
 
   const jogadorPorId = new Map(elenco.map((p) => [p.id, p]));
-  const nomeDoTime = new Map(teamList.map((t) => [t.id, t.name]));
+  const timePorId = new Map(teamList.map((t) => [t.id, t]));
 
   // O checklist usa as mesmas funções puras que decidem quem avalia quem, então
   // o que ele promete é o que vai acontecer de fato no encerramento.
@@ -167,16 +167,16 @@ export default async function EncerrarFutPage({
               <CardHeader>
                 <Eyebrow>jogo {i + 1}</Eyebrow>
                 <span className="flex flex-1 items-center gap-2">
-                  <VestChip time={nomeDoTime.get(game.teamAId) ?? ""} tamanho="sm" />
+                  <VestChip cor={timePorId.get(game.teamAId)?.cor} tamanho="sm" />
                   <span className="font-display text-[13px] font-bold text-fg-2">
-                    {nomeDoTime.get(game.teamAId)}
+                    {timePorId.get(game.teamAId)?.name}
                   </span>
                   <span className="font-display text-[15px] font-black text-fg" data-num>
                     {game.scoreA} × {game.scoreB}
                   </span>
-                  <VestChip time={nomeDoTime.get(game.teamBId) ?? ""} tamanho="sm" />
+                  <VestChip cor={timePorId.get(game.teamBId)?.cor} tamanho="sm" />
                   <span className="font-display text-[13px] font-bold text-fg-2">
-                    {nomeDoTime.get(game.teamBId)}
+                    {timePorId.get(game.teamBId)?.name}
                   </span>
                 </span>
               </CardHeader>
@@ -186,7 +186,8 @@ export default async function EncerrarFutPage({
               <div className="grid sm:grid-cols-2">
                 {(["A", "B"] as const).map((side) => {
                   const membros = lado(side);
-                  const nome = nomeDoTime.get(side === "A" ? game.teamAId : game.teamBId) ?? "";
+                  const time = timePorId.get(side === "A" ? game.teamAId : game.teamBId);
+                  const nome = time?.name ?? "";
                   return (
                     <div
                       key={side}
@@ -196,7 +197,7 @@ export default async function EncerrarFutPage({
                       )}
                     >
                       <div className="flex items-center gap-2 border-b border-line-soft pb-2">
-                        <VestChip time={nome} />
+                        <VestChip cor={time?.cor} />
                         <span className="flex-1 font-display text-[15px] font-extrabold font-stretch-112% text-fg">
                           {nome}
                         </span>
@@ -278,7 +279,7 @@ export default async function EncerrarFutPage({
                               >
                                 <SubmitButton variante="secondary" tamanho="sm">
                                   +{" "}
-                                  {nomeDoTime.get(side === "A" ? game.teamAId : game.teamBId)}
+                                  {timePorId.get(side === "A" ? game.teamAId : game.teamBId)?.name}
                                 </SubmitButton>
                               </form>
                             ))}

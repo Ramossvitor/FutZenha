@@ -3,13 +3,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { lojaImagens, lojaItens } from "@/db/schema";
+import { REGEX_DE_COR } from "./cor";
 import { isForeignKeyViolation } from "./db-errors";
 import { validarImagem, type ErroDeImagem } from "./imagem-de-item";
 import {
   DESCRICAO_MAXIMA,
   NOME_MAXIMO,
   PRECO_MAXIMO,
-  REGEX_DE_COR,
   corBateComTipo,
   type TipoDeItem,
 } from "./item-da-loja";

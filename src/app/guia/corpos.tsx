@@ -142,6 +142,14 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         Os times saem do mesmo tamanho, com diferença de no máximo um jogador. Depois do
         sorteio, quem organiza ainda pode trocar dois jogadores de lado na mão.
       </p>
+      <p>
+        <strong className="text-fg">O nome e a cor de cada time</strong> vêm dos coletes do
+        grupo, na ordem — quem administra o grupo define até {TIMES_MAX} (“Com Colete”, “Sem
+        Colete”, o azul do clube…). Fut avulso, ou grupo que não definiu os seus, sai com os
+        padrões: Preto, Branco, Verde, Laranja, Azul e Vermelho. Depois do sorteio, quem
+        organiza — e quem está com a súmula — ainda muda nome e cor de cada time, até o
+        próximo sorteio. Um time “sem colete” aparece com o retângulo vazado.
+      </p>
     </>
   ),
 
@@ -573,6 +581,11 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         ou foi contra? Existe o botão de gol sem autor: o placar sobe, e a artilharia não.
       </p>
       <p>
+        <strong className="text-fg">Os nomes estão errados?</strong> Antes de abrir o jogo, quem
+        está com a súmula acerta o nome e a cor de cada time ali mesmo, em “Nome e cor dos
+        times” — “Com Colete” × “Sem Colete”, por exemplo. Vale até o próximo sorteio.
+      </p>
+      <p>
         <strong className="text-fg">Errou?</strong> Dá para desfazer o último lançamento. Quem
         administra o fut desfaz qualquer lançamento do jogo aberto; quem só recebeu a súmula
         desfaz apenas o último do próprio lado.
@@ -695,7 +708,7 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
       <HairlineList as="ul">
         <HairlineRow as="li">
           <strong className="text-fg">Quem administra</strong> — manda em tudo: nome,
-          visibilidade, papéis, convites, quem entra e quem sai.
+          visibilidade, papéis, convites, quem entra e quem sai, e os coletes dos times.
         </HairlineRow>
         <HairlineRow as="li">
           <strong className="text-fg">Quem organiza</strong> — marca futs e convida gente.
@@ -713,6 +726,11 @@ export const CORPOS: Record<IdDeCapitulo, ReactNode> = {
         convidado — ou <strong className="text-fg">público</strong>, e aí ou a pessoa pede
         para entrar e alguém aprova, ou ela entra direto. O link de convite vale{" "}
         {VALIDADE_CONVITE_DIAS} dias, e gerar um link novo derruba o anterior.
+      </p>
+      <p>
+        <strong className="text-fg">Coletes do grupo.</strong> Quem administra define o nome e a
+        cor dos times na ordem em que saem no sorteio — pelo menos {TIMES_MIN}, ou nenhum, para
+        usar os padrões. Vale para os próximos sorteios; fut já sorteado não muda.
       </p>
       <p>
         Apagar o grupo não apaga os futs dele: eles viram futs avulsos, e gols, vitórias e

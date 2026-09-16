@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FormulariosDeColete } from "@/components/fut/formularios-de-colete";
 import { Badge } from "@/components/ui/badge";
 import { Banner } from "@/components/ui/banner";
 import { LinkButton, SubmitButton } from "@/components/ui/button";
@@ -40,6 +41,7 @@ import {
   deleteGoal,
   deleteMatchDay,
   drawTeamsAction,
+  editarTimeAction,
   marcarFalta,
   montarTimesAction,
   moverJogadorAction,
@@ -51,7 +53,6 @@ import {
 import type { PainelDoFut } from "./dados";
 import { EditorDeTimes } from "./editor-de-times";
 import { LADOS_DO_RASCUNHO, repartirEmColunas, type JogadorDeTime } from "@/lib/montar-times";
-import { defaultTeamNames } from "@/lib/team-colors";
 
 // As seções do painel moram aqui, e não na página, porque o arquivo passava de
 // 760 linhas e qualquer mudança numa seção exigia rolar as outras cinco. As
@@ -521,7 +522,7 @@ export function SecaoEntrada({ fut }: { fut: PainelDoFut }) {
 }
 
 export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
-  const { matchDay, teamList, teamMembers, confirmed, gameList } = fut;
+  const { matchDay, teamList, teamMembers, confirmed, gameList, coletesDoRascunho } = fut;
   const aberta = matchDay.status === "scheduled";
 
   // As colunas do editor. Com a lista aberta são um rascunho: todo confirmado
@@ -537,7 +538,11 @@ export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
   const colunas = aberta
     ? repartirEmColunas(
         confirmadosComoJogadores,
-        LADOS_DO_RASCUNHO.map((lado, i) => ({ chave: lado, nome: defaultTeamNames[i] })),
+        LADOS_DO_RASCUNHO.map((lado, i) => ({
+          chave: lado,
+          nome: coletesDoRascunho[i].nome,
+          cor: coletesDoRascunho[i].cor,
+        })),
         new Map(),
       )
     : repartirEmColunas(
@@ -554,7 +559,7 @@ export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
               isGoalkeeper: m.isGoalkeeper,
             })),
         ],
-        teamList.map((t) => ({ chave: String(t.id), nome: t.name })),
+        teamList.map((t) => ({ chave: String(t.id), nome: t.name, cor: t.cor })),
         new Map(teamMembers.map((m) => [m.playerId, String(m.teamId)])),
       );
 
@@ -640,12 +645,31 @@ export function SecaoTimes({ fut }: { fut: PainelDoFut }) {
           mover={moverJogadorAction.bind(null, matchDay.id)}
         />
       )}
+
+      {/* Nome e cor de cada time, depois do sorteio — o mesmo bloco da súmula,
+          sobre a mesma regra (src/lib/times-do-fut.ts); aqui com o guard e o
+          ?erro= de quem gerencia. */}
+      {matchDay.status === "teams_drawn" && teamList.length > 0 && (
+        <FormulariosDeColete
+          times={teamList.map((t) => ({ id: t.id, nome: t.name, cor: t.cor }))}
+          acaoDoTime={(teamId) => editarTimeAction.bind(null, matchDay.id, teamId)}
+          idBase="time"
+          dica="vale até o próximo sorteio"
+          rodape={
+            <>
+              Re-sortear ou re-montar recria os times com os coletes do grupo (ou os padrões) — o
+              que você mudar aqui não sobrevive a um novo sorteio. Quem está com a súmula também
+              pode mudar isto pelo painel.
+            </>
+          }
+        />
+      )}
     </Section>
   );
 }
 
 export function SecaoJogos({ fut }: { fut: PainelDoFut }) {
-  const { matchDay, teamList, gameList, goalRows, lineupRows, teamNameById, podeEditarPlacar } =
+  const { matchDay, teamList, gameList, goalRows, lineupRows, timePorId, podeEditarPlacar } =
     fut;
 
   if (teamList.length === 0) return null;
@@ -655,8 +679,10 @@ export function SecaoJogos({ fut }: { fut: PainelDoFut }) {
       {gameList.map((game, i) => {
         const gameGoals = goalRows.filter((g) => g.gameId === game.id);
         const lineup = lineupRows.filter((m) => m.gameId === game.id);
-        const timeA = teamNameById.get(game.teamAId) ?? "";
-        const timeB = teamNameById.get(game.teamBId) ?? "";
+        const timeA = timePorId.get(game.teamAId)?.nome ?? "";
+        const timeB = timePorId.get(game.teamBId)?.nome ?? "";
+        const corA = timePorId.get(game.teamAId)?.cor;
+        const corB = timePorId.get(game.teamBId)?.cor;
 
         return (
           <Card key={game.id}>
@@ -671,10 +697,10 @@ export function SecaoJogos({ fut }: { fut: PainelDoFut }) {
                 </Badge>
               )}
               <span className="flex flex-1 items-center gap-2">
-                <VestChip time={timeA} tamanho="sm" />
+                <VestChip cor={corA} tamanho="sm" />
                 <span className="font-display text-[13px] font-bold text-fg-2">{timeA}</span>
                 <span className="text-fg-4">×</span>
-                <VestChip time={timeB} tamanho="sm" />
+                <VestChip cor={corB} tamanho="sm" />
                 <span className="font-display text-[13px] font-bold text-fg-2">{timeB}</span>
               </span>
               {matchDay.status !== "finished" && (

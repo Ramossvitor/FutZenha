@@ -109,7 +109,7 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
   const teamRows = dayIds.length
     ? await db.select().from(teams).where(inArray(teams.matchDayId, dayIds))
     : [];
-  const teamNameById = new Map(teamRows.map((t) => [t.id, t.name]));
+  const timePorId = new Map(teamRows.map((t) => [t.id, t]));
 
   const entrada = session ? podeEntrarNoGrupo(grupo, papel) : "so-convite";
   const podeCriarFut = papel === "admin" || papel === "organizer";
@@ -221,14 +221,14 @@ export default async function GrupoPage({ params, searchParams }: PageProps<"/gr
                       <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                         {dayGames.map((g) => (
                           <span key={g.id} className="flex items-center gap-1.5">
-                            <VestChip time={teamNameById.get(g.teamAId) ?? ""} tamanho="sm" />
+                            <VestChip cor={timePorId.get(g.teamAId)?.cor} tamanho="sm" />
                             <span
                               className="font-display text-[13px] font-extrabold font-stretch-112% text-fg-2"
                               data-num
                             >
                               {g.scoreA} × {g.scoreB}
                             </span>
-                            <VestChip time={teamNameById.get(g.teamBId) ?? ""} tamanho="sm" />
+                            <VestChip cor={timePorId.get(g.teamBId)?.cor} tamanho="sm" />
                           </span>
                         ))}
                       </span>

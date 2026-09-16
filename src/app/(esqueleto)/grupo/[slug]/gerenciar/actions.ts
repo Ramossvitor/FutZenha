@@ -14,6 +14,8 @@ import {
   users,
 } from "@/db/schema";
 import { redirectPosEnvio } from "@/app/redirect-pos-envio";
+import { gravarColetesDoGrupo } from "@/lib/coletes-do-grupo";
+import { lerColetesDoForm } from "@/lib/coletes-form";
 import { agendarAvisoDeConviteDeGrupo, reenviarAvisoDeGrupo } from "@/lib/email-convite";
 import { parseGrupoForm } from "@/lib/grupos-form";
 import { podePromover, podeRemoverMembro } from "@/lib/grupos-permissions";
@@ -67,6 +69,38 @@ export async function atualizarGrupo(groupId: number, formData: FormData) {
 
   revalidateGrupo(grupo.slug);
   ok(grupo.slug, "grupo-atualizado");
+}
+
+/**
+ * Os coletes do grupo: o molde de nome e cor que o sorteio dos futs deste grupo
+ * copia, na ordem. Tudo em branco apaga a lista e o grupo volta aos padrões.
+ * Substitui a lista inteira numa transação — não há edição de linha: são no
+ * máximo seis, e o form manda todas de uma vez.
+ */
+export async function definirColetesDoGrupo(groupId: number, formData: FormData) {
+  const { grupo } = await requireGrupoAdmin(groupId);
+
+  const parsed = lerColetesDoForm(formData);
+  if (!parsed.success) {
+    // Um `case` por slug, com o literal dentro do helper: é assim que o
+    // mensagens.test.ts enxerga o que esta action emite.
+    switch (parsed.erro) {
+      case "coletes-incompletos":
+        erro(grupo.slug, "coletes-incompletos");
+      case "nome-de-time-repetido":
+        erro(grupo.slug, "nome-de-time-repetido");
+      case "nome-de-time-invalido":
+        erro(grupo.slug, "nome-de-time-invalido");
+      default:
+        parsed.erro satisfies never;
+        erro(grupo.slug, "dados-invalidos");
+    }
+  }
+
+  await db.transaction((tx) => gravarColetesDoGrupo(tx, groupId, parsed.data));
+
+  revalidateGrupo(grupo.slug);
+  ok(grupo.slug, "coletes-atualizados");
 }
 
 /**

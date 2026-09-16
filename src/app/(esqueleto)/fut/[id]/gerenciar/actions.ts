@@ -57,7 +57,11 @@ import { agendarDespachoDePush } from "@/lib/push-envio";
 import { esquecerStats } from "@/lib/stats";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { podeCriarMaisJogador } from "@/lib/tetos-de-criacao";
-import { defaultTeamNames } from "@/lib/team-colors";
+import { listarColetesDoGrupo } from "@/lib/coletes-do-grupo";
+import { lerColeteDoForm } from "@/lib/coletes-form";
+import { completarColetes } from "@/lib/team-colors";
+import { atualizarTime } from "@/lib/times-do-fut";
+import { queryDoErroDeTime } from "../erro-de-time";
 
 export async function updateMatchDay(matchDayId: number, formData: FormData) {
   const { matchDay } = await requireFutAdmin(matchDayId);
@@ -320,7 +324,10 @@ export async function montarTimesAction(matchDayId: number, formData: FormData) 
 /**
  * Grava os times e fecha a lista — o trecho comum ao sorteio e ao "montar".
  * `times[i]` é a lista de jogadores do i-ésimo time (nunca vazia: quem chama
- * já recusou time vazio); o nome sai da paleta (`defaultTeamNames`) na ordem.
+ * já recusou time vazio); o nome e a cor de cada um saem dos coletes do grupo
+ * completados pelos padrões (ver completarColetes), na ordem — lidos aqui, sob
+ * o lock do fut. É cópia, não ponteiro: mudar os coletes do grupo depois não
+ * mexe neste fut.
  *
  * As travas de "fut encerrado" e "já tem jogo" moram AQUI, sob o lock, e não
  * numa guarda pré-transação: o createGame e o encerramento travam o mesmo fut,
@@ -355,11 +362,15 @@ async function gravarTimes({
       redirect(`/fut/${matchDayId}/gerenciar?erro=jogos-lancados`);
     }
 
+    const coletes = completarColetes(
+      await listarColetesDoGrupo(tx, matchDay.groupId),
+      times.length,
+    );
     await tx.delete(teams).where(eq(teams.matchDayId, matchDayId));
     for (const [i, playerIds] of times.entries()) {
       const [created] = await tx
         .insert(teams)
-        .values({ matchDayId, name: defaultTeamNames[i] ?? `Time ${i + 1}`, sortOrder: i })
+        .values({ matchDayId, name: coletes[i].nome, cor: coletes[i].cor, sortOrder: i })
         .returning();
       await tx
         .insert(teamPlayers)
@@ -455,6 +466,31 @@ export async function moverJogadorAction(
   });
 
   revalidateMatchDay(matchDayId);
+}
+
+/**
+ * Nome e cor de UM time, depois do sorteio. Vale até o próximo sorteio: o
+ * re-sortear apaga e recria os times a partir dos coletes do grupo (ver
+ * gravarTimes). A regra mora em src/lib/times-do-fut.ts, compartilhada com a
+ * súmula — aqui ficam o guard de quem gerencia e o contrato de ?erro= desta
+ * tela. O parse recusado tem slug próprio porque o `dados-invalidos` daqui é
+ * o genérico "confira os campos", e o campo a conferir é um só.
+ */
+export async function editarTimeAction(matchDayId: number, teamId: number, formData: FormData) {
+  const { matchDay } = await requireFutAdmin(matchDayId);
+  assertEscalacaoEditavel(matchDay);
+  if (!Number.isInteger(teamId)) redirect(`/fut/${matchDayId}/gerenciar?erro=dados-invalidos`);
+
+  const colete = lerColeteDoForm(formData);
+  if (!colete.success) redirect(`/fut/${matchDayId}/gerenciar?erro=nome-de-time-invalido`);
+
+  const erro = await db.transaction((tx) =>
+    atualizarTime(tx, { matchDayId, teamId, ...colete.data }),
+  );
+  if (erro !== null) redirect(`/fut/${matchDayId}/gerenciar${queryDoErroDeTime(erro)}`);
+
+  revalidateMatchDay(matchDayId);
+  redirect(`/fut/${matchDayId}/gerenciar?ok=time-atualizado`);
 }
 
 export async function createGame(matchDayId: number, formData: FormData) {

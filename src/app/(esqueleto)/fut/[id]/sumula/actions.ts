@@ -19,10 +19,13 @@ import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { sumulaOperadores } from "@/db/schema";
+import { lerColeteDoForm } from "@/lib/coletes-form";
 import { requireFutAdmin } from "@/lib/require-fut-admin";
 import { requireOperadorSumula } from "@/lib/require-operador-sumula";
 import { ehElegivelParaSumula } from "@/lib/sumula-elegiveis";
 import * as servico from "@/lib/sumula-servico";
+import { atualizarTime } from "@/lib/times-do-fut";
+import { queryDoErroDeTime } from "../erro-de-time";
 import { revalidateMatchDay } from "../revalidate";
 
 /**
@@ -42,6 +45,32 @@ async function traduzindoErros<T>(matchDayId: number, executar: () => Promise<T>
     }
     throw erro;
   }
+}
+
+/**
+ * Nome e cor de um time, pelo painel — para quem está com a súmula acertar
+ * "Com Colete" × "Sem Colete" no campo, antes de abrir o jogo, sem depender de
+ * quem gerencia. A regra é a mesma do /gerenciar (src/lib/times-do-fut.ts); o
+ * que muda é o guard (operador, delegado inclusive) e a tela do ?erro=.
+ *
+ * Fora do `traduzindoErros` porque a recusa vem como valor, não como
+ * ErroDaSumula. O parse recusado tem slug próprio: o `dados-invalidos` desta
+ * tela é sobrescrito por um texto genérico (ver LOCAIS em page.tsx).
+ */
+export async function editarTimeNaSumula(matchDayId: number, teamId: number, formData: FormData) {
+  await requireOperadorSumula(matchDayId);
+  if (!Number.isInteger(teamId)) redirect(`/fut/${matchDayId}/sumula?erro=dados-invalidos`);
+
+  const colete = lerColeteDoForm(formData);
+  if (!colete.success) redirect(`/fut/${matchDayId}/sumula?erro=nome-de-time-invalido`);
+
+  const erro = await db.transaction((tx) =>
+    atualizarTime(tx, { matchDayId, teamId, ...colete.data }),
+  );
+  if (erro !== null) redirect(`/fut/${matchDayId}/sumula${queryDoErroDeTime(erro)}`);
+
+  revalidateMatchDay(matchDayId);
+  redirect(`/fut/${matchDayId}/sumula?ok=time-atualizado`);
 }
 
 export async function iniciarJogo(matchDayId: number, formData: FormData) {
