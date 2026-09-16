@@ -16,6 +16,7 @@ import {
   teams,
   users,
 } from "@/db/schema";
+import { listarColetesDoGrupo } from "@/lib/coletes-do-grupo";
 import { getFaltamVotar, getJanelaAberturaExclusao, getVotacaoDoFut } from "@/lib/deletion";
 import { jogadoresElegiveis } from "@/lib/elegiveis";
 import {
@@ -26,6 +27,8 @@ import {
 import { FIM_DA_JANELA_CORRECAO } from "@/lib/janela-correcao";
 import { repartirLista } from "@/lib/lista-presenca";
 import { lerCosmeticosDoNome } from "@/lib/loja";
+import { LADOS_DO_RASCUNHO } from "@/lib/montar-times";
+import { completarColetes } from "@/lib/team-colors";
 
 // Quem lançou e quem desfez cada gol na súmula ao vivo — duas pontas
 // diferentes da mesma tabela de jogadores.
@@ -168,7 +171,7 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
   ]);
   const gameIds = gameList.map((g) => g.id);
 
-  const [activePlayers, teamMembers, goalRows, lineupRows] = await Promise.all([
+  const [activePlayers, teamMembers, goalRows, lineupRows, coletesDoGrupo] = await Promise.all([
     // Depende do `groupId`, então só dá para pedir depois de o fut chegar —
     // por isso está na segunda onda e não na primeira. O `atorId` entra porque
     // em fut avulso a lista é o espelho de podeDefinirPresencaPor, e quem
@@ -237,6 +240,9 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
           .where(inArray(gamePlayers.gameId, gameIds))
           .orderBy(asc(players.name))
       : Promise.resolve([]),
+    // Os coletes do grupo, para as colunas do rascunho do "montar" mostrarem o
+    // nome que o sorteio vai dar. Depende do `groupId`, como a lista de cima.
+    listarColetesDoGrupo(db, matchDay.groupId),
   ]);
 
   // Só o número sai da função: os nomes de quem ainda não votou nunca chegam à
@@ -265,7 +271,10 @@ export async function carregarPainel(matchDayId: number, atorId: number) {
     gameList,
     goalRows,
     lineupRows,
-    teamNameById: new Map(teamList.map((t) => [t.id, t.name])),
+    timePorId: new Map(teamList.map((t) => [t.id, { nome: t.name, cor: t.cor }])),
+    // O que o sorteio de dois (ou o "montar") vai chamar os times: os coletes do
+    // grupo completados pelos padrões — os mesmos nomes que gravarTimes grava.
+    coletesDoRascunho: completarColetes(coletesDoGrupo, LADOS_DO_RASCUNHO.length),
     votacao,
     faltamVotar,
     janelaExclusao,

@@ -71,15 +71,10 @@
   /* foco */
   --ring:        #457200;
 
-  /* coletes — o preenchimento É a cor da camisa e não muda entre temas.
-     Quem carrega o contraste contra a superfície é a borda, que muda. */
-  --vest-preto:    #15181A;  --vest-preto-line:    #4A5257;
-  --vest-branco:   #E8EDEA;  --vest-branco-line:   #849089;
-  --vest-verde:    #16A868;  --vest-verde-line:    #0E8E56;
-  --vest-laranja:  #F2740F;  --vest-laranja-line:  #D8600A;
-  --vest-azul:     #2F6FE0;  --vest-azul-line:     #2F6FE0;
-  --vest-vermelho: #D9342A;  --vest-vermelho-line: #D9342A;
-  --vest-amarelo:  #F5C518;  --vest-amarelo-line:  #B08800;
+  /* Os coletes não têm token: a cor de um time é coluna (`teams.cor`, hex livre
+     ou nulo = sem colete) e entra no chip por custom property — ver o utilitário
+     `colete-livre` lá embaixo. As sete cores clássicas que eram os --vest-*
+     daqui moram em src/lib/team-colors.ts (CORES_DE_COLETE). */
 
   /* Aqui moraram sete tokens --zenha-*, a paleta fechada dos itens da loja.
      Eles sumiram junto com o catálogo em código: a cor de uma moldura e de uma
@@ -91,7 +86,12 @@
      os sete tokens flipavam inteiros entre claro e escuro justamente porque o
      token é TINTA (texto do nome, anel do avatar). Quem escolhe a cor passa a
      responder pelo contraste — e a prévia na tela de edição é onde isso se vê.
-     Foi decisão de produto: sem cor livre não existe "azul do Avaí". */
+     Foi decisão de produto: sem cor livre não existe "azul do Avaí".
+
+     Os coletes fizeram o mesmo caminho depois (`teams.cor`), com uma diferença:
+     colete é PREENCHIMENTO, não tinta, e o contraste dele contra a superfície
+     sempre foi da borda — que agora sai de color-mix com o --fg do tema, para
+     qualquer cor (ver `colete-livre`). */
 
   /* raios */
   --r-selo:  3px;
@@ -144,14 +144,6 @@
     --on-danger:   #070908;
 
     --ring:        #CDFF3A;
-
-    --vest-preto-line:    #5C666B;
-    --vest-branco-line:   #E8EDEA;
-    --vest-verde-line:    #1FD183;
-    --vest-laranja-line:  #FF9038;
-    --vest-azul-line:     #4E8CF5;
-    --vest-vermelho-line: #F2564A;
-    --vest-amarelo-line:  #FFD84D;
   }
 }
 
@@ -174,9 +166,6 @@
   --danger:#CE2F16; --danger-hover:#B82B13; --danger-ink:#C22F16;
   --danger-tint:#FDECE8; --danger-line:#F5C4B8; --on-danger:#FFFFFF;
   --ring:#457200;
-  --vest-preto-line:#4A5257; --vest-branco-line:#849089; --vest-verde-line:#0E8E56;
-  --vest-laranja-line:#D8600A; --vest-azul-line:#2F6FE0; --vest-vermelho-line:#D9342A;
-  --vest-amarelo-line:#B08800;
 }
 
 :root[data-theme="dark"] {
@@ -190,9 +179,6 @@
   --danger:#FF4B2B; --danger-hover:#FF6449; --danger-ink:#FF7A5E;
   --danger-tint:#1E100C; --danger-line:#4A241C; --on-danger:#070908;
   --ring:#CDFF3A;
-  --vest-preto-line:#5C666B; --vest-branco-line:#E8EDEA; --vest-verde-line:#1FD183;
-  --vest-laranja-line:#FF9038; --vest-azul-line:#4E8CF5; --vest-vermelho-line:#F2564A;
-  --vest-amarelo-line:#FFD84D;
 }
 
 /* --------------------------------------------------------------------------
@@ -252,21 +238,6 @@
   --color-on-danger:    var(--on-danger);
 
   --color-ring:       var(--ring);
-
-  --color-vest-preto:         var(--vest-preto);
-  --color-vest-preto-line:    var(--vest-preto-line);
-  --color-vest-branco:        var(--vest-branco);
-  --color-vest-branco-line:   var(--vest-branco-line);
-  --color-vest-verde:         var(--vest-verde);
-  --color-vest-verde-line:    var(--vest-verde-line);
-  --color-vest-laranja:       var(--vest-laranja);
-  --color-vest-laranja-line:  var(--vest-laranja-line);
-  --color-vest-azul:          var(--vest-azul);
-  --color-vest-azul-line:     var(--vest-azul-line);
-  --color-vest-vermelho:      var(--vest-vermelho);
-  --color-vest-vermelho-line: var(--vest-vermelho-line);
-  --color-vest-amarelo:       var(--vest-amarelo);
-  --color-vest-amarelo-line:  var(--vest-amarelo-line);
 
   /* rounded-selo / rounded-ctl / rounded-card */
   --radius-selo:  var(--r-selo);
@@ -533,6 +504,27 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -.02em;
   line-height: .86;
+}
+
+/* O colete de cor livre — a exceção ao critério de cima, porque é o par
+   declaração + fallback que uma string de classes não sabe escrever.
+
+   O preenchimento é a cor da camisa, igual nos dois temas. A borda é o que
+   garante o chip visível contra a superfície, e sai de color-mix com o --fg,
+   que flipa com o tema: camisa preta ganha borda clara no escuro, camisa
+   branca ganha borda escura no claro. É o serviço que os --vest-*-line faziam
+   à mão para sete cores, agora para qualquer uma.
+
+   A cor entra por `--cor-do-colete` no `style` do chip (vest.tsx): o Tailwind
+   gera utilitário varrendo o fonte, então uma classe com o hex interpolado
+   nunca existiria na folha final. O fallback vem antes, para o browser sem
+   color-mix cair na borda de sempre em vez de em borda nenhuma. */
+@utility colete-livre {
+  background-color: var(--cor-do-colete);
+  border-color: var(--line-strong);
+  @supports (color: color-mix(in srgb, red 50%, blue)) {
+    border-color: color-mix(in srgb, var(--cor-do-colete) 60%, var(--fg));
+  }
 }
 
 /* --------------------------------------------------------------------------

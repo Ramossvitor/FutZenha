@@ -17,6 +17,7 @@ import {
   type Player,
   type User,
 } from "@/db/schema";
+import { CORES_DE_COLETE } from "@/lib/team-colors";
 import {
   confirmarPresenca,
   criarFut,
@@ -53,11 +54,11 @@ export async function montarSumula(opcoes: { comContas?: boolean } = {}): Promis
 
   const [timeA] = await db
     .insert(teams)
-    .values({ matchDayId: fut.id, name: "Preto", sortOrder: 0 })
+    .values({ matchDayId: fut.id, name: "Preto", cor: CORES_DE_COLETE.preto, sortOrder: 0 })
     .returning();
   const [timeB] = await db
     .insert(teams)
-    .values({ matchDayId: fut.id, name: "Branco", sortOrder: 1 })
+    .values({ matchDayId: fut.id, name: "Branco", cor: CORES_DE_COLETE.branco, sortOrder: 1 })
     .returning();
   await db.insert(teamPlayers).values([
     ...ladoA.map((p) => ({ teamId: timeA.id, playerId: p.id })),

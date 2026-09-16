@@ -3,8 +3,9 @@ import { linhaDePlacar, montarResumo, type EntradaDoResumo } from "./resumo";
 
 // Dois times, um jogo, dois jogadores de cada lado — a base que cada teste
 // deforma no ponto que quer provar.
-const VERDE = { id: 1, name: "Verde", sortOrder: 0 };
-const AZUL = { id: 2, name: "Azul", sortOrder: 1 };
+// Um com cor e um "sem colete" (cor nula), para os dois estados atravessarem.
+const VERDE = { id: 1, name: "Verde", cor: "#16a868", sortOrder: 0 };
+const AZUL = { id: 2, name: "Azul", cor: null, sortOrder: 1 };
 
 const JOGO = {
   id: 10,
@@ -73,9 +74,16 @@ describe("montarResumo — placar e jogos", () => {
     expect(resumo.jogos.map((j) => j.id)).toEqual([11, 12, 30]);
   });
 
-  it("leva o placar e o nome dos dois times", () => {
+  it("leva o placar, o nome e a cor dos dois times", () => {
     const [jogo] = montarResumo(entrada()).jogos;
-    expect(jogo).toMatchObject({ timeA: "Verde", timeB: "Azul", placarA: 2, placarB: 1 });
+    expect(jogo).toMatchObject({
+      timeA: "Verde",
+      timeB: "Azul",
+      corA: "#16a868",
+      corB: null,
+      placarA: 2,
+      placarB: 1,
+    });
   });
 
   it("em andamento é começou-e-não-terminou; jogo do fluxo clássico nunca é", () => {
@@ -102,7 +110,7 @@ describe("montarResumo — placar e jogos", () => {
 describe("montarResumo — o colete de cada gol", () => {
   it("sem side gravado, sai da escalação DAQUELE jogo", () => {
     const resumo = montarResumo(entrada({ gols: [gol({ playerId: 200 })] }));
-    expect(resumo.jogos[0].gols[0].time).toBe("Azul");
+    expect(resumo.jogos[0].gols[0]).toMatchObject({ lado: "B", time: "Azul" });
   });
 
   // A troca de lado no meio do jogo (súmula ao vivo) é onde as duas fontes
@@ -119,7 +127,7 @@ describe("montarResumo — o colete de cada gol", () => {
       }),
     );
 
-    expect(resumo.jogos[0].gols[0].time).toBe("Verde");
+    expect(resumo.jogos[0].gols[0]).toMatchObject({ lado: "A", time: "Verde" });
   });
 
   // A mesma pessoa pode trocar de colete entre jogos — por isso a chave é o par
@@ -152,10 +160,11 @@ describe("montarResumo — o colete de cada gol", () => {
     expect(resumo.jogos[0].gols[0]).toMatchObject({ autor: null, time: "Verde" });
   });
 
-  // Chip neutro é mais honesto do que chutar um lado.
-  it("sem escalação e sem side, o colete fica vazio", () => {
+  // Chip neutro é mais honesto do que chutar um lado — e neutro é lado nulo,
+  // que a tela distingue do "sem colete" (cor nula de um lado conhecido).
+  it("sem escalação e sem side, o lado fica nulo e o nome vazio", () => {
     const resumo = montarResumo(entrada({ gols: [gol({ playerId: 999, side: null })] }));
-    expect(resumo.jogos[0].gols[0].time).toBe("");
+    expect(resumo.jogos[0].gols[0]).toMatchObject({ lado: null, time: "" });
   });
 });
 
@@ -222,6 +231,7 @@ describe("montarResumo — artilharia e elencos", () => {
     );
 
     expect(resumo.times.map((t) => t.nome)).toEqual(["Verde", "Azul"]);
+    expect(resumo.times.map((t) => t.cor)).toEqual(["#16a868", null]);
     expect(resumo.times[0].jogadores.map((j) => j.rotulo)).toEqual(["Ana", "Zé"]);
     expect(resumo.times[1].jogadores[0].isGoalkeeper).toBe(true);
   });

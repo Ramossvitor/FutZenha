@@ -74,6 +74,15 @@ export const TIMES_MIN = 2;
 export const TIMES_MAX = 6;
 
 /**
+ * Teto do nome de um time. Cabe em "Gol do <nome>" no botão de 96px da súmula
+ * num celular de 390px e em todo `truncate` que mostra colete — e sobra para
+ * "Com Colete" / "Sem Colete", que é o caso que motivou o nome livre. É o
+ * `maxLength` dos campos E a recusa da action, o MESMO número (ver o motivo em
+ * NOME_MAXIMO, src/lib/item-da-loja.ts).
+ */
+export const NOME_DE_TIME_MAX = 24;
+
+/**
  * O piso da senha, e o teto.
  *
  * Dez, e não os seis de antes. O login não tem tranca durável — o freio de

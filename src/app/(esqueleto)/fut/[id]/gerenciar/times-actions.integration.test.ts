@@ -3,7 +3,7 @@
 // depois que a lista fechou). O sorteio tem a própria suíte em
 // presenca-actions.integration.test.ts — o caminho de gravação é compartilhado.
 
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { db } from "@/db";
 import {
@@ -17,7 +17,9 @@ import {
   type MatchDay,
   type Player,
 } from "@/db/schema";
+import { gravarColetesDoGrupo } from "@/lib/coletes-do-grupo";
 import { esperaRedirect } from "@/test/navigation-fake";
+import { criarGrupo } from "@/test/fixtures-grupo";
 import { montarSumula } from "@/test/fixtures-sumula";
 import {
   confirmarPresenca,
@@ -26,7 +28,7 @@ import {
   criarJogadorComConta,
   logarComo,
 } from "@/test/fixtures";
-import { createGame, montarTimesAction, moverJogadorAction } from "./actions";
+import { createGame, drawTeamsAction, montarTimesAction, moverJogadorAction } from "./actions";
 
 async function futAbertoComAdmin(): Promise<{ fut: MatchDay; admin: Player }> {
   const { jogador, conta } = await criarJogadorComConta();
@@ -85,9 +87,10 @@ describe("montarTimesAction", () => {
       .select()
       .from(teams)
       .where(eq(teams.matchDayId, fut.id));
-    expect(times.map((t) => [t.name, t.sortOrder])).toEqual([
-      ["Preto", 0],
-      ["Branco", 1],
+    // Fut avulso: os padrões, com a cor da paleta.
+    expect(times.map((t) => [t.name, t.sortOrder, t.cor])).toEqual([
+      ["Preto", 0, "#15181a"],
+      ["Branco", 1, "#e8edea"],
     ]);
     expect(await coletes(fut.id)).toEqual({
       [admin.id]: "Preto",
@@ -240,6 +243,70 @@ describe("montarTimesAction", () => {
     );
 
     expect(url).toBe(`/fut/${fut.id}/gerenciar?erro=time-vazio`);
+  });
+
+  it("fut de grupo com coletes usa os presets, na ordem — cópia, não ponteiro", async () => {
+    const { jogador: admin, conta } = await criarJogadorComConta();
+    await logarComo(conta);
+    const grupo = await criarGrupo();
+    await gravarColetesDoGrupo(db, grupo.id, [
+      { nome: "Azulão", cor: "#2f6fe0" },
+      { nome: "Vermelhão", cor: null },
+    ]);
+    const fut = await criarFut({ createdByPlayerId: admin.id, groupId: grupo.id });
+    const a = await criarJogador();
+    await confirmarPresenca(fut, admin, { minutosAtras: 20 });
+    await confirmarPresenca(fut, a, { minutosAtras: 10 });
+
+    await esperaRedirect(
+      montarTimesAction(fut.id, formDeLados({ [admin.id]: "A", [a.id]: "B" })),
+    );
+
+    const times = await db
+      .select()
+      .from(teams)
+      .where(eq(teams.matchDayId, fut.id))
+      .orderBy(asc(teams.sortOrder));
+    expect(times.map((t) => [t.name, t.cor])).toEqual([
+      ["Azulão", "#2f6fe0"],
+      ["Vermelhão", null],
+    ]);
+
+    // Mudar os coletes do grupo depois não mexe no fut já sorteado.
+    await gravarColetesDoGrupo(db, grupo.id, []);
+    const depois = await db.select().from(teams).where(eq(teams.matchDayId, fut.id));
+    expect(depois.map((t) => t.name).sort()).toEqual(["Azulão", "Vermelhão"]);
+  });
+
+  it("o sorteio completa os presets do grupo com os padrões que sobram", async () => {
+    const { jogador: admin, conta } = await criarJogadorComConta();
+    await logarComo(conta);
+    const grupo = await criarGrupo();
+    await gravarColetesDoGrupo(db, grupo.id, [
+      { nome: "Branco", cor: "#e8edea" },
+      { nome: "Sem Colete", cor: null },
+    ]);
+    const fut = await criarFut({ createdByPlayerId: admin.id, groupId: grupo.id });
+    for (const [i, j] of [admin, await criarJogador(), await criarJogador()].entries()) {
+      await confirmarPresenca(fut, j, { minutosAtras: 30 - i * 10 });
+    }
+    const form = new FormData();
+    form.set("teamCount", "3");
+
+    await esperaRedirect(drawTeamsAction(fut.id, form));
+
+    const times = await db
+      .select()
+      .from(teams)
+      .where(eq(teams.matchDayId, fut.id))
+      .orderBy(asc(teams.sortOrder));
+    // O terceiro é o primeiro padrão cujo nome o grupo não usou: "Branco" já
+    // está tomado, então vem "Preto".
+    expect(times.map((t) => [t.name, t.cor])).toEqual([
+      ["Branco", "#e8edea"],
+      ["Sem Colete", null],
+      ["Preto", "#15181a"],
+    ]);
   });
 
   it("recusa montar por cima de fut com jogo lançado", async () => {

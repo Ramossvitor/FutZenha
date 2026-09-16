@@ -36,7 +36,7 @@ export default async function SumulaPage({ params, searchParams }: PageProps<"/f
   if (!sumulaDisponivel(matchDay)) redirect(`/fut/${id}`);
 
   const dados = await carregarSumula(matchDay, ehAdminDoFut);
-  const nomeDoTime = new Map(dados.teamList.map((t) => [t.id, t.name]));
+  const timePorId = new Map(dados.teamList.map((t) => [t.id, t]));
 
   let jogo: JogoAberto | null = null;
   if (dados.aberto) {
@@ -49,8 +49,10 @@ export default async function SumulaPage({ params, searchParams }: PageProps<"/f
       id: aberto.id,
       scoreA: aberto.scoreA,
       scoreB: aberto.scoreB,
-      timeA: nomeDoTime.get(aberto.teamAId) ?? "",
-      timeB: nomeDoTime.get(aberto.teamBId) ?? "",
+      timeA: timePorId.get(aberto.teamAId)?.name ?? "",
+      timeB: timePorId.get(aberto.teamBId)?.name ?? "",
+      corA: timePorId.get(aberto.teamAId)?.cor ?? null,
+      corB: timePorId.get(aberto.teamBId)?.cor ?? null,
       emAndamentoHa: tempoAtras(aberto.segundosEmAndamento ?? 0),
       ladoA: dados.lineupRows
         .filter((m) => m.side === "A")
@@ -104,13 +106,15 @@ export default async function SumulaPage({ params, searchParams }: PageProps<"/f
         matchDayId={matchDay.id}
         ehAdminDoFut={ehAdminDoFut}
         jogo={jogo}
-        times={dados.teamList.map((t) => ({ id: t.id, nome: t.name }))}
+        times={dados.teamList.map((t) => ({ id: t.id, nome: t.name, cor: t.cor }))}
         jogosAnteriores={dados.gameList
           .filter((g) => g.id !== dados.aberto?.id)
           .map((g) => ({
             id: g.id,
-            timeA: nomeDoTime.get(g.teamAId) ?? "",
-            timeB: nomeDoTime.get(g.teamBId) ?? "",
+            timeA: timePorId.get(g.teamAId)?.name ?? "",
+            timeB: timePorId.get(g.teamBId)?.name ?? "",
+            corA: timePorId.get(g.teamAId)?.cor ?? null,
+            corB: timePorId.get(g.teamBId)?.cor ?? null,
             scoreA: g.scoreA,
             scoreB: g.scoreB,
           }))}

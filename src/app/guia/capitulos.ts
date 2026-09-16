@@ -23,7 +23,7 @@ type Capitulo = {
 export const CAPITULOS = [
   { id: "como-funciona", titulo: "Como funciona", resumo: "O ciclo de um fut, do convite ao ranking.", camada: "no-fut" },
   { id: "a-lista", titulo: "A lista", resumo: "Confirmar presença, vagas e lista de espera.", camada: "no-fut" },
-  { id: "os-times", titulo: "Os times", resumo: "Como o sorteio equilibra os lados.", camada: "no-fut" },
+  { id: "os-times", titulo: "Os times", resumo: "Como o sorteio equilibra os lados — e de onde vêm os coletes.", camada: "no-fut" },
   { id: "a-avaliacao", titulo: "A avaliação", resumo: "Quem avalia quem, com que prazo e sob que sigilo.", camada: "no-fut" },
   { id: "a-nota", titulo: "A nota", resumo: "De onde ela sai e por que se mexe devagar.", camada: "no-fut" },
   { id: "o-mvp", titulo: "O melhor em campo", resumo: "A votação, o piso de votos e o desempate.", camada: "no-fut" },

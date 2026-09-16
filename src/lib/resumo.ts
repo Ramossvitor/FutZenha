@@ -14,7 +14,12 @@ export type GolDoResumo = {
   /** Apelido ou nome de quem marcou. Nulo é gol contra / sem autor. */
   autor: string | null;
   quantidade: number;
-  /** Nome do time, para o colete. Vazio quando não dá para saber o lado. */
+  /**
+   * De que lado saiu o gol — o colete é o do time desse lado (`corA`/`corB`
+   * do jogo). Nulo quando não dá para saber, e aí o chip sai neutro.
+   */
+  lado: "A" | "B" | null;
+  /** Nome do time, para o texto (o e-mail). Vazio quando não dá para saber o lado. */
   time: string;
 };
 
@@ -22,6 +27,9 @@ export type JogoDoResumo = {
   id: number;
   timeA: string;
   timeB: string;
+  /** A cor do colete de cada lado (`teams.cor`): hex, ou nulo = sem colete. */
+  corA: string | null;
+  corB: string | null;
   placarA: number;
   placarB: number;
   emAndamento: boolean;
@@ -31,6 +39,7 @@ export type JogoDoResumo = {
 export type TimeDoResumo = {
   id: number;
   nome: string;
+  cor: string | null;
   jogadores: { playerId: number; rotulo: string; isGoalkeeper: boolean }[];
 };
 
@@ -45,7 +54,7 @@ export type ResumoDoFut = {
 };
 
 export type EntradaDoResumo = {
-  times: { id: number; name: string; sortOrder: number }[];
+  times: { id: number; name: string; cor: string | null; sortOrder: number }[];
   jogos: {
     id: number;
     teamAId: number;
@@ -81,7 +90,7 @@ function rotuloDe(nome: string, apelido: string | null): string {
 }
 
 export function montarResumo(entrada: EntradaDoResumo): ResumoDoFut {
-  const nomeDoTime = new Map(entrada.times.map((t) => [t.id, t.name]));
+  const timePorId = new Map(entrada.times.map((t) => [t.id, t]));
 
   // Chave `jogo:jogador` porque a mesma pessoa pode trocar de lado entre jogos —
   // o colete do fut (team_players) não responde por ela, só a escalação do jogo.
@@ -92,23 +101,29 @@ export function montarResumo(entrada: EntradaDoResumo): ResumoDoFut {
   const jogos = [...entrada.jogos]
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
     .map((jogo): JogoDoResumo => {
-      const timeA = nomeDoTime.get(jogo.teamAId) ?? "";
-      const timeB = nomeDoTime.get(jogo.teamBId) ?? "";
+      const timeA = timePorId.get(jogo.teamAId)?.name ?? "";
+      const timeB = timePorId.get(jogo.teamBId)?.name ?? "";
 
       return {
         id: jogo.id,
         timeA,
         timeB,
+        corA: timePorId.get(jogo.teamAId)?.cor ?? null,
+        corB: timePorId.get(jogo.teamBId)?.cor ?? null,
         placarA: jogo.scoreA,
         placarB: jogo.scoreB,
         emAndamento: jogoEmAndamento(jogo),
         gols: entrada.gols
           .filter((g) => g.gameId === jogo.id)
-          .map((g) => ({
-            autor: g.playerId === null ? null : rotuloDe(g.playerName ?? "", g.nickname),
-            quantidade: g.quantity,
-            time: coleteDoGol(g, jogo.id, ladoNoJogo, timeA, timeB),
-          })),
+          .map((g) => {
+            const lado = ladoDoGol(g, jogo.id, ladoNoJogo);
+            return {
+              autor: g.playerId === null ? null : rotuloDe(g.playerName ?? "", g.nickname),
+              quantidade: g.quantity,
+              lado,
+              time: lado === "A" ? timeA : lado === "B" ? timeB : "",
+            };
+          }),
       };
     });
 
@@ -118,6 +133,7 @@ export function montarResumo(entrada: EntradaDoResumo): ResumoDoFut {
       (time): TimeDoResumo => ({
         id: time.id,
         nome: time.name,
+        cor: time.cor,
         jogadores: entrada.elencos
           .filter((m) => m.teamId === time.id)
           .map((m) => ({
@@ -138,7 +154,7 @@ export function montarResumo(entrada: EntradaDoResumo): ResumoDoFut {
 }
 
 /**
- * De que colete saiu este gol, com os dois fallbacks — a regra que existia
+ * De que lado saiu este gol, com os dois fallbacks — a regra que existia
  * inline em /fut/[id] e que este módulo veio unificar.
  *
  * O `side` GRAVADO no gol manda. Ele é o lado no instante do gol, e a súmula ao
@@ -150,21 +166,17 @@ export function montarResumo(entrada: EntradaDoResumo): ResumoDoFut {
  * placar do resumo parava de bater com os chips ao lado dele.
  *
  * A escalação fica de fallback para o que veio antes da súmula, quando
- * `goals.side` era nulo e o lado só era derivável por ela. Sem os dois, string
- * vazia: o chip neutro é mais honesto do que chutar um lado.
+ * `goals.side` era nulo e o lado só era derivável por ela. Sem os dois, nulo:
+ * o chip neutro é mais honesto do que chutar um lado.
  */
-function coleteDoGol(
+function ladoDoGol(
   gol: { playerId: number | null; side: "A" | "B" | null },
   gameId: number,
   ladoNoJogo: Map<string, "A" | "B">,
-  timeA: string,
-  timeB: string,
-): string {
-  const lado =
-    gol.side ??
-    (gol.playerId === null ? undefined : ladoNoJogo.get(`${gameId}:${gol.playerId}`));
-  if (lado === null || lado === undefined) return "";
-  return lado === "A" ? timeA : timeB;
+): "A" | "B" | null {
+  if (gol.side !== null) return gol.side;
+  if (gol.playerId === null) return null;
+  return ladoNoJogo.get(`${gameId}:${gol.playerId}`) ?? null;
 }
 
 /**

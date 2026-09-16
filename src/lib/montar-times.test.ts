@@ -18,8 +18,8 @@ const j = (playerId: number, nome: string, skill = 5): JogadorDeTime => ({
 });
 
 const TIMES = [
-  { chave: "10", nome: "Preto" },
-  { chave: "11", nome: "Branco" },
+  { chave: "10", nome: "Preto", cor: "#15181a" },
+  { chave: "11", nome: "Branco", cor: null },
 ];
 
 describe("repartirEmColunas", () => {
@@ -34,6 +34,8 @@ describe("repartirEmColunas", () => {
       ]),
     );
     expect(colunas.map((c) => c.nome)).toEqual([SEM_TIME, "Preto", "Branco"]);
+    // A cor acompanha o time; "Sem time" não tem colete.
+    expect(colunas.map((c) => c.cor)).toEqual([null, "#15181a", null]);
     expect(colunas[0].jogadores).toEqual([]);
     expect(colunas[1].jogadores.map((x) => x.playerId)).toEqual([1, 3]);
     expect(colunas[2].jogadores.map((x) => x.playerId)).toEqual([2]);

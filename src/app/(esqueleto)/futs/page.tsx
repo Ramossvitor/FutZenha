@@ -47,7 +47,7 @@ export default async function FutsPage({ searchParams }: PageProps<"/futs">) {
         db.select().from(teams).where(inArray(teams.matchDayId, dayIds)),
       ])
     : [[], []];
-  const nomeDoTime = new Map(teamRows.map((t) => [t.id, t.name]));
+  const timePorId = new Map(teamRows.map((t) => [t.id, t]));
 
   // Meu papel em cada grupo de que participo. Serve os dois selos abaixo: o
   // "você gerencia" precisa do papel (`podeGerenciarFut` quer o papel no
@@ -231,14 +231,14 @@ export default async function FutsPage({ searchParams }: PageProps<"/futs">) {
                     <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                       {dayGames.map((g) => (
                         <span key={g.id} className="flex items-center gap-1.5">
-                          <VestChip time={nomeDoTime.get(g.teamAId) ?? ""} tamanho="sm" />
+                          <VestChip cor={timePorId.get(g.teamAId)?.cor} tamanho="sm" />
                           <span
                             className="font-display text-[13px] font-extrabold font-stretch-112% text-fg-2"
                             data-num
                           >
                             {g.scoreA} × {g.scoreB}
                           </span>
-                          <VestChip time={nomeDoTime.get(g.teamBId) ?? ""} tamanho="sm" />
+                          <VestChip cor={timePorId.get(g.teamBId)?.cor} tamanho="sm" />
                         </span>
                       ))}
                     </span>

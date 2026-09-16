@@ -180,7 +180,7 @@ Limites esperados do free tier: o Neon dorme após ~5 min sem uso, então a prim
 
 `players` → `attendances` ← `match_days` (com `created_by_player_id` = o admin daquele fut; nulo = órfão — anterior a este modelo ou de criador apagado — e só a plataforma administra, sem dono inventado por backfill) → `teams` → `team_players`; `games` (time A × time B com placar) → `goals` (autor + quantidade) e `game_players` (quem jogou de qual lado **naquele jogo**). O placar digitado não precisa bater com a soma dos gols — cobre gol contra e gol sem autor lembrado.
 
-`game_players` é a fonte de verdade de quem jogou: `teams` guarda só o colete do fut. É dela que saem o V/E/D e os "companheiros" da avaliação.
+`game_players` é a fonte de verdade de quem jogou: `teams` guarda só o colete do fut — nome e `cor` (`#rrggbb`, ou nulo = sem colete), copiados de `coletes_do_grupo` (ou dos padrões de `src/lib/team-colors.ts`) no sorteio e editáveis depois. É de `game_players` que saem o V/E/D e os "companheiros" da avaliação.
 
 Avaliação: `rating_rounds` (uma por fut) → `rating_round_raters` (o denominador congelado de quem deve avaliar) e `ratings` (`discarded_at` nulo = vale) → `rating_reports`. `skill_history` é **projeção** do replay, reescrita inteira a cada recálculo. `notifications` tem unique em `(player_id, dedupe_key)`, o que torna notificar idempotente — e é também o outbox dos dois canais de aceleração, pelas colunas `push_dispatched_at` e `email_dispatched_at` (ver *Avisos: onde cada coisa chega*).
 

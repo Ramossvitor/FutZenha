@@ -18,6 +18,8 @@ export type JogadorDeTime = {
 export type ColunaDeTime = {
   chave: string | null;
   nome: string;
+  /** A cor do colete (`teams.cor`), para o chip; nula em "Sem time" e no time sem colete. */
+  cor: string | null;
   jogadores: JogadorDeTime[];
 };
 
@@ -34,14 +36,15 @@ export type LadoDoRascunho = (typeof LADOS_DO_RASCUNHO)[number];
  */
 export function repartirEmColunas(
   jogadores: JogadorDeTime[],
-  times: { chave: string; nome: string }[],
+  times: { chave: string; nome: string; cor: string | null }[],
   ladoPorJogador: ReadonlyMap<number, string | null>,
 ): ColunaDeTime[] {
   const colunas: ColunaDeTime[] = [
-    { chave: null, nome: SEM_TIME, jogadores: [] },
+    { chave: null, nome: SEM_TIME, cor: null, jogadores: [] },
     ...times.map((t) => ({
       chave: t.chave,
       nome: t.nome,
+      cor: t.cor,
       jogadores: [] as JogadorDeTime[],
     })),
   ];

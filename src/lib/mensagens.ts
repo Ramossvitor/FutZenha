@@ -22,7 +22,7 @@
 // em que o prazo mudasse — e mentiria justamente na tela de quem acabou de
 // esbarrar no prazo.
 
-import { JANELA_CORRECAO_HORAS } from "./regras";
+import { JANELA_CORRECAO_HORAS, NOME_DE_TIME_MAX, TIMES_MIN } from "./regras";
 import { PRAZO_ABERTURA_EXCLUSAO_HORAS } from "./votacao";
 
 export const MENSAGENS: Record<string, string> = {
@@ -52,6 +52,12 @@ export const MENSAGENS: Record<string, string> = {
   "jogador-sem-time":
     "Todo confirmado precisa de um time — quem não vai jogar, marque fora da lista.",
   "jogador-fora-da-lista": "Só quem está confirmado entra num time.",
+  // Nome e cor dos times (o /gerenciar, a súmula e os coletes do grupo). O
+  // primeiro fala das duas regras de uma vez porque o form também é um só: a
+  // recusa sai da mesma leitura (src/lib/coletes-form.ts).
+  "nome-de-time-invalido": `O nome do time precisa ter de 1 a ${NOME_DE_TIME_MAX} caracteres, numa linha só — e a cor, uma das amostras, um tom #rrggbb ou "sem colete".`,
+  "nome-de-time-repetido": "Dois times não podem ter o mesmo nome — confira os nomes.",
+  "coletes-incompletos": `Defina pelo menos ${TIMES_MIN} coletes, na ordem e sem pular linha — ou deixe tudo em branco para usar os padrões.`,
   "artilheiro-fora-do-jogo":
     "Só quem entrou nesse jogo pode marcar gol nele. Ajuste a escalação primeiro.",
   "precisa-confirmar":
@@ -190,6 +196,9 @@ export const MENSAGENS: Record<string, string> = {
     "Esse convite não está mais pendente ou não tem e-mail. Gere um convite novo.",
 
   // ----- confirmações -----
+  "time-atualizado": "Nome e cor do time salvos. Já valem na súmula e na página do fut.",
+  "coletes-atualizados":
+    "Coletes do grupo salvos. Valem para os próximos sorteios — os futs já sorteados não mudam.",
   "multiplicador-armado":
     "Multiplicador armado. Ele vale neste fut e some do inventário quando o fut for encerrado.",
   "multiplicador-desarmado": "Multiplicador desarmado — ele voltou para o seu inventário.",

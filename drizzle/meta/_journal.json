@@ -281,6 +281,13 @@
       "when": 1788802990062,
       "tag": "0039_token_de_api",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789263161277,
+      "tag": "0040_coletes_personalizados",
+      "breakpoints": true
     }
   ]
 }

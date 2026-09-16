@@ -25,7 +25,7 @@ export async function getResumoDoFut(
 ): Promise<ResumoDoFut> {
   const [listaDeTimes, listaDeJogos] = await Promise.all([
     exec
-      .select({ id: teams.id, name: teams.name, sortOrder: teams.sortOrder })
+      .select({ id: teams.id, name: teams.name, cor: teams.cor, sortOrder: teams.sortOrder })
       .from(teams)
       .where(eq(teams.matchDayId, matchDayId))
       .orderBy(asc(teams.sortOrder)),
